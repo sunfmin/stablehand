@@ -3,6 +3,7 @@
 use crate::account::Account;
 use crate::books::{self, Entry, Status, What};
 use crate::readers;
+use crate::refusal::{Code, Refused};
 use crate::store::Store;
 use crate::time::utc;
 use serde_json::{Value, json};
@@ -48,23 +49,23 @@ pub fn limit(
     window: Option<String>,
     resets_at: Option<String>,
     now: u64,
-) -> Result<Value, String> {
-    let resets_at = match resets_at {
-        None => None,
-        Some(t) => {
-            let at = crate::time::parse(&t).ok_or_else(|| {
-                format!("--resets-at `{t}` is no time: give it as RFC 3339, 2026-11-24T15:00:00Z")
-            })?;
-            if at <= now {
-                return Err(format!(
-                    "--resets-at {t} is past: the limit has lifted; give when it lifts, or no --resets-at"
-                ));
-            }
-            Some(at)
-        }
-    };
+) -> Result<Value, Refused> {
+    let bad = |text: String| Refused::new(Code::BadLimit, text);
+    let resets_at = resets_at
+        .map(|t| match crate::time::parse(&t) {
+            None => Err(bad(format!(
+                "--resets-at `{t}` is no time: give it as RFC 3339, 2026-11-24T15:00:00Z"
+            ))),
+            Some(at) if at <= now => Err(bad(format!(
+                "--resets-at {t} is past: the limit has lifted; give when it lifts, or no --resets-at"
+            ))),
+            Some(at) => Ok(at),
+        })
+        .transpose()?;
     if window.as_deref().is_some_and(|w| w.trim().is_empty()) {
-        return Err("--window is empty: name the window the engine said ran out (five_hour), or leave it out".into());
+        return Err(bad(
+            "--window is empty: name the window the engine said ran out (five_hour), or leave it out".into(),
+        ));
     }
     store.book(
         &account.name,

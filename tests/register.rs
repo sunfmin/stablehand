@@ -279,3 +279,46 @@ fn help_and_version_are_text_not_refusals() {
         "{json}"
     );
 }
+
+#[test]
+fn each_refusal_carries_its_code_and_the_exit_it_decides() {
+    let r = Register::new("codes");
+    r.ok(&["account", "add", "a", "--engine", "codex"]);
+    r.ok(&["off", "a", "--reason", "card declined"]);
+    let now = "2026-01-01T00:00:00Z";
+    // Each: its arguments, the code and the exit it answers.
+    let cases: &[(&[&str], &str, i32)] = &[
+        (&["account", "add", "b", "--engine", "nope"], "usage", 2),
+        (&["help", "no-such-topic"], "usage", 2),
+        (&["account", "show", "nobody"], "no_account", 1),
+        (&["status", "nobody"], "no_account", 1),
+        (&["read", "nobody"], "no_account", 1),
+        (
+            &["account", "add", "a", "--engine", "codex"],
+            "name_taken",
+            1,
+        ),
+        (
+            &["account", "add", "b", "--engine", "codex", "--home", "/h"],
+            "bad_terms",
+            1,
+        ),
+        (&["off", "a", "--reason", " "], "bad_terms", 1),
+        (&["env", "a"], "no_session", 2),
+        (&["account", "login", "a"], "login_refused", 1),
+        (&["limit", "a", "--resets-at", now], "bad_limit", 1),
+    ];
+    for (args, code, exit) in cases {
+        let out = r.run(args);
+        assert_eq!(
+            (out.json["code"].as_str(), out.code),
+            (Some(*code), *exit),
+            "{args:?}: {}",
+            out.json
+        );
+        assert!(out.json["error"].is_string(), "{args:?}: {}", out.json);
+    }
+    let later = "2999-01-01T00:00:00Z";
+    let booked = r.ok(&["limit", "a", "--resets-at", later]);
+    assert_eq!(booked["limit"]["resets_at"], later, "{booked}");
+}

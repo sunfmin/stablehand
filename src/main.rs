@@ -6,6 +6,7 @@ mod curl;
 mod import;
 mod login;
 mod readers;
+mod refusal;
 mod store;
 mod time;
 mod usage;
@@ -16,6 +17,7 @@ mod version;
 use account::{Account, Change, Engine, Field, Off, Terms};
 use agent_help::Help;
 use clap::{CommandFactory, FromArgMatches, Parser, Subcommand};
+use refusal::{Code, Refused};
 use serde_json::{Value, json};
 use std::process::ExitCode;
 use store::Store;
@@ -28,8 +30,6 @@ const REGISTER: &str = "Keep the register";
 const SESSIONS: &str = "Start sessions";
 /// The manual itself.
 const LEARN: &str = "Learn";
-/// A command line stablehand cannot read, or an account `env` refuses.
-const EXIT_USAGE: u8 = 2;
 
 /// One home for agent engine accounts (Claude Code, Codex, pi, Kimi Code, agy, Grok, dsh): how each logs in, where it may run, and how much of its usage windows is left.
 ///
@@ -39,9 +39,15 @@ const EXIT_USAGE: u8 = 2;
 ///
 /// ## Rules to know first
 ///
-/// - Every command but `env` prints one JSON object on stdout. A refusal is `{"error": "…"}`, each fault with the line that fixes it, exit 1, and nothing written; a command line stablehand cannot read is the same with exit {const:EXIT_USAGE}. `--help`, `help` and `--version` answer text.
+/// - Every command but `env` prints one JSON object on stdout. A refusal is `{"error": "…", "code": "…"}`, each fault with the line that fixes it, exit 1, and nothing written; a command line stablehand cannot read is the same with exit {const:EXIT_USAGE}. `--help`, `help` and `--version` answer text.
 /// - `stablehand env <name>` answers shell text, a session's `export` lines (`--json`: one object), and refuses an account no session may start on with exit {const:EXIT_USAGE}.
 /// - The register and the books are one SQLite file, `$STABLEHAND_CONFIG_DIR/stablehand.db` (default `~/.config/stablehand`). It keeps no token: a portable login's token is sesame's.
+///
+/// ## Refusals
+///
+/// A refusal's `code` is one of these:
+///
+/// {table:refusal}
 #[derive(Parser)]
 #[command(
     name = "stablehand",
@@ -275,7 +281,8 @@ fn engines_help() -> String {
 /// The manual: clap's command tree, and the constants it places by name.
 fn manual() -> Help {
     Help::new(Cli::command())
-        .constant("EXIT_USAGE", EXIT_USAGE)
+        .table::<Code>("refusal")
+        .constant("EXIT_USAGE", Code::Usage.exit())
         .constant("ENGINES", engines_help())
 }
 
@@ -287,42 +294,38 @@ fn main() -> ExitCode {
             .and_then(|m| Cli::from_arg_matches(&m))
     });
     let cli = match parsed {
-        Err(broken) => return answer(Err(broken), ExitCode::FAILURE),
+        Err(broken) => return answer(Err(broken.into())),
         Ok(Ok(cli)) => cli,
         Ok(Err(e)) if !e.use_stderr() => e.exit(),
         Ok(Err(e)) => {
             let msg = e.render().to_string();
-            return answer(Err(msg.trim().to_string()), ExitCode::from(EXIT_USAGE));
+            return answer(Err(Refused::new(Code::Usage, msg.trim())));
         }
     };
     match cli.cmd {
-        Cmd::Env { name, json } => match env(&name, json) {
-            Ok(Err(refusal)) => answer(Err(refusal), ExitCode::from(EXIT_USAGE)),
-            Ok(text) => answer(text, ExitCode::FAILURE),
-            Err(e) => answer(Err(e), ExitCode::FAILURE),
-        },
+        Cmd::Env { name, json } => answer(env(&name, json)),
         Cmd::Help { topic } => {
             let text = match topic {
                 None => help.index(),
                 Some(topic) => help.topic_help(&topic),
             };
-            let text = text.map_err(|e| e.to_string());
-            answer(text, ExitCode::from(EXIT_USAGE))
+            answer(text.map_err(|e| Refused::new(Code::Usage, e.to_string())))
         }
-        Cmd::Register(cmd) => answer(run(cmd).map(|v| format!("{v}\n")), ExitCode::FAILURE),
+        Cmd::Register(cmd) => answer(run(cmd).map(|v| format!("{v}\n"))),
     }
 }
-/// Prints the answer, its text as it is, or the fault as {"error": …},
-/// exiting `failure`.
-fn answer(result: Result<String, String>, failure: ExitCode) -> ExitCode {
+/// Prints the answer, its text as it is, or the refusal as
+/// {"error": …, "code": …}, exiting as its code says.
+fn answer(result: Result<String, Refused>) -> ExitCode {
     match result {
         Ok(text) => {
             print!("{text}");
             ExitCode::SUCCESS
         }
-        Err(e) => {
-            println!("{}", json!({ "error": e }));
-            failure
+        Err(r) => {
+            let code = agent_help::Table::entry(&r.code).name;
+            println!("{}", json!({ "error": r.text, "code": code }));
+            ExitCode::from(r.code.exit())
         }
     }
 }
@@ -330,24 +333,24 @@ fn answer(result: Result<String, String>, failure: ExitCode) -> ExitCode {
 /// `env`'s answer: the account's variable as an `export NAME='value'` line,
 /// the value one shell word whatever it holds (the text of factorium's
 /// secrets file, factorium_harness::secrets_file), or with `json` as
-/// {"name", "login", "env": {NAME: value}}; `Ok(Err)` a refusal (exit 2).
-fn env(name: &str, json: bool) -> Result<Result<String, String>, String> {
+/// {"name", "login", "env": {NAME: value}}.
+fn env(name: &str, json: bool) -> Result<String, Refused> {
     let a = kept(&Store::open()?, name)?;
-    Ok(login::env(&a)?.map(|(var, value)| {
-        if json {
-            let env = json!({ var: value });
-            format!(
-                "{}\n",
-                json!({ "name": a.name, "login": a.login(), "env": env })
-            )
-        } else {
-            format!("export {var}='{}'\n", value.replace('\'', "'\\''"))
-        }
-    }))
+    let (var, value) = login::env(&a)?;
+    Ok(if json {
+        let env = json!({ var: value });
+        format!(
+            "{}\n",
+            json!({ "name": a.name, "login": a.login(), "env": env })
+        )
+    } else {
+        format!("export {var}='{}'\n", value.replace('\'', "'\\''"))
+    })
 }
 
-fn faults(f: Vec<String>) -> String {
-    f.join("; ")
+/// An account's terms refused, each fault with its fix.
+fn faults(f: Vec<String>) -> Refused {
+    Refused::new(Code::BadTerms, f.join("; "))
 }
 
 fn shown(a: &Account) -> Value {
@@ -360,7 +363,7 @@ fn now() -> Result<u64, String> {
 }
 
 /// `a` as `show` answers it: with whether it is logged in.
-fn with_status(a: &Account) -> Result<Value, String> {
+fn with_status(a: &Account) -> Result<Value, Refused> {
     let today = (now()? / 86_400) as i64;
     let mut v = serde_json::to_value(account::status(a, login::logged_in(a)?, today))
         .map_err(|e| e.to_string())?;
@@ -369,15 +372,15 @@ fn with_status(a: &Account) -> Result<Value, String> {
 }
 
 /// The account `name`, or the refusal that says how to find one.
-fn kept(store: &Store, name: &str) -> Result<Account, String> {
+fn kept(store: &Store, name: &str) -> Result<Account, Refused> {
     store.get(name)?.ok_or_else(|| {
-        format!(
+        Refused::new(Code::NoAccount, format!(
             "no account `{name}`: `stablehand account list` names those kept; add it with `stablehand account add {name} --engine <engine>`"
-        )
+        ))
     })
 }
 
-fn run(cmd: Register) -> Result<Value, String> {
+fn run(cmd: Register) -> Result<Value, Refused> {
     let store = Store::open()?;
     match cmd {
         Register::Account { cmd } => match cmd {
@@ -396,8 +399,11 @@ fn run(cmd: Register) -> Result<Value, String> {
                 )
                 .map_err(faults)?;
                 if !store.insert(&a)? {
-                    return Err(format!(
-                        "account `{name}` is already kept: change it with `stablehand account edit {name} …`, or remove it first with `stablehand account rm {name}`"
+                    return Err(Refused::new(
+                        Code::NameTaken,
+                        format!(
+                            "account `{name}` is already kept: change it with `stablehand account edit {name} …`, or remove it first with `stablehand account rm {name}`"
+                        ),
                     ));
                 }
                 Ok(shown(&a))
@@ -452,7 +458,8 @@ fn run(cmd: Register) -> Result<Value, String> {
         Register::Off { name, reason } => {
             let mut a = kept(&store, &name)?;
             if reason.trim().is_empty() {
-                return Err("--reason is empty: say why the account is off".into());
+                let why = "--reason is empty: say why the account is off";
+                return Err(Refused::new(Code::BadTerms, why));
             }
             a.off = Some(Off {
                 by: std::env::var("USER").unwrap_or_else(|_| "unknown".into()),
@@ -470,22 +477,22 @@ fn run(cmd: Register) -> Result<Value, String> {
             Ok(shown(&a))
         }
         Register::Read { name, now: anyway } => {
-            usage::read(&store, &chosen(&store, name)?, now()?, anyway)
+            Ok(usage::read(&store, &chosen(&store, name)?, now()?, anyway)?)
         }
         Register::Limit {
             name,
             window,
             resets_at,
         } => usage::limit(&store, &kept(&store, &name)?, window, resets_at, now()?),
-        Register::Status { name } => usage::status(&store, &chosen(&store, name)?, now()?),
+        Register::Status { name } => Ok(usage::status(&store, &chosen(&store, name)?, now()?)?),
     }
 }
 
 /// The account `name`, or every account where none is named.
-fn chosen(store: &Store, name: Option<String>) -> Result<Vec<Account>, String> {
+fn chosen(store: &Store, name: Option<String>) -> Result<Vec<Account>, Refused> {
     match name {
         Some(name) => kept(store, &name).map(|a| vec![a]),
-        None => store.list(),
+        None => Ok(store.list()?),
     }
 }
 

@@ -3,6 +3,7 @@
 //! never passes through stablehand: sesame reads it from the terminal or the
 //! stdin stablehand was given, and no child is given it on its command line.
 use crate::account::Account;
+use crate::refusal::{Code, Refused};
 use std::io::IsTerminal;
 use std::os::fd::AsFd;
 use std::process::{Command, Stdio};
@@ -112,83 +113,87 @@ pub fn token(a: &Account) -> Result<Option<String>, String> {
 }
 
 /// What a session on `a` starts with on this machine: its engine's variable
-/// and its value. `Err` when stablehand could not ask; `Ok(Err)` a refusal,
-/// with its fix, of an account no session may start on here: off, of an
-/// engine with no token variable, not logged in, with no home, or bound to
-/// another machine.
-pub fn env(a: &Account) -> Result<Result<(&'static str, String), String>, String> {
+/// and its value; refused `no_session`, with its fix, an account no session
+/// may start on here: off, of an engine with no token variable, not logged
+/// in, with no home, or bound to another machine.
+pub fn env(a: &Account) -> Result<(&'static str, String), Refused> {
+    let no_session = |text: String| Err(Refused::new(Code::NoSession, text));
     let name = &a.name;
     if let Some(off) = &a.off {
-        return Ok(Err(format!(
+        return no_session(format!(
             "account `{name}` is off ({} at {}: {}): start on another account, or `stablehand on {name}`",
             off.by, off.at, off.reason
-        )));
+        ));
     }
     let login = a.engine.login();
     let Some(machine) = &a.machine else {
         let Some(var) = login.token_var else {
-            return Ok(Err(format!(
+            return no_session(format!(
                 "{} takes no token from its environment: bind account `{name}` with `stablehand account edit {name} --machine <machine> --home <dir>`, then `stablehand account login {name}` there",
                 a.engine.name()
-            )));
+            ));
         };
-        return Ok(token(a)?.map(|t| (var, t)).ok_or_else(|| {
-            format!(
+        return match token(a)? {
+            Some(t) => Ok((var, t)),
+            None => no_session(format!(
                 "account `{name}` is not logged in: sesame holds no token for {}: `stablehand account login {name}`",
                 provider(a)
-            )
-        }));
+            )),
+        };
     };
     let Some(home) = &a.home else {
-        return Ok(Err(format!(
+        return no_session(format!(
             "account `{name}` has no home: `stablehand account edit {name} --home <dir>`, then `stablehand account login {name}` on {machine}"
-        )));
+        ));
     };
     if a.logged_in_at.is_none() {
-        return Ok(Err(format!(
+        return no_session(format!(
             "account `{name}` is not logged in: run `stablehand account login {name}` on {machine}"
-        )));
+        ));
     }
     let here = this_machine()?;
     if &here != machine {
-        return Ok(Err(format!(
+        return no_session(format!(
             "account `{name}` is bound to {machine} and this machine is {here} ($STABLEHAND_MACHINE, else `hostname -s`): start its session on {machine}, or on another account"
-        )));
+        ));
     }
-    Ok(Ok((login.home_var, home.clone())))
+    Ok((login.home_var, home.clone()))
 }
 
 /// Logs `a` in by its engine's own login: a portable token into sesame
 /// (`token`: pasted, not made by the engine's command), or a bound login in
 /// its home on this machine. Answers the account as the register keeps it now.
-pub fn login(a: &Account, token: bool, now: String) -> Result<Account, String> {
+pub fn login(a: &Account, token: bool, now: String) -> Result<Account, Refused> {
+    let refused = |text: String| Err(Refused::new(Code::LoginRefused, text));
     let login = a.engine.login();
     let name = &a.name;
     let Some(machine) = &a.machine else {
         if !token {
             let Some(argv) = login.token else {
-                return Err(format!(
+                return refused(format!(
                     "{} makes no long-lived token: paste one with `stablehand account login {name} --token`",
                     a.engine.name()
                 ));
             };
             engine(argv, None)?;
         }
-        return keep_token(a, login.usage_host).map(|()| a.clone());
+        return keep_token(a, login.usage_host)
+            .map(|()| a.clone())
+            .map_err(Into::into);
     };
     if token {
-        return Err(format!(
+        return refused(format!(
             "account `{name}` is bound to {machine}: its engine logs in there, with no --token; drop --token, or `stablehand account edit {name} --unset machine --unset home` for a portable token"
         ));
     }
     let here = this_machine()?;
     if &here != machine {
-        return Err(format!(
+        return refused(format!(
             "account `{name}` is bound to {machine} and this machine is {here} ($STABLEHAND_MACHINE, else `hostname -s`): run the login on {machine}"
         ));
     }
     let Some(home) = &a.home else {
-        return Err(format!(
+        return refused(format!(
             "account `{name}` has no home to log in to: `stablehand account edit {name} --home <dir>`"
         ));
     };

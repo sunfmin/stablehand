@@ -3,6 +3,7 @@
 //! into sesame as `account login` keeps one. mytokens is only read.
 use crate::account::{self, Account, Change, Engine, Terms};
 use crate::login;
+use crate::refusal::{Code, Refused};
 use crate::store::Store;
 use serde_json::{Value, json};
 use std::process::{Command, Stdio};
@@ -109,7 +110,7 @@ fn planned(e: &Entry) -> Result<Account, Vec<String>> {
 
 /// Imports every entry not kept yet (`dry_run`: says what it would): all its
 /// entries' faults refuse it before anything is written.
-pub fn import(store: &Store, dry_run: bool) -> Result<Value, String> {
+pub fn import(store: &Store, dry_run: bool) -> Result<Value, Refused> {
     let list = read(&["mytokens", "list"])?;
     let mut faults = Vec::new();
     let mut plan = Vec::new();
@@ -123,7 +124,10 @@ pub fn import(store: &Store, dry_run: bool) -> Result<Value, String> {
         }
     }
     if !faults.is_empty() {
-        return Err(format!("nothing was imported: {}", faults.join("; ")));
+        return Err(Refused::new(
+            Code::ImportRefused,
+            format!("nothing was imported: {}", faults.join("; ")),
+        ));
     }
     let mut done = Vec::new();
     for (e, a, new) in &plan {

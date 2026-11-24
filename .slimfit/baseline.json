@@ -1,32 +1,21 @@
 {
   "suites": {
     "rust": {
-      "prod_lines": 1062,
-      "test_lines": 1066,
-      "tests": 21,
+      "prod_lines": 2418,
+      "test_lines": 1897,
+      "tests": 66,
       "failures": 0,
       "test_seconds": 0.004,
-      "covered_lines": 690,
+      "covered_lines": 1572,
       "uncovered_lines": 3
     }
   },
   "loosened": [],
   "kept": [],
-  "kept_spans": [
-    {
-      "suite": "rust",
-      "file": "src/login.rs",
-      "start": 108,
-      "end": 110,
-      "function": "token (closure)",
-      "hash": "9931ba066b98e6c0",
-      "reason": "fires only when a real sesame answers token --json without access_token, a change of sesame's own; the stand-in answers as the real does (truefit contract, case provider-made-once-then-token-kept), so a test could only run it against a stand-in made wrong on purpose"
-    }
-  ],
   "measured": {
     "rust": {
-      "uncovered_lines": 25,
-      "test_seconds": 1.356
+      "uncovered_lines": 186,
+      "test_seconds": 3.348
     }
   }
 }
