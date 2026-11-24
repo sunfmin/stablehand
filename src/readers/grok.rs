@@ -203,7 +203,14 @@ mod tests {
         let got = windows(200, body, "x").unwrap();
         let shown: Vec<_> = got
             .iter()
-            .map(|w| (w.name.as_str(), w.group.as_deref(), w.used_percent, w.minutes))
+            .map(|w| {
+                (
+                    w.name.as_str(),
+                    w.group.as_deref(),
+                    w.used_percent,
+                    w.minutes,
+                )
+            })
             .collect();
         assert_eq!(shown, [("weekly", None, 0.0, Some(10_080))]);
         assert_eq!(got[0].resets_at, Some(1_795_518_385 + 7 * 86_400));
