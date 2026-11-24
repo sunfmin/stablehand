@@ -1,0 +1,10 @@
+{
+  "tree": "302abd42fa9d797d7f41f832ae42b0cfd348808d+d1fba762150c532c",
+  "lines": 235,
+  "serves": "stablehand#6",
+  "considered": "Reused curl::get (bearer on stdin), login::this_machine, the books' seam (READERS row, read_next's hour) and fake-curl; weighed sharing claude_code's bearer-file reading, but pi's id lives in another file under another key; one reader file for both ChatGPT engines rather than two",
+  "reviewer": "codex:01a20d12-d9d2-7f93-838c-cb4fbe4a04cd:default",
+  "author": "claude-code:dcd6314e-04a7-5632-859e-5156f1b3b7bf:opus",
+  "cut": "In src/readers/chatgpt.rs, share the primary and secondary window collection and empty-result check across both parsers, and pass minutes directly to the Window constructor so only WHAM converts units. In tests/usage.rs, table-drive the repeated successful-read assertions for Codex and Pi while keeping the Pi-specific credential and status checks. In truefit.toml and tests/contract/codex-shape, use one request fixture for both Codex contract cases. In tests/contract/fake-curl, share the success-body override and HTTP 200 output across both hosts.",
+  "answer": "All four made (commit 2): one found() collects both answers' windows, each giving its keys and its length's unit; the codex and pi reads are one table in the test, pi's curl stdin checked after; codex-shape sends the requests itself, the cases have no stdin; fake-curl picks a body and a body file per host and prints one 200"
+}

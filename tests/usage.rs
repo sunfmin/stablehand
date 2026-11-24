@@ -40,7 +40,7 @@ impl Books {
         let bin = root.join("bin");
         std::fs::create_dir_all(&bin).unwrap();
         let contract = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/contract");
-        for tool in ["curl", "sesame"] {
+        for tool in ["curl", "sesame", "codex", "pi"] {
             std::os::unix::fs::symlink(contract.join(format!("fake-{tool}")), bin.join(tool))
                 .unwrap();
         }
@@ -66,6 +66,15 @@ impl Books {
                 root.join("config").display().to_string(),
             ),
             ("FAKE_CURL_LOG", root.join("curl.log").display().to_string()),
+            (
+                "FAKE_CODEX_LOG",
+                root.join("engines.log").display().to_string(),
+            ),
+            (
+                "FAKE_PI_LOG",
+                root.join("engines.log").display().to_string(),
+            ),
+            ("STABLEHAND_MACHINE", "mini".to_string()),
             (
                 "SESAME_CONFIG_DIR",
                 root.join("sesame").display().to_string(),
@@ -351,9 +360,9 @@ fn read_without_a_name_reads_every_account_and_one_with_no_reader_is_said() {
     b.ok(&[
         "account",
         "add",
-        "chatgpt",
+        "agy-1",
         "--engine",
-        "codex",
+        "agy",
         "--machine",
         "mini",
     ]);
@@ -369,15 +378,12 @@ fn read_without_a_name_reads_every_account_and_one_with_no_reader_is_said() {
             )
         })
         .collect();
-    assert_eq!(
-        outcomes,
-        [("chatgpt", "no_reader"), ("claude-mini", "read")]
-    );
+    assert_eq!(outcomes, [("agy-1", "no_reader"), ("claude-mini", "read")]);
     let status = b.ok(&["status"]);
-    let chatgpt = &status["accounts"][0];
+    let agy = &status["accounts"][0];
     assert_eq!(
-        (&chatgpt["name"], &chatgpt["windows"], &chatgpt["tried_at"]),
-        (&json!("chatgpt"), &json!([]), &Value::Null)
+        (&agy["name"], &agy["windows"], &agy["tried_at"]),
+        (&json!("agy-1"), &json!([]), &Value::Null)
     );
     assert_eq!(status["accounts"].as_array().unwrap().len(), 2);
 }
@@ -657,4 +663,186 @@ fn pick_refuses_a_count_it_cannot_read_and_an_account_not_kept() {
     // An engine with no account here: none, and no why.
     let answer = b.ok(&["pick", "--engine", "codex"]);
     assert_eq!(answer, json!({ "none": true, "until": null, "why": [] }));
+}
+
+/// The pi stand-in's bearer (tests/contract/fake-pi) and its login's id.
+const PI_BEARER: &str = "eyJstand-in.chatgpt.bearer";
+const PI_ACCOUNT_ID: &str = "acct-standin";
+
+impl Books {
+    /// A bound ChatGPT account `name` of `engine` on mini, its home made:
+    /// pi's with its openai-codex login's id in its auth.json.
+    fn chatgpt(&self, name: &str, engine: &str) -> String {
+        let home = self.root.join(name).display().to_string();
+        std::fs::create_dir_all(&home).unwrap();
+        let auth = json!({ "openai-codex": { "type": "oauth", "accountId": PI_ACCOUNT_ID } });
+        std::fs::write(format!("{home}/auth.json"), auth.to_string()).unwrap();
+        self.ok(&[
+            "account",
+            "add",
+            name,
+            "--engine",
+            engine,
+            "--machine",
+            "mini",
+            "--home",
+            &home,
+        ]);
+        home
+    }
+
+    /// The ChatGPT account's answer from now on, codex's and wham's: primary
+    /// and secondary this much used, resetting in 3 hours and 3 days; when
+    /// primary resets, in seconds.
+    fn chatgpt_answers(&self, primary: f64, secondary: f64) -> u64 {
+        let (p, s) = (now() + 3 * 3600, now() + 3 * 86_400);
+        let codex = json!({
+            "limitId": "codex",
+            "primary": { "usedPercent": primary, "windowDurationMins": 300, "resetsAt": p },
+            "secondary": { "usedPercent": secondary, "windowDurationMins": 10_080, "resetsAt": s },
+        });
+        let wham = json!({ "rate_limit": {
+            "primary_window": { "used_percent": primary, "limit_window_seconds": 18_000, "reset_at": p },
+            "secondary_window": { "used_percent": secondary, "limit_window_seconds": 604_800, "reset_at": s },
+        }});
+        for (var, file, body) in [
+            ("FAKE_CODEX_BODY", "codex.json", codex),
+            ("FAKE_CURL_WHAM_BODY", "wham.json", wham),
+        ] {
+            let file = self.root.join(file);
+            std::fs::write(&file, body.to_string()).unwrap();
+            self.set(var, &file.display().to_string());
+        }
+        p
+    }
+
+    fn engines_log(&self) -> String {
+        std::fs::read_to_string(self.root.join("engines.log")).unwrap_or_default()
+    }
+}
+
+#[test]
+fn a_chatgpt_account_is_read_through_codex_s_app_server_and_pi_s_login() {
+    let b = Books::new("chatgpt");
+    for (name, engine, used, asked) in [
+        ("chatgpt", "codex", 42.0, "codex app-server CODEX_HOME="),
+        (
+            "chatgpt-pi",
+            "pi",
+            12.0,
+            "pi auth print-bearer-token --provider openai-codex PI_CODING_AGENT_DIR=",
+        ),
+    ] {
+        let resets = b.chatgpt_answers(used, 9.0);
+        let home = b.chatgpt(name, engine);
+        let read = b.read(&[name]);
+        assert_eq!(read["outcome"], "read", "{read}");
+        let primary = window(&read["windows"], "primary");
+        assert_eq!(
+            (
+                &primary["used_percent"],
+                &primary["resets_at"],
+                &primary["group"]
+            ),
+            (&json!(used), &json!(rfc3339(resets)), &Value::Null)
+        );
+        assert_eq!(window(&read["windows"], "secondary")["used_percent"], 9.0);
+        assert_eq!(read["windows"].as_array().unwrap().len(), 2, "{read}");
+        assert!(
+            b.engines_log().ends_with(&format!("{asked}{home}\n")),
+            "{}",
+            b.engines_log()
+        );
+        let status = b.status(name);
+        assert_eq!(
+            (&status["engine"], &status["pace"]),
+            (&json!(engine), &json!("steady"))
+        );
+    }
+    // pi's bearer and the login's id go to curl on its stdin, never in its arguments.
+    let log = b.log();
+    let (args, config) = log.split_once('\n').unwrap();
+    assert!(
+        args.ends_with("https://chatgpt.com/backend-api/wham/usage") && !args.contains(PI_BEARER),
+        "{args}"
+    );
+    assert!(
+        config.contains(&format!("header = \"Authorization: Bearer {PI_BEARER}\""))
+            && config.contains(&format!("header = \"ChatGPT-Account-Id: {PI_ACCOUNT_ID}\"")),
+        "{config}"
+    );
+}
+
+#[test]
+fn a_chatgpt_read_refused_leaves_the_last_windows_stale_and_is_not_retried_in_the_hour() {
+    let b = Books::new("chatgpt-refused");
+    b.chatgpt_answers(42.0, 9.0);
+    b.chatgpt("chatgpt", "codex");
+    b.chatgpt("chatgpt-pi", "pi");
+    b.read(&["chatgpt"]);
+    b.read(&["chatgpt-pi"]);
+    for (name, fault, value, said) in [
+        (
+            "chatgpt",
+            "FAKE_CODEX_FAULT",
+            "logged-out",
+            "codex account authentication required",
+        ),
+        (
+            "chatgpt-pi",
+            "FAKE_CURL_FAULT",
+            "unauthorized",
+            "HTTP 401: Could not parse your authentication token",
+        ),
+        (
+            "chatgpt-pi",
+            "FAKE_PI_FAULT",
+            "not-logged-in",
+            "is not configured with an OAuth bearer token",
+        ),
+    ] {
+        b.set(fault, value);
+        let read = b.read(&[name, "--now"]);
+        assert_eq!(read["outcome"], "failed", "{read}");
+        let error = read["error"].as_str().unwrap();
+        assert!(
+            error.contains(said)
+                && error.contains(&format!("stablehand account login {name}"))
+                && !error.contains(PI_BEARER),
+            "{error}"
+        );
+        let primary = window(&read["windows"], "primary");
+        assert_eq!(
+            (&primary["stale"], &primary["source"]),
+            (&json!(true), &json!("read"))
+        );
+        assert_eq!(b.status(name)["failed"], read["error"]);
+        // The refused credential is not asked again before the hour.
+        let asked = (b.engines_log(), b.log());
+        assert_eq!(b.read(&[name])["outcome"], "waits");
+        assert_eq!((b.engines_log(), b.log()), asked);
+        b.set(fault, "");
+    }
+
+    // A portable ChatGPT account, or one bound to another machine, is not read here.
+    b.ok(&["account", "add", "codex-portable", "--engine", "codex"]);
+    b.ok(&[
+        "account",
+        "add",
+        "pi-far",
+        "--engine",
+        "pi",
+        "--machine",
+        "studio",
+    ]);
+    let asked = b.engines_log();
+    for (name, said) in [
+        ("codex-portable", "bind account `codex-portable`"),
+        ("pi-far", "bound to studio and this machine is mini"),
+    ] {
+        let read = b.read(&[name]);
+        assert_eq!(read["outcome"], "failed", "{read}");
+        assert!(read["error"].as_str().unwrap().contains(said), "{read}");
+    }
+    assert_eq!(b.engines_log(), asked);
 }
