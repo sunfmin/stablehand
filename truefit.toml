@@ -57,6 +57,46 @@ header = "Authorization: Bearer <login>"
 header = "anthropic-beta: oauth-2025-04-20"
 """
 
+# kimi's reader (src/readers/kimi.rs) asks api.kimi.com/coding/v1/usages
+# through curl (src/curl.rs), the bearer on curl's stdin. Both sides answer
+# through kimi-usages-shape, which keeps only what the reader reads: curl's
+# exit, the HTTP status, the windows' shape or the error's. The real side
+# swaps the stand-in bearer for this user's Kimi Code login.
+[[standin]]
+name = "kimi"
+run = ["tests/contract/kimi-usages-shape", "kimi-fake-curl"]
+real = ["tests/contract/kimi-usages-shape", "kimi-real-curl"]
+needs = "curl and jq on PATH and a Kimi Code login in ~/.kimi-code (or $KIMI_CODE_HOME) whose 15-minute access token is fresh: start a kimi session first"
+ready = ["tests/contract/kimi-real-curl-ready"]
+version = ["sh", "-c", "curl --version | head -n 1"]
+faults = ["unauthorized", "unreachable"]
+fault_env = "FAKE_CURL_FAULT"
+
+[[standin.case]]
+name = "a-login-s-windows"
+args = ["--silent", "--show-error", "--max-time", "20", "--config", "-", "--write-out", "\n%{http_code}", "https://api.kimi.com/coding/v1/usages"]
+stdin = """
+header = "Authorization: Bearer <login>"
+header = "Accept: application/json"
+"""
+
+[[standin.case]]
+name = "a-refused-bearer"
+fault = "unauthorized"
+args = ["--silent", "--show-error", "--max-time", "20", "--config", "-", "--write-out", "\n%{http_code}", "https://api.kimi.com/coding/v1/usages"]
+stdin = """
+header = "Authorization: Bearer sk-kimi-not-a-token"
+header = "Accept: application/json"
+"""
+
+[[standin.case]]
+name = "a-host-not-reached"
+fault = "unreachable"
+args = ["--silent", "--show-error", "--max-time", "20", "--config", "-", "--write-out", "\n%{http_code}", "https://api.kimi.invalid/coding/v1/usages"]
+stdin = """
+header = "Authorization: Bearer <login>"
+header = "Accept: application/json"
+"""
 [promises]
 sources = ["README.md"]
 

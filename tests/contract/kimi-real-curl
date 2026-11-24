@@ -1,0 +1,7 @@
+#!/bin/sh
+# The real curl, its stdin's stand-in bearer `<login>` swapped for this
+# user's Kimi Code login (~/.kimi-code/credentials/kimi-code.json, or
+# $KIMI_CODE_HOME's), never printed.
+creds="${KIMI_CODE_HOME:-$HOME/.kimi-code}/credentials/kimi-code.json"
+login=$(jq -r '.access_token // empty' "$creds" 2>/dev/null)
+sed "s|<login>|$login|" | curl "$@"

@@ -1,0 +1,10 @@
+{
+  "tree": "d1bf3931c38c083dba5cc045de04677a2426ef67+d1fba762150c532c",
+  "lines": 122,
+  "serves": "stablehand#8",
+  "considered": "claude_code.rs's bearer (sesame for portable, a JSON file in the bound home) and windows: weighed one shared bearer helper in readers/mod.rs; kept each reader's own, since readers 6-10 land at once and each engine's file and field differ (left for a refactor once they have landed); the fake-curl stand-in, kept a kimi one of its own for the same reason",
+  "reviewer": "codex:01a20d11-7db0-7b70-b3f1-7dea524fc527:default",
+  "author": "claude-code:d049c806-25f0-5159-9d6c-0dfa151b2e2d:opus",
+  "cut": "In src/readers/kimi.rs, bind the machine with let-else in bearer so the bound-login diagnostic can use it directly, and inline the single-use Accept header. In tests/kimi.rs, put bound-account registration and credential setup in one fixture used by both bound tests, and pass the curl fault directly per read instead of storing it in a RefCell. Move the bound HTTP 401 relogin-command assertion from src/readers/kimi.rs into the existing bound-refusal test in tests/kimi.rs to exercise that response once. These cuts are based on the supplied diff because repository access was unavailable.",
+  "answer": "Made all of them: let-else on the machine, the Accept header inlined, one Kimi::bound fixture for both bound tests, the fault passed per run (no RefCell), the bound 401 fix asserted only in tests/kimi.rs (the unit test's account helper is portable only). Coverage added lines for the default home and a login file with no access_token."
+}
