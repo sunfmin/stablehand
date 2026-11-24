@@ -246,7 +246,7 @@ mod tests {
             claude-opus-5-5-low\t Claude Opus 5.5 (Low) \n\
             gpt-oss-120b-medium\tGPT-OSS 120B (Medium)\n\
             no tab here\n\
-            \tno id\n";
+            \tClaude Opus 5.5 (Max)\n";
         let got = windows(Some(0), body, "a", || catalog(list)).unwrap();
         let models: Vec<_> = got
             .iter()
