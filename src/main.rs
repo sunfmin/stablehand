@@ -7,6 +7,7 @@ mod import;
 mod login;
 mod readers;
 mod refusal;
+mod statusline;
 mod store;
 mod time;
 mod usage;
@@ -40,6 +41,7 @@ const LEARN: &str = "Learn";
 /// ## Rules to know first
 ///
 /// - Every command but `env` prints one JSON object on stdout. A refusal is `{"error": "…", "code": "…"}`, each fault with the line that fixes it, exit 1, and nothing written; a command line stablehand cannot read is the same with exit {const:EXIT_USAGE}. `--help`, `help` and `--version` answer text.
+/// - `stablehand statusline` answers the status bar's line: it is Claude Code's status line command, not one to run by hand.
 /// - `stablehand env <name>` answers shell text, a session's `export` lines (`--json`: one object), and refuses an account no session may start on with exit {const:EXIT_USAGE}.
 /// - The register and the books are one SQLite file, `$STABLEHAND_CONFIG_DIR/stablehand.db` (default `~/.config/stablehand`). It keeps no token: a portable login's token is sesame's.
 ///
@@ -83,6 +85,28 @@ enum Cmd {
         /// Answer one JSON object instead of `export` lines.
         #[arg(long, verbatim_doc_comment)]
         json: bool,
+    },
+    /// Claude Code's status line command: books the session's rate limits as a reading of the account.
+    ///
+    /// Claude Code runs it with its session's JSON on stdin; its `rate_limits` (`five_hour`, `seven_day`: `used_percentage`, `resets_at`) are booked as a reading of `--account`, as `stablehand read` books one, when they differ from the books' latest entry. It asks no engine and reaches no network. Set it in `~/.claude/settings.json`:
+    ///
+    /// `"statusLine": {"type": "command", "command": "stablehand statusline --account claude-felix"}`
+    ///
+    /// ## What it answers
+    ///
+    /// One line for the status bar, `claude-felix · 5h 24% · 7d 41%`, exit 0; with no `rate_limits` given (before the session's first answer), the account's name alone. With `--then <cmd>`, `sh -c <cmd>` is given the same stdin, byte for byte, and its stdout and exit are the answer: a person's own status line keeps working.
+    ///
+    /// ## What trips you up
+    ///
+    /// It never refuses, so the bar always has a line: an account not kept, one not claude-code's, or a register it cannot open books nothing, and the line says why (with `--then`, stderr does).
+    #[command(next_help_heading = SESSIONS, verbatim_doc_comment)]
+    Statusline {
+        /// The claude-code account the session runs on.
+        #[arg(long, verbatim_doc_comment)]
+        account: String,
+        /// The person's own status line command (`~/.claude/statusline.sh`), run by `sh -c` on the same stdin; its line is printed instead.
+        #[arg(long, verbatim_doc_comment)]
+        then: Option<String>,
     },
     /// Show one topic of this manual, or all of it.
     ///
@@ -134,6 +158,7 @@ enum Register {
     /// A claude-code account whose login is a `claude setup-token` token is refused a usage query: its read fails, and its windows come from `stablehand limit` alone.
     ///
     /// An agy account is read by running agy in its home, on its machine only: a portable one is refused (bind it), and a home not signed in fails only after agy has waited 60s for a browser sign-in.
+    /// A codex or pi account is read through its engine's own login, bound: on its machine, in its home. A portable one, or one bound to another machine, fails with the fix.
     #[command(next_help_heading = SESSIONS, verbatim_doc_comment)]
     Read {
         /// The account to read; without it, every account.
@@ -306,6 +331,7 @@ fn main() -> ExitCode {
     };
     match cli.cmd {
         Cmd::Env { name, json } => answer(env(&name, json)),
+        Cmd::Statusline { account, then } => statusline::run(&account, then.as_deref()),
         Cmd::Help { topic } => {
             let text = match topic {
                 None => help.index(),
