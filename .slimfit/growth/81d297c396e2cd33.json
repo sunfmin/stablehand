@@ -1,0 +1,10 @@
+{
+  "tree": "5a714b46d5682b7cdbfbb933626d8ee06673a7f1+d1fba762150c532c",
+  "lines": 1197,
+  "serves": "stablehand#5",
+  "considered": "Guild's ledger crate as a path dependency (it carries runs, tokens, prediction and quota; the issue asks for its rules, not its types); an RFC 3339 crate (humantime, chrono); one table per kind of entry",
+  "reviewer": "codex:01a20cc3-6902-7570-b2b8-32c10e653ce0:default",
+  "author": "claude-code:d3df97b6-fefd-5e23-933e-f4f391844339:opus",
+  "cut": "In src/store.rs and src/books.rs, derive Serde for What and store it as one JSON payload beside account and at, deleting the parallel SQL kind and payload columns and both manual conversions. In src/books.rs, reuse the latest try to mark windows stale, pass the latest reading index to held instead of scanning again, and build both existing and synthetic limit windows in one place. In src/usage.rs, turn the reader result into What and call store.book once for both outcomes. In src/time.rs, replace the calendar arithmetic and timestamp parser with an RFC 3339 codec, retaining UTC output and whole-second, nonnegative epoch times. Remove the generated default_*.profraw files from the diff.",
+  "answer": "Made: an entry is one JSON column (What derives serde), stale is the last try's failure, read books once, the profraw files removed and *.profraw ignored. Not made: held scans for the latest limit, not the reading, so the reading's index would not spare it; the limit-only window and a read window differ in every field but name; the time code stays: the agent-cli rule keeps dependencies few, humantime reads no +00:00 offset (claude-code answers one), and utc() was the repo's already"
+}
