@@ -51,7 +51,7 @@ const LEARN: &str = "Learn";
 /// - Every command but `credential` of a portable login prints one JSON object on stdout. A refusal is `{"error": "…", "code": "…"}`, each fault with the line that fixes it, exit 1, and nothing written; a command line stablehand cannot read is the same with exit {const:EXIT_USAGE}. `--help`, `help` and `--version` answer text.
 /// - `stablehand statusline` answers the status bar's line: it is Claude Code's status line command, not one to run by hand.
 /// - `stablehand credential <name>` of a portable login answers shell text, an `export` line (`--json`: one object); it refuses an account no session may start on with exit {const:EXIT_USAGE}.
-/// - The register and the books are one SQLite file, `$STABLEHAND_CONFIG_DIR/stablehand.db` (default `~/.config/stablehand`). It keeps no token: of a portable login it keeps the command that prints it.
+/// - The register and the books are one SQLite file, `$STABLEHAND_CONFIG_DIR/stablehand.db` (default `~/.config/stablehand`). It keeps no token: of a portable login it keeps the command that prints it. The default is a released stablehand's only: a development build (`cargo build`, any version with `+`) refuses unless `STABLEHAND_CONFIG_DIR` is set, as its schema steps may not be the released ones. A store migrated by other steps than this stablehand's is refused, naming the step.
 ///
 /// ## Refusals
 ///
