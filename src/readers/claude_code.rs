@@ -1,24 +1,163 @@
-//! claude-code's reader: `GET https://api.anthropic.com/api/oauth/usage`
-//! with the account's OAuth bearer and `anthropic-beta: oauth-2025-04-20`.
-//! Its windows are the answer's objects with a `utilization` and a
-//! `resets_at`: `five_hour`, `seven_day`, and any other it lists. A
-//! `claude setup-token` token is refused it (HTTP 403, `oauth_scope_insufficient`): such an account is
-//! known by `stablehand limit` alone.
+//! claude-code's reader. It asks `GET https://api.anthropic.com/api/oauth/usage`
+//! with the account's OAuth bearer and `anthropic-beta: oauth-2025-04-20`:
+//! its windows are the answer's objects with a `utilization` and a
+//! `resets_at`, `five_hour`, `seven_day`, and any other it lists. A `claude
+//! setup-token` token is refused it (HTTP 403, `oauth_scope_insufficient`):
+//! such a token is asked the [`QUESTION`] instead, one turn on the smallest
+//! model, whose stream's `rate_limit_event` says the windows; and, once read
+//! so ([`ReadBy::Question`]), it is asked the question again, not its usage.
 use crate::account::Account;
-use crate::books::Window;
+use crate::books::{ReadBy, Window};
+use crate::bounded;
 use crate::{curl, login, time};
+use std::os::unix::fs::DirBuilderExt;
 use std::path::PathBuf;
+use std::process::{Command, Stdio};
+use std::time::Duration;
 
 const USAGE: &str = "https://api.anthropic.com/api/oauth/usage";
 const BETA: &str = "anthropic-beta: oauth-2025-04-20";
 
-pub fn read(account: &Account) -> Result<Vec<Window>, String> {
+/// The question a token refused its usage is asked: `claude` with these
+/// arguments, one turn on its smallest model, with no tools, settings,
+/// servers or kept session (afkconvoy's `WINDOWS_QUESTION`, recorded with
+/// Claude Code 2.1.326: about 3 s, under $0.0002 a time). It spends the
+/// account's quota.
+pub const QUESTION: &[&str] = &[
+    "-p",
+    "--model",
+    "haiku",
+    "--output-format",
+    "stream-json",
+    "--verbose",
+    "--tools",
+    "",
+    "--strict-mcp-config",
+    "--no-session-persistence",
+    "--setting-sources",
+    "",
+    "--system-prompt",
+    "Answer with one word.",
+    "quota",
+];
+
+/// How long the question may take: it retries a refused token for a while
+/// before it says so.
+const QUESTION_LIMIT: Duration = Duration::from_secs(90);
+
+/// `account`'s windows: asked of its usage, unless its latest reading was by
+/// the question (`read_by`) or its usage refuses its token; then by the
+/// question.
+pub fn read(account: &Account, read_by: Option<ReadBy>) -> Result<Vec<Window>, String> {
     let bearer = bearer(account)?;
-    let (status, body) = curl::get(
-        USAGE,
-        &[format!("Authorization: Bearer {bearer}"), BETA.to_string()],
-    )?;
-    windows(status, &body, &account.name)
+    if read_by != Some(ReadBy::Question) {
+        let (status, body) = curl::get(
+            USAGE,
+            &[format!("Authorization: Bearer {bearer}"), BETA.to_string()],
+        )?;
+        let answer: serde_json::Value = serde_json::from_str(&body).unwrap_or_default();
+        // A `claude setup-token` token is refused its scope.
+        let scope = answer["error"]["details"]["error_code"] == "oauth_scope_insufficient";
+        if !(status == 403 && scope) {
+            return windows(status, &answer);
+        }
+    }
+    question(account, &bearer)
+}
+
+/// The windows the [`QUESTION`] answers, asked with `bearer` in
+/// `CLAUDE_CODE_OAUTH_TOKEN` (on no command line), in a config dir of its
+/// own, new and empty, which it is also run in and which is removed after:
+/// nothing of a person's `~/.claude`, nor of the directory stablehand runs
+/// in, is read.
+fn question(account: &Account, bearer: &str) -> Result<Vec<Window>, String> {
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_nanos());
+    let dir = std::env::temp_dir().join(format!(
+        "stablehand-question-{}-{nanos}",
+        std::process::id()
+    ));
+    std::fs::DirBuilder::new()
+        .mode(0o700)
+        .create(&dir)
+        .map_err(|e| format!("{}: {e}", dir.display()))?;
+    let mut claude = Command::new("claude");
+    claude
+        .args(QUESTION)
+        .current_dir(&dir)
+        .env("CLAUDE_CONFIG_DIR", &dir)
+        .env("CLAUDE_CODE_OAUTH_TOKEN", bearer)
+        .env_remove("ANTHROPIC_API_KEY")
+        .env_remove("ANTHROPIC_AUTH_TOKEN")
+        .stdin(Stdio::null())
+        .stderr(Stdio::null());
+    let ran = bounded::answer(
+        claude,
+        QUESTION_LIMIT,
+        "`claude -p … quota`",
+        "install Claude Code (`curl -fsSL https://claude.ai/install.sh | bash`), or put it on PATH",
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+    let (code, stdout) = ran?;
+    stream(code, &stdout, account)
+}
+
+/// The windows of the question's stream, its exit `code` and `stdout`: the
+/// last `rate_limit_event`'s `rate_limit_info.unifiedWindows`, each a
+/// `utilization` from 0 to 1 and a `resetsAt` (seconds since the Unix
+/// epoch); or why it gave none, with the fix.
+fn stream(code: Option<i32>, stdout: &str, account: &Account) -> Result<Vec<Window>, String> {
+    // The latest record of `kind`, the stream read from its end.
+    let last = |kind: &str| {
+        stdout
+            .lines()
+            .rev()
+            .filter_map(|l| serde_json::from_str::<serde_json::Value>(l).ok())
+            .find(|r| r["type"] == kind)
+    };
+    let event = last("rate_limit_event").unwrap_or_default();
+    let found: Vec<Window> = event["rate_limit_info"]["unifiedWindows"]
+        .as_object()
+        .into_iter()
+        .flatten()
+        .filter_map(|(name, w)| {
+            Some(Window {
+                name: name.clone(),
+                group: None,
+                models: Vec::new(),
+                // In percent, to a hundredth: 0.07 is 7, not 7.000000000000001.
+                used_percent: (w["utilization"].as_f64()? * 10_000.0).round() / 100.0,
+                resets_at: w["resetsAt"].as_f64().map(|at| at as u64),
+                minutes: minutes(name),
+                read_by: Some(ReadBy::Question),
+            })
+        })
+        .collect();
+    if !found.is_empty() {
+        return Ok(found);
+    }
+    let exit = code.map_or("was killed".into(), |c| format!("exited {c}"));
+    let result = last("result");
+    let said = result
+        .as_ref()
+        .and_then(|r| r["result"].as_str())
+        .unwrap_or("no result said");
+    let fix = if result
+        .as_ref()
+        .is_some_and(|r| r["api_error_status"] == 401)
+    {
+        format!(
+            "the token was refused or has expired: {}",
+            login::login_line(account)
+        )
+    } else if code == Some(0) {
+        "its stream has changed: run `truefit contract --real claude-code` in stablehand's repo"
+            .to_string()
+    } else {
+        "try again later (`stablehand read --now`)".to_string()
+    };
+    Err(format!("`claude -p … quota` {exit}: {said}: {fix}"))
 }
 
 /// The account's access token: a portable login's from its token command
@@ -67,6 +206,7 @@ pub fn statusline(stdin: &[u8]) -> Vec<Window> {
                 used_percent: w["used_percentage"].as_f64()?,
                 resets_at: w["resets_at"].as_u64(),
                 minutes: minutes(name),
+                read_by: None,
             })
         })
         .collect()
@@ -83,19 +223,15 @@ fn minutes(name: &str) -> Option<u64> {
     }
 }
 
-/// The windows of the endpoint's answer, `status` and `body`, or why it
+/// The windows of the endpoint's answer, `status` and its JSON `answer`, or why it
 /// gave none, with the fix.
-fn windows(status: u16, body: &str, name: &str) -> Result<Vec<Window>, String> {
-    let answer: serde_json::Value = serde_json::from_str(body).unwrap_or_default();
+fn windows(status: u16, answer: &serde_json::Value) -> Result<Vec<Window>, String> {
     if status != 200 {
         let error = &answer["error"];
         let said = error["message"].as_str().unwrap_or("no error message");
-        let fix = match (status, error["details"]["error_code"].as_str()) {
-            (403, Some("oauth_scope_insufficient")) => format!(
-                "a `claude setup-token` token is given no usage: report a limit its sessions meet with `stablehand limit {name}`"
-            ),
-            (401, _) => "the login was refused or has expired: log in again".to_string(),
-            _ => "try again later (`stablehand read --now`)".to_string(),
+        let fix = match status {
+            401 => "the login was refused or has expired: log in again",
+            _ => "try again later (`stablehand read --now`)",
         };
         return Err(format!("{USAGE} answered HTTP {status}: {said}: {fix}"));
     }
@@ -114,6 +250,7 @@ fn windows(status: u16, body: &str, name: &str) -> Result<Vec<Window>, String> {
                 used_percent: w["utilization"].as_f64()?,
                 resets_at: w["resets_at"].as_str().and_then(time::parse),
                 minutes: minutes(key),
+                read_by: Some(ReadBy::Usage),
             })
         })
         .collect();
@@ -134,7 +271,7 @@ mod tests {
         let body = r#"{"five_hour":{"utilization":22.0,"resets_at":"2026-11-24T10:30:00.029137+00:00","limit_dollars":null},
             "seven_day":{"utilization":52,"resets_at":null},"seven_day_opus":null,
             "extra_usage":{"is_enabled":true,"utilization":40.0,"monthly_limit":5000},"limits":[{"percent":22}]}"#;
-        let got = windows(200, body, "c").unwrap();
+        let got = windows(200, &serde_json::from_str(body).unwrap()).unwrap();
         let shown: Vec<_> = got
             .iter()
             .map(|w| (w.name.as_str(), w.used_percent, w.resets_at, w.minutes))
@@ -151,24 +288,82 @@ mod tests {
 
     #[test]
     fn a_refusal_names_its_fix() {
-        let scope = r#"{"type":"error","error":{"type":"permission_error","message":"OAuth token does not meet scope requirement user:profile","details":{"error_code":"oauth_scope_insufficient"}}}"#;
-        let fault = windows(403, scope, "claude-felix").unwrap_err();
-        assert!(
-            fault.contains("HTTP 403") && fault.contains("stablehand limit claude-felix"),
-            "{fault}"
-        );
+        let json = |s: &str| serde_json::from_str(s).unwrap_or_default();
         let bad = r#"{"type":"error","error":{"type":"authentication_error","message":"Invalid bearer token"}}"#;
-        let fault = windows(401, bad, "c").unwrap_err();
+        let fault = windows(401, &json(bad)).unwrap_err();
         assert!(
             fault.contains("Invalid bearer token") && fault.contains("log in again"),
             "{fault}"
         );
-        let fault = windows(529, "overloaded", "c").unwrap_err();
+        let fault = windows(529, &json("overloaded")).unwrap_err();
         assert!(
             fault.contains("HTTP 529: no error message: try again later"),
             "{fault}"
         );
-        let fault = windows(200, r#"{"spend":{}}"#, "c").unwrap_err();
+        let fault = windows(200, &json(r#"{"spend":{}}"#)).unwrap_err();
         assert!(fault.contains("answered no window"), "{fault}");
+    }
+
+    fn portable() -> Account {
+        Account {
+            name: "claude-jp".into(),
+            engine: crate::account::Engine::ClaudeCode,
+            machine: None,
+            expires: None,
+            home: None,
+            off: None,
+            token_command: None,
+            identity: None,
+        }
+    }
+
+    #[test]
+    fn the_question_s_windows_are_its_last_rate_limit_event_s_unified_windows() {
+        let recorded = include_str!("../../tests/contract/recorded/claude-code-question.jsonl");
+        let got = stream(Some(0), recorded, &portable()).unwrap();
+        let shown: Vec<_> = got
+            .iter()
+            .map(|w| {
+                (
+                    w.name.as_str(),
+                    w.used_percent,
+                    w.resets_at,
+                    w.minutes,
+                    w.read_by,
+                )
+            })
+            .collect();
+        let q = Some(ReadBy::Question);
+        assert_eq!(
+            shown,
+            [
+                ("five_hour", 7.0, Some(1_794_884_400), Some(300), q),
+                ("seven_day", 45.0, Some(1_795_345_200), Some(10_080), q),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_question_with_no_windows_says_why_with_its_fix() {
+        let refused = r#"{"type":"result","is_error":true,"api_error_status":401,"result":"Failed to authenticate. API Error: 401 OAuth access token is invalid."}"#;
+        let fault = stream(Some(1), refused, &portable()).unwrap_err();
+        assert!(
+            fault.contains("exited 1: Failed to authenticate")
+                && fault.contains("claude setup-token")
+                && fault.contains("stablehand account edit claude-jp"),
+            "{fault}"
+        );
+        let fault = stream(
+            Some(0),
+            r#"{"type":"result","result":"Unknown"}"#,
+            &portable(),
+        )
+        .unwrap_err();
+        assert!(fault.contains("its stream has changed"), "{fault}");
+        let fault = stream(None, "", &portable()).unwrap_err();
+        assert!(
+            fault.contains("was killed: no result said: try again later"),
+            "{fault}"
+        );
     }
 }

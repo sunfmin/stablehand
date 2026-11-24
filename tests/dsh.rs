@@ -79,6 +79,8 @@ impl Dsh {
         let out = Command::new(env!("CARGO_BIN_EXE_stablehand"))
             .args(args)
             .env_clear()
+            // The coverage run's profile, so the binary's lines are counted.
+            .envs(std::env::vars().filter(|(k, _)| k == "LLVM_PROFILE_FILE"))
             .envs(self.env.iter().map(|(k, v)| (k, v)))
             .env("USER", "tester")
             .output()

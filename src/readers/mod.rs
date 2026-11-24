@@ -5,7 +5,7 @@
 //! file here and a row in [`READERS`]; one that answers windows or why not
 //! is adapted by [`windows`].
 use crate::account::{Account, Engine};
-use crate::books::{What, Window};
+use crate::books::{Status, What, Window};
 
 pub mod agy;
 mod chatgpt;
@@ -14,20 +14,23 @@ mod dsh;
 mod grok;
 mod kimi;
 
-/// A reader: what to book of an account now, a reading ([`What::Read`],
-/// [`What::Balance`]) or a try that failed ([`What::Failed`],
-/// [`What::Refused`]). It never puts a token in what it answers.
-pub type Read = fn(&Account) -> What;
+/// A reader: what to book of an account now, given what its books say
+/// ([`Status`]), a reading ([`What::Read`], [`What::Balance`]) or a try that
+/// failed ([`What::Failed`], [`What::Refused`]). It never puts a token in
+/// what it answers.
+pub type Read = fn(&Account, &Status) -> What;
 
 /// Each engine that has a reader, and its reader.
 const READERS: &[(Engine, Read)] = &[
-    (Engine::ClaudeCode, |a| windows(claude_code::read(a))),
-    (Engine::Codex, |a| windows(chatgpt::codex(a))),
-    (Engine::Pi, |a| windows(chatgpt::pi(a))),
-    (Engine::Kimi, |a| windows(kimi::read(a))),
-    (Engine::Grok, |a| windows(grok::read(a))),
-    (Engine::Agy, |a| windows(agy::read(a))),
-    (Engine::Dsh, dsh::read),
+    (Engine::ClaudeCode, |a, s| {
+        windows(claude_code::read(a, s.read_by))
+    }),
+    (Engine::Codex, |a, _| windows(chatgpt::codex(a))),
+    (Engine::Pi, |a, _| windows(chatgpt::pi(a))),
+    (Engine::Kimi, |a, _| windows(kimi::read(a))),
+    (Engine::Grok, |a, _| windows(grok::read(a))),
+    (Engine::Agy, |a, _| windows(agy::read(a))),
+    (Engine::Dsh, |a, _| dsh::read(a)),
 ];
 
 /// A reader's windows, or why its engine gave none, as the books keep them.

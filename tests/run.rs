@@ -267,7 +267,7 @@ fn pid_in(file: &str) -> i32 {
     }
 }
 
-/// Whether `pick` takes claude-felix (it runs 1 session at once).
+/// Whether `pick` takes claude-felix, its pace with the sessions running.
 fn takes(r: &Register) -> bool {
     let p = r.ok(&["pick", "--engine", "claude-code"]);
     p["account"] == "claude-felix"
@@ -276,7 +276,19 @@ fn takes(r: &Register) -> bool {
 #[test]
 fn a_session_is_counted_while_it_runs_and_signals_pass_through() {
     let r = kept()("run-sessions");
-    r.ok(&["account", "edit", "claude-felix", "--sessions", "1"]);
+    // Its five-hour window 60% used two thirds in: at its rate one session
+    // ends it 90% used, two run it out (the pace counts those running).
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    let limits = format!(
+        r#"{{"rate_limits":{{"five_hour":{{"used_percentage":60,"resets_at":{}}}}}}}"#,
+        now + 6000
+    );
+    let (code, _) = r.raw(&["statusline", "--account", "claude-felix"], &[], &limits);
+    assert_eq!(code, 0);
+    assert!(takes(&r), "none running: it takes one");
     let hold = r.path("hold");
     let pids = r.path("pid");
     let env = [
@@ -288,7 +300,10 @@ fn a_session_is_counted_while_it_runs_and_signals_pass_through() {
     std::fs::write(&hold, "").unwrap();
     let mut it = r.spawn(&["run", "claude"], &env);
     let child = pid_in(&pids);
-    assert!(!takes(&r), "a session runs: the account is full");
+    assert!(
+        !takes(&r),
+        "a session runs: one more would run its window out"
+    );
     unsafe { libc::kill(it.id() as i32, libc::SIGTERM) };
     let status = it.wait().unwrap();
     assert_eq!(status.signal(), Some(libc::SIGTERM), "{status:?}");

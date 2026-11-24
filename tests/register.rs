@@ -8,10 +8,10 @@ use std::path::PathBuf;
 use std::process::Command;
 use support::Register;
 
-fn account(name: &str, engine: &str, sessions: Value) -> Value {
+fn account(name: &str, engine: &str) -> Value {
     json!({
         "name": name, "engine": engine, "login": "portable", "machine": null,
-        "sessions": sessions, "expires": null, "home": null, "off": null,
+        "expires": null, "home": null, "off": null,
         "token_command": null,
         "identity": null,
     })
@@ -31,7 +31,7 @@ fn add_list_show_edit_and_rm() {
         "--expires",
         "2027-01-31",
     ]);
-    let mut want = account("claude-felix", "claude-code", json!(2));
+    let mut want = account("claude-felix", "claude-code");
     want["expires"] = json!("2027-01-31");
     assert_eq!(claude, json!({ "account": want }));
 
@@ -46,21 +46,13 @@ fn add_list_show_edit_and_rm() {
         "--home",
         "/Users/agent/chatgpt",
     ]);
-    let mut bound = account("chatgpt", "codex", Value::Null);
+    let mut bound = account("chatgpt", "codex");
     bound["login"] = json!("bound");
     bound["machine"] = json!("mini");
     bound["home"] = json!("/Users/agent/chatgpt");
     assert_eq!(codex["account"], bound);
-    let kimi = r.ok(&[
-        "account",
-        "add",
-        "kimi-1",
-        "--engine",
-        "kimi",
-        "--sessions",
-        "4",
-    ]);
-    assert_eq!(kimi["account"], account("kimi-1", "kimi", json!(4)));
+    let kimi = r.ok(&["account", "add", "kimi-1", "--engine", "kimi"]);
+    assert_eq!(kimi["account"], account("kimi-1", "kimi"));
 
     assert_eq!(
         r.ok(&["account", "list"]),
@@ -73,8 +65,6 @@ fn add_list_show_edit_and_rm() {
         "account",
         "edit",
         "claude-felix",
-        "--sessions",
-        "3",
         "--machine",
         "mini",
         "--home",
@@ -82,16 +72,15 @@ fn add_list_show_edit_and_rm() {
         "--unset",
         "expires",
     ]);
-    let mut moved = account("claude-felix", "claude-code", json!(3));
+    let mut moved = account("claude-felix", "claude-code");
     moved["login"] = json!("bound");
     moved["machine"] = json!("mini");
     moved["home"] = json!("/Users/agent/claude");
     assert_eq!(edited["account"], moved);
     let portable = r.ok(&[
         "account", "edit", "chatgpt", "--engine", "pi", "--unset", "machine", "--unset", "home",
-        "--unset", "sessions",
     ]);
-    assert_eq!(portable["account"], account("chatgpt", "pi", Value::Null));
+    assert_eq!(portable["account"], account("chatgpt", "pi"));
     assert_eq!(r.ok(&["account", "show", "claude-felix"])["account"], moved);
 
     // rm, run twice, leaves the same register.
@@ -159,7 +148,7 @@ fn refusals_name_the_fix_and_write_nothing() {
             &["--token-command is empty"],
         ),
         (
-            "account|edit|nobody|--sessions|1",
+            "account|edit|nobody|--expires|2027-01-31",
             1,
             &["stablehand account add nobody"],
         ),
@@ -167,10 +156,21 @@ fn refusals_name_the_fix_and_write_nothing() {
         ("on|nobody", 1, &["no account `nobody`"]),
         ("off|claude-felix|--reason| ", 1, &["say why"]),
         ("account|add|y", 2, &["--engine"]),
+        // No sessions-at-once term (stablehand#26): the pace counts those running.
         (
-            "account|add|two words|--engine|grok|--machine|mini|--expires|2027-01-31|--sessions|0",
+            "account|add|y|--engine|grok|--sessions|2",
+            2,
+            &["unexpected argument '--sessions'"],
+        ),
+        (
+            "account|edit|claude-felix|--unset|sessions",
+            2,
+            &["invalid value 'sessions'"],
+        ),
+        (
+            "account|add|two words|--engine|grok|--machine|mini|--home| |--expires|2027-01-31",
             1,
-            &["not one word", "--sessions 0", "no --expires"],
+            &["not one word", "--home is empty", "no --expires"],
         ),
     ];
     for (args, code, parts) in cases {
@@ -201,7 +201,7 @@ fn off_keeps_who_when_and_why_and_on_forgets_it() {
     );
 
     let on = r.ok(&["on", "grok-1"]);
-    assert_eq!(on["account"], account("grok-1", "grok", Value::Null));
+    assert_eq!(on["account"], account("grok-1", "grok"));
     assert_eq!(r.ok(&["on", "grok-1"]), on);
     assert_eq!(
         r.ok(&["account", "show", "grok-1"])["account"],

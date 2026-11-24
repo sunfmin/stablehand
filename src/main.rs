@@ -182,15 +182,15 @@ enum Register {
     ///
     /// ## What it answers
     ///
-    /// `{"reads": [{"account", "outcome", "windows", "balances", …}]}`, `outcome` one of `read`, `failed` (with `error`, the reason and its fix), `refused` (with `error`: the engine refused its credential, now or before, and nothing is asked until it logs in again), `waits` (with `next_at`) or `no_reader` (its engine has no reader yet); each window and balance as `stablehand status` shows it.
+    /// `{"reads": [{"account", "outcome", "windows", "balances", …}]}`, `outcome` one of `read`, `failed` (with `error`, the reason and its fix), `refused` (with `error`: the engine refused its credential, now or before, and nothing is asked until it logs in again), `waits` (with `next_at`) or `no_reader` (its engine has no reader yet); each window and balance as `stablehand status` shows it. A `read` says `read_by` (`usage`, `question`, or null where its engine asks one way) and `spent_turn`: true when the reading spent one model turn of the account's quota (`question`).
     ///
     /// ## Engines
     ///
-    /// claude-code is read for its windows. dsh, pay-as-you-go, is read for its balance and has no window: `GET platform.deepseek.com/api/v0/users/get_user_summary` with the grant dsh keeps (`<home>/.credentials.yaml`, its `DSH_HOME`; `~/.dsh` without `--home`), or a portable login's from its `--token-command`.
+    /// claude-code is read for its windows: `GET api.anthropic.com/api/oauth/usage` (`read_by: "usage"`, no turn), the bearer a portable login's from its `--token-command`, a bound one's from `<home>/.credentials.json`. A token it refuses (HTTP 403 scope: a `claude setup-token` token) is asked the question instead (`read_by: "question"`): `claude -p --model haiku --output-format stream-json --verbose --tools '' --strict-mcp-config --no-session-persistence --setting-sources '' --system-prompt 'Answer with one word.' quota`, the token in its `CLAUDE_CODE_OAUTH_TOKEN`, in a new empty config dir (`CLAUDE_CONFIG_DIR`, its working directory too) removed after, so nothing of `~/.claude` is read; its stream's `rate_limit_event` says the windows. An account read by the question is asked the question again, not its usage. dsh, pay-as-you-go, is read for its balance and has no window: `GET platform.deepseek.com/api/v0/users/get_user_summary` with the grant dsh keeps (`<home>/.credentials.yaml`, its `DSH_HOME`; `~/.dsh` without `--home`), or a portable login's from its `--token-command`.
     ///
     /// ## What trips you up
     ///
-    /// A claude-code account whose login is a `claude setup-token` token is refused a usage query: its read fails, and its windows come from `stablehand limit` alone.
+    /// A claude-code account whose login is a `claude setup-token` token spends one smallest-model turn of its quota a reading (about 3s, under $0.0002): at most once an hour, unless `--now`, and each such read says `spent_turn: true`.
     ///
     /// An agy account is read by running agy in its home, on its machine only: a portable one is refused (bind it), and a home not signed in fails only after agy has waited 60s for a browser sign-in. After its quota, `agy models` names each group's models; where it fails, the windows are booked with none, and `pick --model` judges the account by every window.
     /// A codex or pi account is read through its engine's own login, bound: on its machine, in its home. A portable one, or one bound to another machine, fails with the fix.
@@ -199,7 +199,7 @@ enum Register {
         /// The account to read; without it, every account.
         #[arg(verbatim_doc_comment)]
         name: Option<String>,
-        /// Read even if it was read or tried in the last hour.
+        /// Read even if it was read or tried in the last hour. A claude-code `claude setup-token` account's reading spends one small model turn.
         #[arg(long, verbatim_doc_comment)]
         now: bool,
     },
@@ -226,7 +226,7 @@ enum Register {
     ///
     /// ## What it answers
     ///
-    /// `{"accounts": [{"name", "engine", "off", "pace", "windows", "balances", "limit", "read_at", "tried_at", "failed", "refused", "read_next"}]}`. `refused` is true when the last try's credential was refused and the account has not logged in since: it is read again only after it logs in again (its home's login file written since, or `stablehand account edit --token-command`), whatever `read_next` says. Each balance (a pay-as-you-go account's, dsh's; such an account has no window) is `{"wallet" ("normal" or "bonus"), "currency", "amount", "at", "stale" (a later try failed)}`. Each window is `{"name", "group" (null where the engine groups none), "models" (the ids of the models whose use it counts, its group's: agy's; empty where the engine names none), "used_percent" (null once it has reset since it was read), "resets_at", "source" ("read" or "limit"), "at" (when that was booked), "stale" (a later try failed, or it has reset since), "pace"}`.
+    /// `{"accounts": [{"name", "engine", "off", "pace", "windows", "balances", "limit", "read_at", "read_by", "tried_at", "failed", "refused", "read_next"}]}`. `read_by` is how the latest reading was asked, where its engine asks two ways (claude-code): `usage` (no turn) or `question` (one smallest-model turn spent: a `claude setup-token` token); null otherwise. `refused` is true when the last try's credential was refused and the account has not logged in since: it is read again only after it logs in again (its home's login file written since, or `stablehand account edit --token-command`), whatever `read_next` says. Each balance (a pay-as-you-go account's, dsh's; such an account has no window) is `{"wallet" ("normal" or "bonus"), "currency", "amount", "at", "stale" (a later try failed)}`. Each window is `{"name", "group" (null where the engine groups none), "models" (the ids of the models whose use it counts, its group's: agy's; empty where the engine names none), "used_percent" (null once it has reset since it was read), "resets_at", "source" ("read" or "limit"), "at" (when that was booked), "stale" (a later try failed, or it has reset since), "pace"}`.
     ///
     /// ## Pace
     ///
@@ -251,7 +251,6 @@ enum Register {
     ///
     /// - a caller's limit holds on (`stablehand limit`), until it lifts;
     /// - any of whose windows is `--stop-percent` used, until that window resets: the rest is the margin of the sessions already running;
-    /// - running its sessions at once (`account add --sessions`), counted by `--running`;
     /// - one of whose windows, at its present rate shared by the sessions running and one more, runs out before it resets. A reading over two hours old, or a window under half used, runs on at no rate.
     ///
     /// Of the rest, the one with the most left of its most used window; one with no reading in force, or only stale ones, after every one with one; of equals, the first by name.
@@ -262,7 +261,7 @@ enum Register {
     ///
     /// ## What it answers
     ///
-    /// `{"engine", "model" (null: the engine's own), "account", "why", "model_in_no_group"}`, or `{"none": true, "until": <the earliest time any passed over lifts, or null>, "why", "model_in_no_group"}`. `why` is each (engine, model, account) passed over before the answer, in the walk's order: `[{"engine", "model", "account" (null for an engine skipped), "reason", "why", "until"}]`, `reason` one of `no_account`, `off`, `elsewhere`, `not_logged_in`, `limit`, `stopped`, `full`, `runs_out`. It refuses a `--running` name that is no account kept, and a walk with nothing in it.
+    /// `{"engine", "model" (null: the engine's own), "account", "why", "model_in_no_group"}`, or `{"none": true, "until": <the earliest time any passed over lifts, or null>, "why", "model_in_no_group"}`. `why` is each (engine, model, account) passed over before the answer, in the walk's order: `[{"engine", "model", "account" (null for an engine skipped), "reason", "why", "until"}]`, `reason` one of `no_account`, `off`, `elsewhere`, `not_logged_in`, `limit`, `stopped`, `runs_out`. It refuses a `--running` name that is no account kept, and a walk with nothing in it.
     ///
     /// The order is a preference only: the command an engine starts with, its flags, and which caller keeps to which engine stay the caller's.
     ///
@@ -334,7 +333,7 @@ fn running(s: &str) -> Result<(String, u32), String> {
 enum AccountCmd {
     /// Add an account.
     ///
-    /// Answers `{"account": {"name", "engine", "login" ("portable" or "bound"), "machine", "sessions", "expires", "home", "off", "token_command", "identity" (the hash of the identity `stablehand account scan` read in its login)}}`, a field it lacks null. Refuses, writing nothing, a name already kept, an unknown engine (exit {const:EXIT_USAGE}), a date that is no YYYY-MM-DD day, `--expires` or `--token-command` with `--machine` (a bound login is its engine's files, no token) and `--home` without `--machine`.
+    /// Answers `{"account": {"name", "engine", "login" ("portable" or "bound"), "machine", "expires", "home", "off", "token_command", "identity" (the hash of the identity `stablehand account scan` read in its login)}}`, a field it lacks null. Refuses, writing nothing, a name already kept, an unknown engine (exit {const:EXIT_USAGE}), a date that is no YYYY-MM-DD day, `--expires` or `--token-command` with `--machine` (a bound login is its engine's files, no token) and `--home` without `--machine`.
     ///
     /// ## Logging in
     ///
@@ -379,7 +378,7 @@ enum AccountCmd {
         engine: Option<Engine>,
         #[command(flatten)]
         terms: Terms,
-        /// Clear a term: machine (the login becomes portable), sessions (no limit), expires, home, token-command. Repeatable.
+        /// Clear a term: machine (the login becomes portable), expires, home, token-command. Repeatable.
         #[arg(long, value_enum, verbatim_doc_comment)]
         unset: Vec<Field>,
     },

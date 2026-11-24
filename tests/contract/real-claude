@@ -1,0 +1,11 @@
+#!/bin/sh
+# The real claude, its CLAUDE_CODE_OAUTH_TOKEN's stand-in `<setup-token>`
+# swapped, never printed, for a `claude setup-token` token: the
+# CLAUDE_CODE_OAUTH_TOKEN of the mytokens profile
+# $STABLEHAND_CONTRACT_SETUP_TOKEN (default claude-theplant-jp).
+profile=${STABLEHAND_CONTRACT_SETUP_TOKEN:-claude-theplant-jp}
+if [ "$CLAUDE_CODE_OAUTH_TOKEN" = "<setup-token>" ]; then
+    CLAUDE_CODE_OAUTH_TOKEN=$(eval "$(mytokens env "$profile")" && printf '%s' "$CLAUDE_CODE_OAUTH_TOKEN")
+    export CLAUDE_CODE_OAUTH_TOKEN
+fi
+exec claude "$@"

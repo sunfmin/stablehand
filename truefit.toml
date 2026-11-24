@@ -11,12 +11,14 @@ standins = ["tests/contract/fake-*"]
 # api.anthropic.com/api/oauth/usage through curl (src/curl.rs), the bearer on
 # curl's stdin. Both sides answer through usage-shape, which keeps only what
 # the reader reads: curl's exit, the HTTP status, the windows' shape or the
-# error's. The real side swaps the stand-in bearers for real ones.
+# error's. The real side swaps the stand-in bearers for real ones. The
+# endpoint answers a host only a few times an hour (HTTP 429, retry-after
+# about an hour): run the real side after an hour without it.
 [[standin]]
 name = "claude-code"
 run = ["tests/contract/usage-shape", "fake-curl"]
 real = ["tests/contract/usage-shape", "real-curl"]
-needs = "curl and jq on PATH, a Claude Code login in ~/.claude/.credentials.json, and a `claude setup-token` token in mytokens (profile claude-theplant-jp, or the one STABLEHAND_CONTRACT_SETUP_TOKEN names)"
+needs = "curl and jq on PATH, a Claude Code login in ~/.claude/.credentials.json, a `claude setup-token` token in mytokens (profile claude-theplant-jp, or the one STABLEHAND_CONTRACT_SETUP_TOKEN names), and no call of this host's to the endpoint in the last hour"
 ready = ["tests/contract/real-curl-ready"]
 version = ["sh", "-c", "curl --version | head -n 1"]
 faults = ["unauthorized", "scope", "unreachable"]
@@ -56,6 +58,33 @@ stdin = """
 header = "Authorization: Bearer <login>"
 header = "anthropic-beta: oauth-2025-04-20"
 """
+
+# The question claude-code's reader asks a `claude setup-token` token, which
+# the usage endpoint refuses (403 scope): one `claude -p` turn on the
+# smallest model, the token in CLAUDE_CODE_OAUTH_TOKEN, in a new empty config
+# dir. Both sides answer through question-shape: the exit, the last
+# rate_limit_event's unified windows' shape, the result's error. The real
+# side swaps `<setup-token>` for a real one, and spends one haiku turn of it.
+[[standin]]
+name = "claude-code-question"
+run = ["tests/contract/question-shape", "fake-claude"]
+real = ["tests/contract/question-shape", "real-claude"]
+needs = "claude, jq and mytokens on PATH, and a `claude setup-token` token in mytokens (profile claude-theplant-jp, or the one STABLEHAND_CONTRACT_SETUP_TOKEN names)"
+ready = ["sh", "-c", "command -v claude >/dev/null && command -v jq >/dev/null && mytokens list 2>/dev/null | grep -q \"^${STABLEHAND_CONTRACT_SETUP_TOKEN:-claude-theplant-jp}/\""]
+version = ["claude", "--version"]
+faults = ["refused"]
+fault_env = "FAKE_CLAUDE_FAULT"
+
+[[standin.case]]
+name = "a-setup-token-s-windows"
+env = { CLAUDE_CODE_OAUTH_TOKEN = "<setup-token>" }
+args = ["-p", "--model", "haiku", "--output-format", "stream-json", "--verbose", "--tools", "", "--strict-mcp-config", "--no-session-persistence", "--setting-sources", "", "--system-prompt", "Answer with one word.", "quota"]
+
+[[standin.case]]
+name = "a-refused-token"
+fault = "refused"
+env = { CLAUDE_CODE_OAUTH_TOKEN = "sk-ant-oat01-not-a-token" }
+args = ["-p", "--model", "haiku", "--output-format", "stream-json", "--verbose", "--tools", "", "--strict-mcp-config", "--no-session-persistence", "--setting-sources", "", "--system-prompt", "Answer with one word.", "quota"]
 
 # agy's reader (src/readers/agy.rs) runs `agy -p /usage --output-format json`
 # in the account's home, then `agy models` there. Both sides answer through
@@ -505,3 +534,12 @@ stdin = """
 header = "x-dsh-auth-token: <grant>"
 header = "x-client-platform: web"
 """
+
+# tests/usage.rs a_setup_token_refused_usage_is_read_by_one_small_turn_and_its_usage_not_asked_again
+[[promise]]
+name = "a-setup-token-is-asked-the-question-from-then-on"
+says = '''Such an account is asked
+  the question from then on, not its usage: at most once an hour, unless
+  `--now`.'''
+source = "README.md:171"
+check = ["test"]
