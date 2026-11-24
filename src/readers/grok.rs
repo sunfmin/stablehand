@@ -31,10 +31,9 @@ pub fn read(account: &Account) -> Result<Vec<Window>, String> {
     let login_again =
         format!("log it in again on {machine} with `stablehand account login {name}`");
     let now = crate::now()?;
-    // A login expiring within the minute is as good as expired.
     let load = || {
         let login = Login::of(&home).map_err(|why| format!("{why}: {login_again}"))?;
-        Ok::<_, String>((login.expires_at > now + 60).then_some(login))
+        Ok::<_, String>(login.usable(now).then_some(login))
     };
     let login = match load()? {
         Some(login) => login,
@@ -61,6 +60,12 @@ struct Login {
 }
 
 impl Login {
+    /// Whether it may be sent at `now`: one expiring within the minute is
+    /// as good as expired.
+    fn usable(&self, now: u64) -> bool {
+        self.expires_at > now + 60
+    }
+
     fn of(home: &Path) -> Result<Login, String> {
         let file = home.join("auth.json");
         let at = |why: String| format!("{}: {why}", file.display());
@@ -210,6 +215,7 @@ mod tests {
             (login.key.as_str(), login.expires_at),
             ("stand-in", 1_795_522_791)
         );
+        assert!(login.usable(login.expires_at - 61) && !login.usable(login.expires_at - 60));
         write(r#"{"https://auth.x.ai::b1":{"key":"stand-in"}}"#);
         let fault = Login::of(&home).err().unwrap();
         assert!(fault.contains("no key or expires_at"), "{fault}");
