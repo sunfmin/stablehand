@@ -1,0 +1,13 @@
+# stablehand's ties to the real programs and endpoints its tests stand in for
+# (`truefit --help`). Each engine reader's stand-in is declared here as a
+# [[standin]] when its ticket lands, with the cases it answers;
+# `truefit contract` (in ./gate.sh) runs them against the stand-ins,
+# `truefit contract --real <engine>`, outside the gate, against the engine.
+
+[contract]
+standins = ["tests/contract/fake-*"]
+
+# stablehand's promises (`truefit promise`): each sentence of README.md that a
+# run could break, with the tests that keep it named in the comment above it.
+[promises]
+sources = ["README.md"]
