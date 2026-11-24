@@ -491,3 +491,37 @@ fn an_account_with_no_reading_in_force_is_read() {
     let s = status(&book, NOW);
     assert_eq!(read_next(&s, NOW), Some(NOW + 30 * MINUTE));
 }
+
+#[test]
+fn the_recent_rate_runs_from_the_latest_reading_a_twentieth_of_the_window_back() {
+    // Five hours: a twentieth is 15 minutes. Of the readings 3600 s and
+    // 1200 s before the latest, the later one is the baseline.
+    let resets = NOW + 2 * HOUR;
+    let book = [
+        said(NOW - 3600 - 60, &[("five_hour", 50.0, resets)]),
+        said(NOW - 1200 - 60, &[("five_hour", 60.0, resets)]),
+        said(NOW - 60, &[("five_hour", 70.0, resets)]),
+    ];
+    let rate = named(&status(&book, NOW), "five_hour").rate.unwrap();
+    assert!((rate - 10.0 * 3600.0 / 1200.0).abs() < 1e-9, "{rate}");
+}
+
+#[test]
+fn a_window_near_its_reset_with_little_left_at_its_rate_is_steady_not_spare() {
+    // 85% used, 40 minutes left of five hours: 98% at reset.
+    assert_eq!(five_hour(85.0, 40), Pace::Steady);
+}
+
+#[test]
+fn a_reading_exactly_two_hours_old_still_paces_its_window() {
+    let resets = NOW + 143 * 60 * MINUTE;
+    let book = [said(NOW - REPORT_FRESH, &[("seven_day", 54.0, resets)])];
+    assert_eq!(week_pace(&book, NOW), Pace::Tight);
+}
+
+#[test]
+fn a_limit_lifts_at_the_second_it_resets() {
+    let entries = [limit(NOW - 60, Some("five_hour"), Some(NOW + HOUR))];
+    assert!(status(&entries, NOW + HOUR - 1).limit.is_some());
+    assert_eq!(status(&entries, NOW + HOUR).limit, None);
+}
