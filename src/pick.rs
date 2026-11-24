@@ -35,6 +35,8 @@ pub struct Candidate<'a> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Reason {
+    /// No account of the engine is kept: nothing starts on a login stablehand does not keep.
+    NoAccount,
     /// Switched off (`stablehand off`).
     Off,
     /// Its login is bound to another machine.

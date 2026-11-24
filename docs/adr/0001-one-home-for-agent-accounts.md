@@ -64,6 +64,16 @@ None of these endpoints is documented for outside use.
   what a caller links is what makes a bound home logged in.
 - **The pick is stablehand's**: the stop percent, the pace and the sessions
   already running decide it here, so no caller computes it again.
+- **So is the order, and the whole pick** (stablehand#24, Felix, control
+  session, 2026-11-24). stablehand answers the accounts, their usage, and
+  what the next session starts on: which engine, which model and which
+  account, the first of the **order** (engines and their models, highest
+  first, one per machine, in the register's database) whose account takes
+  one more session. The order was factorium's kit and the try-the-next
+  loop would have been factorium's; here, every caller (factorium, a
+  person, Guild) gets one answer. The session itself stays the caller's:
+  the command an engine starts with, its flags, its guard, and which
+  checkout keeps to which engine.
 
 ## Consequences
 

@@ -1,11 +1,11 @@
 //! What an account is and which of its terms may be kept: the register's
 //! decisions, with no I/O. The store keeps what these functions accept; the
 //! command line hands them what the person typed.
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 /// An agent program a session runs in (GLOSSARY.md "Engine"). The one list of
 /// them: `--engine`'s values, its help and its refusal are derived from it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, clap::ValueEnum)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, clap::ValueEnum)]
 #[serde(rename_all = "kebab-case")]
 pub enum Engine {
     ClaudeCode,

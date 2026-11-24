@@ -240,10 +240,7 @@ fn a_bound_home_holding_its_engines_login_file_is_logged_in() {
     assert_eq!(show["login_file"]["path"], file);
     let at = show["login_file"]["written_at"].as_str().unwrap();
     assert!(at.len() == 20 && at.ends_with('Z'), "{at}");
-    assert_eq!(
-        r.ok(&["pick", "--engine", "codex"]),
-        json!({"account": "codex"})
-    );
+    assert_eq!(r.ok(&["pick", "--engine", "codex"])["account"], "codex");
     let credential = r.ok(&["credential", "codex", "--json"]);
     assert_eq!(credential["files"][0]["path"], file);
     let entries: Vec<_> = std::fs::read_dir(&home).unwrap().collect();
@@ -253,19 +250,13 @@ fn a_bound_home_holding_its_engines_login_file_is_logged_in() {
     // grok's file is its home's `auth.json` too.
     std::fs::create_dir_all(r.path("homes/grok")).unwrap();
     std::fs::write(r.path("homes/grok/auth.json"), "{}").unwrap();
-    assert_eq!(
-        r.ok(&["pick", "--engine", "grok"]),
-        json!({"account": "grok"})
-    );
+    assert_eq!(r.ok(&["pick", "--engine", "grok"])["account"], "grok");
     // agy's is under its HOME, where the person's own agy login is.
     let agy = r.path("homes/agy/.gemini/antigravity-cli");
     assert_eq!(r.ok(&["account", "show", "agy"])["logged_in"], false);
     std::fs::create_dir_all(&agy).unwrap();
     std::fs::write(format!("{agy}/antigravity-oauth-token"), "{}").unwrap();
-    assert_eq!(
-        r.ok(&["pick", "--engine", "agy"]),
-        json!({"account": "agy"})
-    );
+    assert_eq!(r.ok(&["pick", "--engine", "agy"])["account"], "agy");
 
     // On another machine the file is not this one's to see.
     let elsewhere = [("STABLEHAND_MACHINE", "box")];
