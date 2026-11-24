@@ -43,14 +43,8 @@ const MIGRATIONS: &[&str] = &[
 ",
     // The hash of the identity `account scan` read in the account's login.
     "ALTER TABLE accounts ADD COLUMN identity TEXT;",
-    // The order (order::Rank), highest first: each engine and its models as JSON.
-    "
-    CREATE TABLE engine_order (
-        rank INTEGER PRIMARY KEY,
-        engine TEXT NOT NULL,
-        models TEXT NOT NULL
-    );
-",
+    // The order, one row: its ranks (order::Rank), highest first, as JSON.
+    "CREATE TABLE engine_order (id INTEGER PRIMARY KEY CHECK (id = 1), ranks TEXT NOT NULL);",
 ];
 
 /// How long a process waits for another's write.
@@ -233,44 +227,29 @@ impl Store {
     }
 }
 
-fn rank_of(row: &Row) -> rusqlite::Result<Rank> {
-    let text: String = row.get(1)?;
-    let models = serde_json::from_str(&text).map_err(|e| {
-        rusqlite::Error::FromSqlConversionFailure(1, rusqlite::types::Type::Text, e.into())
-    })?;
-    let name: String = row.get(0)?;
-    let engine = clap::ValueEnum::from_str(&name, false).map_err(|e: String| {
-        rusqlite::Error::FromSqlConversionFailure(0, rusqlite::types::Type::Text, e.into())
-    })?;
-    Ok(Rank { engine, models })
-}
-
 impl Store {
     /// The order, highest first; empty when none is set.
     pub fn order(&self) -> Result<Vec<Rank>, String> {
-        let mut stmt = self
+        let text: Option<String> = self
             .conn
-            .prepare("SELECT engine, models FROM engine_order ORDER BY rank")
+            .query_row("SELECT ranks FROM engine_order", [], |r| r.get(0))
+            .optional()
             .map_err(|e| self.err(e))?;
-        stmt.query_map([], rank_of)
-            .and_then(|rows| rows.collect())
-            .map_err(|e| self.err(e))
+        text.map_or(Ok(Vec::new()), |t| {
+            serde_json::from_str(&t).map_err(|e| format!("{}: the order: {e}", self.path.display()))
+        })
     }
 
-    /// Replaces the order with `order`, at once.
+    /// Replaces the order with `order`.
     pub fn set_order(&self, order: &[Rank]) -> Result<(), String> {
-        let tx = self.conn.unchecked_transaction().map_err(|e| self.err(e))?;
-        tx.execute("DELETE FROM engine_order", [])
-            .map_err(|e| self.err(e))?;
-        for (rank, r) in order.iter().enumerate() {
-            let models = serde_json::to_string(&r.models).map_err(|e| e.to_string())?;
-            tx.execute(
-                "INSERT INTO engine_order (rank, engine, models) VALUES (?1, ?2, ?3)",
-                params![rank as i64, r.engine.name(), models],
+        let ranks = serde_json::to_string(order).map_err(|e| e.to_string())?;
+        self.conn
+            .execute(
+                "REPLACE INTO engine_order (id, ranks) VALUES (1, ?1)",
+                [ranks],
             )
-            .map_err(|e| self.err(e))?;
-        }
-        tx.commit().map_err(|e| self.err(e))
+            .map(|_| ())
+            .map_err(|e| self.err(e))
     }
 }
 

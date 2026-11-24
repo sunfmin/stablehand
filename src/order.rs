@@ -2,11 +2,11 @@
 //! next session starts on, highest first; and the walk a pick takes through
 //! it. No I/O: the caller hands in what `agy models` lists.
 use crate::account::Engine;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 /// One engine of the order, and its models, highest first; none: the
 /// engine's own.
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Rank {
     pub engine: Engine,
     pub models: Vec<String>,
@@ -72,13 +72,6 @@ pub fn parse(specs: &[String]) -> Result<Vec<Rank>, Vec<String>> {
     }
 }
 
-/// The agy models of `order`, which `agy models` must list.
-pub fn agy_models(order: &[Rank]) -> Vec<&str> {
-    let agy = order.iter().filter(|r| r.engine == Engine::Agy);
-    agy.flat_map(|r| r.models.iter().map(String::as_str))
-        .collect()
-}
-
 /// The steps of a pick: of `order`, each engine's models in turn (the
 /// engine's own where it lists none), narrowed to `engines` where any are
 /// named and to `model` where it is; then each named engine no step of the
@@ -135,7 +128,6 @@ mod tests {
                 models: vec!["gemini".into(), "claude".into()]
             }
         );
-        assert_eq!(agy_models(&kit()), ["gemini", "claude"]);
         let faults = parse(&["nope", "codex", "codex", "agy@a,", "kimi@a,a"].map(String::from));
         let faults = faults.unwrap_err();
         assert_eq!(faults.len(), 4, "{faults:?}");

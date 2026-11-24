@@ -192,7 +192,7 @@ pub fn pick(
     now: u64,
 ) -> Result<Value, String> {
     let mut why = Vec::new();
-    let mut untils = Vec::new();
+    let mut until: Option<u64> = None;
     let mut in_no_group: Vec<&str> = Vec::new();
     for step in walk {
         let of: Vec<&Account> = accounts
@@ -245,9 +245,12 @@ pub fn pick(
                     "model_in_no_group": in_no_group,
                 }));
             }
-            Pick::None { why: each, .. } => {
+            Pick::None {
+                why: each,
+                until: lifts,
+            } => {
+                until = until.into_iter().chain(lifts).min();
                 for p in each {
-                    untils.extend(p.until);
                     why.push(passed(Some(&p.account), p.reason, &p.why, p.until));
                 }
             }
@@ -255,7 +258,7 @@ pub fn pick(
     }
     Ok(json!({
         "none": true,
-        "until": untils.into_iter().min().map(utc),
+        "until": until.map(utc),
         "why": why,
         "model_in_no_group": in_no_group,
     }))
