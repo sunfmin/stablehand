@@ -72,14 +72,14 @@ fn catalog(list: &str) -> Vec<(String, String)> {
 /// The ids of `catalog` whose name is one of `names` (a group's
 /// description's), or one of them with a variant after it: `Gemini 4 Neon
 /// (High)` is `Gemini 4 Neon`'s, `Orchestrator (Neon)` only itself.
-fn ids(names: &[String], catalog: &[(String, String)]) -> Vec<String> {
+fn ids(names: &[&str], catalog: &[(String, String)]) -> Vec<String> {
     catalog
         .iter()
         .filter(|(_, name)| {
             names.iter().any(|n| {
                 name == n
                     || name
-                        .strip_prefix(n.as_str())
+                        .strip_prefix(*n)
                         .is_some_and(|rest| rest.starts_with(" ("))
             })
         })
@@ -89,7 +89,7 @@ fn ids(names: &[String], catalog: &[(String, String)]) -> Vec<String> {
 
 /// The model names a group's `description` gives, after its colon, comma
 /// separated.
-fn names(description: &str) -> Vec<String> {
+fn names(description: &str) -> Vec<&str> {
     description
         .split_once(':')
         .map(|(_, list)| list)
@@ -97,7 +97,6 @@ fn names(description: &str) -> Vec<String> {
         .split(',')
         .map(str::trim)
         .filter(|n| !n.is_empty())
-        .map(str::to_string)
         .collect()
 }
 
@@ -137,21 +136,23 @@ fn windows(
         let exit = code.map_or("was killed".into(), |c| format!("exited {c}"));
         return Err(format!("`agy -p /usage` {exit}: {said}: {fix}"));
     }
-    let groups = answer["command"]["data"]["groups"].as_array();
-    let mut found: Vec<Window> = groups
+    // The list is asked once, of the first group with a window.
+    let catalog = std::cell::LazyCell::new(catalog);
+    let mut found = Vec::new();
+    for g in answer["command"]["data"]["groups"]
+        .as_array()
         .into_iter()
         .flatten()
-        .flat_map(|g| {
-            let group = g["name"].as_str().map(str::to_string);
-            // Its names, made ids below.
-            let models = names(g["description"].as_str().unwrap_or_default());
-            let buckets = g["buckets"].as_array().into_iter().flatten();
-            buckets.filter_map(move |b| {
+    {
+        let group = g["name"].as_str().map(str::to_string);
+        let buckets = g["buckets"].as_array().into_iter().flatten();
+        let windows: Vec<Window> = buckets
+            .filter_map(|b| {
                 let left = b["remaining_fraction"].as_f64()?;
                 Some(Window {
                     name: b["id"].as_str()?.to_string(),
                     group: group.clone(),
-                    models: models.clone(),
+                    models: Vec::new(),
                     used_percent: (1.0 - left) * 100.0,
                     // 1970 (0) is a window not yet used: it has no reset.
                     resets_at: b["reset_time"]
@@ -165,16 +166,23 @@ fn windows(
                     },
                 })
             })
-        })
-        .collect();
+            .collect();
+        if windows.is_empty() {
+            continue;
+        }
+        let models = ids(
+            &names(g["description"].as_str().unwrap_or_default()),
+            &catalog,
+        );
+        found.extend(windows.into_iter().map(|w| Window {
+            models: models.clone(),
+            ..w
+        }));
+    }
     if found.is_empty() {
         return Err(
             "`agy -p /usage` answered no window: its answer has changed; run `truefit contract --real agy` in stablehand's repo".into(),
         );
-    }
-    let catalog = catalog();
-    for w in &mut found {
-        w.models = ids(&w.models, &catalog);
     }
     Ok(found)
 }

@@ -182,8 +182,9 @@ pub struct Session<'a> {
 /// Which of `accounts` of the session's engine it may start on now on its
 /// machine: each is barred off, bound to another machine, or not logged
 /// in, then judged by its books with the sessions running on it
-/// ([`pick::pick`]). Of a model, it answers the accounts judged by every
-/// window, no group of theirs holding it ([`pick::in_no_group`]).
+/// ([`pick::pick`]), of a model by the books it spends ([`pick::spent`]),
+/// answering the accounts judged by every window, no group of theirs
+/// holding it.
 pub fn pick(
     store: &Store,
     accounts: &[Account],
@@ -193,6 +194,7 @@ pub fn pick(
 ) -> Result<Value, String> {
     let machine = session.machine;
     let mut candidates = Vec::new();
+    let mut in_no_group = Vec::new();
     for a in accounts.iter().filter(|a| a.engine == session.engine) {
         let barred = match (&a.off, &a.machine) {
             (Some(off), _) => Some((Reason::Off, format!("switched off: {}", off.reason))),
@@ -206,6 +208,14 @@ pub fn pick(
             )),
             _ => None,
         };
+        let mut status = books::status(&book_of(store, a)?, now);
+        if let Some(model) = session.model {
+            let (spent, whole) = pick::spent(status, model);
+            status = spent;
+            if whole {
+                in_no_group.push(a.name.as_str());
+            }
+        }
         candidates.push(Candidate {
             name: &a.name,
             barred,
@@ -216,10 +226,10 @@ pub fn pick(
                 .filter(|(n, _)| n == &a.name)
                 .map(|(_, c)| c)
                 .sum(),
-            status: books::status(&book_of(store, a)?, now),
+            status,
         });
     }
-    let mut answer = match pick::pick(&candidates, stop_percent, session.model, now) {
+    let mut answer = match pick::pick(&candidates, stop_percent, now) {
         Pick::Account(name) => json!({ "account": name }),
         Pick::None { until, why } => {
             let why: Vec<Value> = why
@@ -237,13 +247,8 @@ pub fn pick(
         }
     };
     if let Some(model) = session.model {
-        let whole: Vec<&str> = candidates
-            .iter()
-            .filter(|c| pick::in_no_group(&c.status, model))
-            .map(|c| c.name)
-            .collect();
         answer["model"] = json!(model);
-        answer["model_in_no_group"] = json!(whole);
+        answer["model_in_no_group"] = json!(in_no_group);
     }
     Ok(answer)
 }

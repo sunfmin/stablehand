@@ -9,10 +9,8 @@
 //! sessions at once takes none; one whose window, at its present rate with
 //! the sessions running and one more, runs out before it resets takes none;
 //! of the rest, the one with the most left is picked. A session of a model
-//! is judged by the windows its model spends: an account whose windows are
-//! grouped (agy's model groups) by those of the group holding the model, and
-//! those in no group.
-use crate::books::{self, Status, WindowStatus};
+//! is judged by the books its model spends ([`spent`]).
+use crate::books::{self, Status};
 use serde::Serialize;
 
 /// How much of any window an account may have used and still take a new
@@ -73,19 +71,17 @@ pub enum Pick {
     },
 }
 
-/// Which of `candidates` one more session, of `model` where the caller
-/// names it, may start on at `now`, an account whose window is
-/// `stop_percent` used taking none: of those that may, the one with the
-/// most left of its most used window; one with no reading in force (or only
-/// stale) after every one with one; of equals, the first given. Only the
-/// windows [`spent`] by `model` decide.
-pub fn pick(candidates: &[Candidate], stop_percent: u8, model: Option<&str>, now: u64) -> Pick {
+/// Which of `candidates` one more session may start on at `now`, an
+/// account whose window is `stop_percent` used taking none: of those that
+/// may, the one with the most left of its most used window; one with no
+/// reading in force (or only stale) after every one with one; of equals,
+/// the first given.
+pub fn pick(candidates: &[Candidate], stop_percent: u8, now: u64) -> Pick {
     // The most left so far; a later one replaces it only with more.
     let mut best: Option<(&Candidate, Option<f64>)> = None;
     let mut why = Vec::new();
     for c in candidates {
-        let windows = spent(&c.status, model);
-        match passed(c, &windows, stop_percent, now) {
+        match passed(c, stop_percent, now) {
             Some((reason, text, until)) => why.push(Passed {
                 account: c.name.to_string(),
                 reason,
@@ -93,7 +89,7 @@ pub fn pick(candidates: &[Candidate], stop_percent: u8, model: Option<&str>, now
                 until,
             }),
             None => {
-                let left = left_percent(&windows);
+                let left = left_percent(&c.status);
                 if best.is_none_or(|(_, most)| left > most) {
                     best = Some((c, left));
                 }
@@ -109,37 +105,39 @@ pub fn pick(candidates: &[Candidate], stop_percent: u8, model: Option<&str>, now
     }
 }
 
-/// The windows of `s` a session of `model` spends: of an account whose
-/// windows are grouped, those in no group and those of each group one of
-/// whose windows names the model; every window where none does
-/// ([`in_no_group`]), or no model is named.
-pub fn spent<'a>(s: &'a Status, model: Option<&str>) -> Vec<&'a WindowStatus> {
-    let groups: Vec<&str> = s
+/// `s` as a session of `model` spends it: of an account whose windows are
+/// grouped (agy's model groups), only those of the group holding the model
+/// and those in no group, and a limit only on one of them or on the whole
+/// account; and whether it groups its windows but none holds the model,
+/// every window then kept.
+pub fn spent(mut s: Status, model: &str) -> (Status, bool) {
+    let groups: Vec<String> = s
         .windows
         .iter()
-        .filter(|w| model.is_some_and(|m| w.models.iter().any(|id| id == m)))
-        .filter_map(|w| w.group.as_deref())
+        .filter(|w| w.models.iter().any(|id| id == model))
+        .filter_map(|w| w.group.clone())
         .collect();
+    if groups.is_empty() {
+        let in_no_group = s.windows.iter().any(|w| w.group.is_some());
+        return (s, in_no_group);
+    }
     s.windows
-        .iter()
-        .filter(|w| groups.is_empty() || w.group.as_deref().is_none_or(|g| groups.contains(&g)))
-        .collect()
+        .retain(|w| w.group.as_ref().is_none_or(|g| groups.contains(g)));
+    let kept = |name: &String| s.windows.iter().any(|w| &w.name == name);
+    if s.limit
+        .as_ref()
+        .and_then(|l| l.window.as_ref())
+        .is_some_and(|name| !kept(name))
+    {
+        s.limit = None;
+    }
+    (s, false)
 }
 
-/// Whether `s` groups its windows and no window of it names `model`: a
-/// session of it is judged by every window.
-pub fn in_no_group(s: &Status, model: &str) -> bool {
-    s.windows.iter().any(|w| w.group.is_some())
-        && !s
-            .windows
-            .iter()
-            .any(|w| w.models.iter().any(|id| id == model))
-}
-
-/// How much of its most used window is left, 0 to 100, of `windows`
+/// How much of its most used window is left, 0 to 100, of the windows
 /// whose use is known now and not stale.
-fn left_percent(windows: &[&WindowStatus]) -> Option<f64> {
-    windows
+fn left_percent(s: &Status) -> Option<f64> {
+    s.windows
         .iter()
         .filter(|w| !w.stale)
         .filter_map(|w| w.used_percent)
@@ -147,24 +145,13 @@ fn left_percent(windows: &[&WindowStatus]) -> Option<f64> {
         .map(|used| (100.0 - used).max(0.0))
 }
 
-/// Why `c`, judged by `windows` of it, takes no new session at `now`, and
-/// until when; none where it may.
-fn passed(
-    c: &Candidate,
-    windows: &[&WindowStatus],
-    stop_percent: u8,
-    now: u64,
-) -> Option<(Reason, String, Option<u64>)> {
+/// Why `c` takes no new session at `now`, and until when; none where it may.
+fn passed(c: &Candidate, stop_percent: u8, now: u64) -> Option<(Reason, String, Option<u64>)> {
     if let Some((reason, text)) = &c.barred {
         return Some((*reason, text.clone(), None));
     }
     let s = &c.status;
-    // A limit of a window not judged holds on another group, not this one.
-    if let Some(l) = s.limit.as_ref().filter(|l| {
-        l.window
-            .as_ref()
-            .is_none_or(|name| windows.iter().any(|w| &w.name == name))
-    }) {
+    if let Some(l) = &s.limit {
         let until = match &l.window {
             Some(name) => s
                 .windows
@@ -184,7 +171,8 @@ fn passed(
             until,
         ));
     }
-    if let Some((w, used)) = windows
+    if let Some((w, used)) = s
+        .windows
         .iter()
         .filter_map(|w| Some((w, w.used_percent?)))
         .filter(|(_, used)| *used >= f64::from(stop_percent))
@@ -209,7 +197,8 @@ fn passed(
             None,
         ));
     }
-    let (w, at_reset) = windows
+    let (w, at_reset) = s
+        .windows
         .iter()
         .filter_map(|w| Some((w, books::runs_out(w, c.running, now)?)))
         .min_by_key(|(w, _)| w.resets_at)?;
