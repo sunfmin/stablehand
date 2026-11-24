@@ -58,8 +58,17 @@ stablehand account show claude-felix   # {"account": {…}, "logged_in": true, "
   `KIMI_CODE_HOME`, `GROK_HOME`, `HOME` for agy, `PI_CODING_AGENT_DIR`,
   `DSH_HOME`), and records when, as `logged_in_at`. Changing the account's
   engine, machine or home forgets it. It is refused on another machine.
+- A bound account is logged in too, with no `account login`, when its home
+  on this machine holds its engine's login file (claude-code
+  `.credentials.json`, codex and pi `auth.json`, kimi
+  `credentials/kimi-code.json`, grok `auth.json`, dsh `.credentials.yaml`,
+  agy `.gemini/antigravity-cli/antigravity-oauth-token` under its `HOME`): an engine logged in there before stablehand is
+  adopted as it is, nothing written in the home. `account login` is needed
+  only when it holds none.
 - `account show` says whether the account is logged in: a bound one as
-  recorded, a portable one when sesame holds its token. For a token with
+  recorded or by its login file, `login_file` naming the file and when it
+  was written (`{"path", "written_at"}`, null without one), a portable one
+  when sesame holds its token. For a token with
   `--expires` it counts `days_left`, and from 30 days ahead its `warning`
   says to make a new one.
 - A refused login exits 1 and writes nothing to the register: an engine with
@@ -79,9 +88,13 @@ stablehand account import --from-mytokens
   where the entry has one, else portable, with its `CLAUDE_CODE_OAUTH_TOKEN`
   kept in sesame as `account login` keeps one. The token goes from
   `mytokens get` to sesame's stdin, on no command line and in no answer.
+- A bound account is given the home factorium's workers use,
+  `~/.agent-accounts/<name>` (`$HOME` of this host); nothing is made there.
 - An account already kept is left as it is, answered `"already kept"`, so
-  running it again adds nothing. mytokens is only read: nothing in it is changed or removed.
-- `--dry-run` answers `"would add"` for each, reading no token and writing nothing.
+  running it again adds nothing; but a kept bound account with no home is
+  given that one, answered `"given its home"`, so a run fills in what an
+  earlier import left out. mytokens is only read: nothing in it is changed or removed.
+- `--dry-run` answers `"would add"` (or `"would give its home"`) for each, reading no token and writing nothing.
 - It refuses, importing nothing, an entry whose `HARNESS` is no engine, one
   with both a token and a `MACHINE`, and a field mytokens does not answer. A
   token sesame refuses stops it there: the accounts before it are added, and

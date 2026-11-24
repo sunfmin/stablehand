@@ -281,12 +281,16 @@ enum AccountCmd {
     List,
     /// One account, and whether it is logged in.
     ///
-    /// Answers `{"account": {…}, "logged_in": true|false, "days_left": n|null, "warning": "…"|null}`: a bound login is logged in as `stablehand account login` recorded it (`logged_in_at`), a portable one when sesame holds its token (`sesame token stablehand-<name>`); `days_left` counts to `--expires`, and `warning` says from 30 days ahead to make a new token.
+    /// Answers `{"account": {…}, "logged_in": true|false, "days_left": n|null, "warning": "…"|null}`: a bound login is logged in as `stablehand account login` recorded it (`logged_in_at`), or when its home on this machine holds its engine's login file (below), a portable one when sesame holds its token (`sesame token stablehand-<name>`); `days_left` counts to `--expires`, and `warning` says from 30 days ahead to make a new token; `login_file` is `{"path", "written_at"}`, the engine's login file in a bound account's home and when it was last written, or null where it holds none or the account is not bound to this machine. The file is only looked at, never written.
+    ///
+    /// ## Engines
+    ///
+    /// {const:ENGINES}
     #[command(verbatim_doc_comment)]
     Show { name: String },
     /// Log an account in by its engine's own login.
     ///
-    /// Portable: runs the engine's token command (below; with `--token`, none), then sesame asks for the token with hidden input, or reads it from stdin when stdin is no terminal, and keeps it as the provider `stablehand-<name>` (made with `sesame provider add` if missing). The token is on no command line, in no log and not in the register. Bound: on the account's machine (`$STABLEHAND_MACHINE`, else `hostname -s`), runs the engine's login (below) with the variable it reads for its home set to the account's `--home`, and records when. Answers as `stablehand account show` does.
+    /// Portable: runs the engine's token command (below; with `--token`, none), then sesame asks for the token with hidden input, or reads it from stdin when stdin is no terminal, and keeps it as the provider `stablehand-<name>` (made with `sesame provider add` if missing). The token is on no command line, in no log and not in the register. Bound: on the account's machine (`$STABLEHAND_MACHINE`, else `hostname -s`), runs the engine's login (below) with the variable it reads for its home set to the account's `--home`, and records when. A bound account whose home already holds its engine's login file (below) is logged in without it (`stablehand account show`). Answers as `stablehand account show` does.
     ///
     /// Refuses, writing nothing, a bound login on another machine or with no home, `--token` or `--expires` on a bound login, and an engine with no token command without `--token`.
     ///
@@ -320,9 +324,9 @@ enum AccountCmd {
     },
     /// Move this host's `agent-account-*` entries of mytokens into stablehand.
     ///
-    /// Each entry `agent-account-<name>` (`mytokens list`) becomes the account `<name>`: its engine from its HARNESS, bound to its MACHINE if it has one; its CLAUDE_CODE_OAUTH_TOKEN, if it has one, goes from `mytokens get` straight into sesame, as `stablehand account login` keeps a token. An account already kept is left as it is. mytokens is only read: nothing in it is changed or removed.
+    /// Each entry `agent-account-<name>` (`mytokens list`) becomes the account `<name>`: its engine from its HARNESS, bound to its MACHINE if it has one, in the home factorium's workers use, `$HOME/.agent-accounts/<name>` (nothing is made there); its CLAUDE_CODE_OAUTH_TOKEN, if it has one, goes from `mytokens get` straight into sesame, as `stablehand account login` keeps a token. An account already kept is left as it is, but for a bound one with no home: it is given that home, so a run fills in what an earlier one left out. mytokens is only read: nothing in it is changed or removed.
     ///
-    /// Answers `{"dry_run": …, "accounts": [{"from": "agent-account-<name>/<label>", "result": "added"|"would add"|"already kept", "token": true|false, "account": {…}}, …]}`, no token shown. Refuses, importing nothing, an entry whose HARNESS is no engine, one with both a token and a MACHINE, and a field mytokens does not answer; a token sesame refuses stops it there, and running it again imports the rest.
+    /// Answers `{"dry_run": …, "accounts": [{"from": "agent-account-<name>/<label>", "result": "added"|"would add"|"given its home"|"would give its home"|"already kept", "token": true|false, "account": {…}}, …]}`, no token shown. Refuses, importing nothing, an entry whose HARNESS is no engine, one with both a token and a MACHINE, and a field mytokens does not answer; a token sesame refuses stops it there, and running it again imports the rest.
     #[command(verbatim_doc_comment)]
     Import {
         /// Read the accounts from mytokens (the one source today).
@@ -339,7 +343,7 @@ enum AccountCmd {
     Rm { name: String },
 }
 
-/// Each engine's login, as `stablehand env --help` and `stablehand account login --help` list it.
+/// Each engine's login, as `stablehand env --help`, `stablehand account login --help` and `stablehand account show --help` list it.
 fn engines_help() -> String {
     let lines = <Engine as clap::ValueEnum>::value_variants()
         .iter()
@@ -349,11 +353,12 @@ fn engines_help() -> String {
                 .token
                 .map_or("none: --token".into(), |t| format!("`{}`", t.join(" ")));
             format!(
-                "- {}: bound `{}`, {}; token {token}, in {}",
+                "- {}: bound `{}`, {}; token {token}, in {}; login file `{}`",
                 e.name(),
                 l.bound.join(" "),
                 l.home_var,
-                l.token_var.unwrap_or("none: bound only")
+                l.token_var.unwrap_or("none: bound only"),
+                l.file
             )
         });
     lines.collect::<Vec<_>>().join("\n")
@@ -450,6 +455,7 @@ fn with_status(a: &Account) -> Result<Value, Refused> {
     let mut v = serde_json::to_value(account::status(a, login::logged_in(a)?, today))
         .map_err(|e| e.to_string())?;
     v["account"] = json!(a.shown());
+    v["login_file"] = json!(login::login_file(a)?);
     Ok(v)
 }
 

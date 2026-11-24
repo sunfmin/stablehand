@@ -242,3 +242,74 @@ fn help_lists_each_engines_login() {
         assert!(help.contains(line), "{line}: {help}");
     }
 }
+
+#[test]
+fn a_bound_home_holding_its_engines_login_file_is_logged_in() {
+    let r = Register::new("adopted");
+    let home = r.path("homes/codex");
+    std::fs::create_dir_all(&home).unwrap();
+    for (name, engine) in [("codex", "codex"), ("grok", "grok"), ("agy", "agy")] {
+        let home = r.path(&format!("homes/{name}"));
+        r.ok(&[
+            "account",
+            "add",
+            name,
+            "--engine",
+            engine,
+            "--machine",
+            "mini",
+            "--home",
+            &home,
+        ]);
+    }
+
+    // A home with no login file: not logged in, and nothing picked on it.
+    let show = r.ok(&["account", "show", "codex"]);
+    assert_eq!(show["logged_in"], false);
+    assert_eq!(show["login_file"], json!(null));
+    let pick = r.ok(&["pick", "--engine", "codex"]);
+    assert_eq!(pick["why"][0]["reason"], "not_logged_in", "{pick}");
+    assert!(r.raw(&["env", "codex"], &[], "").0 != 0);
+
+    // Its engine's login file in it (codex `auth.json`): logged in, as of
+    // when the file was written, with no `account login` and nothing written.
+    let file = format!("{home}/auth.json");
+    std::fs::write(&file, "{}").unwrap();
+    let show = r.ok(&["account", "show", "codex"]);
+    assert_eq!(show["logged_in"], true, "{show}");
+    assert_eq!(show["account"]["logged_in_at"], json!(null));
+    assert_eq!(show["login_file"]["path"], file);
+    let at = show["login_file"]["written_at"].as_str().unwrap();
+    assert!(at.len() == 20 && at.ends_with('Z'), "{at}");
+    assert_eq!(
+        r.ok(&["pick", "--engine", "codex"]),
+        json!({"account": "codex"})
+    );
+    let env = r.ok(&["env", "codex", "--json"]);
+    assert_eq!(env["env"]["CODEX_HOME"], home);
+    let entries: Vec<_> = std::fs::read_dir(&home).unwrap().collect();
+    assert_eq!(entries.len(), 1, "adopting wrote in the home");
+    assert_eq!(r.argv(), "", "no engine ran");
+
+    // grok's file is its home's `auth.json` too.
+    std::fs::create_dir_all(r.path("homes/grok")).unwrap();
+    std::fs::write(r.path("homes/grok/auth.json"), "{}").unwrap();
+    assert_eq!(
+        r.ok(&["pick", "--engine", "grok"]),
+        json!({"account": "grok"})
+    );
+    // agy's is under its HOME, where the person's own agy login is.
+    let agy = r.path("homes/agy/.gemini/antigravity-cli");
+    assert_eq!(r.ok(&["account", "show", "agy"])["logged_in"], false);
+    std::fs::create_dir_all(&agy).unwrap();
+    std::fs::write(format!("{agy}/antigravity-oauth-token"), "{}").unwrap();
+    assert_eq!(
+        r.ok(&["pick", "--engine", "agy"]),
+        json!({"account": "agy"})
+    );
+
+    // On another machine the file is not this one's to see.
+    let elsewhere = [("STABLEHAND_MACHINE", "box")];
+    let out = r.run_with(&["account", "show", "codex"], &elsewhere, "");
+    assert_eq!(out.json["logged_in"], false, "{}", out.json);
+}

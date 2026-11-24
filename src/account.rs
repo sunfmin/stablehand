@@ -53,10 +53,18 @@ impl Engine {
             ),
             Dsh => ("DSH_HOME", &["dsh", "tui"], None, "platform.deepseek.com"),
         };
+        let file = match self {
+            ClaudeCode => ".credentials.json",
+            Codex | Pi | Grok => "auth.json",
+            Kimi => "credentials/kimi-code.json",
+            Dsh => ".credentials.yaml",
+            Agy => ".gemini/antigravity-cli/antigravity-oauth-token",
+        };
         Login {
             home_var,
             bound,
             token,
+            file,
             // The others read a token from where their own login put it, as
             // far as stablehand knows: their sessions start bound.
             token_var: (self == ClaudeCode).then_some("CLAUDE_CODE_OAUTH_TOKEN"),
@@ -72,6 +80,9 @@ pub struct Login {
     pub home_var: &'static str,
     /// The command that logs a bound account in, run in its home.
     pub bound: &'static [&'static str],
+    /// The file its login writes in its home: a bound home holding it is
+    /// logged in.
+    pub file: &'static str,
     /// The command that prints a long-lived token, where the engine has one.
     pub token: Option<&'static [&'static str]>,
     /// The variable a session reads a portable token from, where the engine has one.

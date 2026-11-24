@@ -211,3 +211,82 @@ fn what_mytokens_cannot_answer_is_named_with_its_fix() {
     );
     assert!(r.sesame_token("stablehand-claude-felix").is_none());
 }
+
+#[test]
+fn a_bound_account_is_given_the_workers_home_and_a_second_run_fills_it_in() {
+    let r = Register::new("import-home");
+    host_entries(&r);
+    r.mytokens_entry(
+        "agent-account-grok",
+        &[("HARNESS", "grok"), ("MACHINE", "mini")],
+    );
+    let home = r.path("home");
+    let env = [("HOME", home.as_str())];
+    let args = ["account", "import", "--from-mytokens"];
+    // An earlier import left codex bound with no home; grok was given one by hand.
+    r.ok(&[
+        "account",
+        "add",
+        "codex",
+        "--engine",
+        "codex",
+        "--machine",
+        "mini",
+    ]);
+    r.ok(&[
+        "account",
+        "add",
+        "grok",
+        "--engine",
+        "grok",
+        "--machine",
+        "mini",
+        "--home",
+        "/h/grok",
+    ]);
+
+    let dry = r
+        .run_with(&[&args[..], &["--dry-run"]].concat(), &env, "")
+        .json;
+    assert_eq!(dry["accounts"][1]["result"], "would give its home", "{dry}");
+    assert_eq!(
+        r.ok(&["account", "show", "codex"])["account"]["home"],
+        json!(null)
+    );
+
+    let out = r.run_with(&args, &env, "").json;
+    let codex = &out["accounts"][1];
+    assert_eq!(codex["result"], "given its home", "{out}");
+    let workers = format!("{home}/.agent-accounts/codex");
+    assert_eq!(codex["account"]["home"], workers);
+    assert_eq!(out["accounts"][2]["result"], "already kept");
+    assert_eq!(out["accounts"][2]["account"]["home"], "/h/grok");
+    assert_eq!(
+        r.ok(&["account", "show", "codex"])["account"]["home"],
+        workers
+    );
+    // Nothing is made in the home: it is the workers', and its login's.
+    assert!(!std::path::Path::new(&workers).exists());
+
+    // Run again: everything is kept as it is now.
+    let again = r.run_with(&args, &env, "").json;
+    assert_eq!(again["accounts"][1]["result"], "already kept", "{again}");
+    assert_eq!(again["accounts"][1]["account"]["home"], workers);
+
+    // Its login file there: logged in, picked.
+    std::fs::create_dir_all(&workers).unwrap();
+    std::fs::write(format!("{workers}/auth.json"), "{}").unwrap();
+    assert_eq!(r.ok(&["account", "show", "codex"])["logged_in"], true);
+    assert_eq!(
+        r.ok(&["pick", "--engine", "codex"]),
+        json!({"account": "codex"})
+    );
+
+    // A new bound account is added with it; a portable one has none.
+    let r = Register::new("import-home-new");
+    host_entries(&r);
+    let out = r.run_with(&args, &env, "").json;
+    assert_eq!(out["accounts"][1]["result"], "added");
+    assert_eq!(out["accounts"][1]["account"]["home"], workers);
+    assert_eq!(out["accounts"][0]["account"]["home"], json!(null));
+}

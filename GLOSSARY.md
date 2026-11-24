@@ -14,7 +14,7 @@
   token (`claude setup-token`) kept in sesame, usable on any machine that
   reaches sesame's store. **Bound**: the engine's own login files in a home of
   that account's on one machine (`auth.json`, `~/.gemini`), refreshed by the
-  engine itself.
+  engine itself; a home holding its engine's login file is logged in.
 - **Window**: one span of an account's use as its engine names it
   (`five_hour`, `seven_day`, `primary`, `gemini-5h`): how much is used, 0 to
   100, and when it resets. An account may have several **groups** of windows
