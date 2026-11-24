@@ -485,6 +485,188 @@ fn an_account_removed_takes_its_books_with_it() {
     );
 }
 
+/// `pick`'s answer: the account picked, or the reasons, in order, each
+/// account was passed over.
+fn picked(b: &Books, args: &[&str]) -> Result<String, Vec<(String, String)>> {
+    let answer = b.ok(&[&["pick", "--engine", "claude-code"], args].concat());
+    if let Some(name) = answer["account"].as_str() {
+        return Ok(name.to_string());
+    }
+    assert_eq!(answer["none"], true, "{answer}");
+    Err(reasons(&answer))
+}
+
+/// Each account a none answer passed over, with its reason, in order.
+fn reasons(answer: &Value) -> Vec<(String, String)> {
+    answer["why"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|p| {
+            let s = |k: &str| p[k].as_str().unwrap().to_string();
+            (s("account"), s("reason"))
+        })
+        .collect()
+}
+
+#[test]
+fn pick_takes_the_engine_s_usable_accounts_and_passes_over_each_by_guild_s_rules() {
+    let b = Books::new("pick");
+    let sesame = b.root.join("sesame/fake");
+    for name in ["claude-off", "claude-two"] {
+        std::fs::write(sesame.join(format!("providers/stablehand-{name}")), "").unwrap();
+        std::fs::write(
+            sesame.join(format!("tokens/stablehand-{name}")),
+            SESAME_TOKEN,
+        )
+        .unwrap();
+    }
+    for args in [
+        &["claude-felix", "--engine", "claude-code"][..],
+        &["claude-off", "--engine", "claude-code"],
+        &["claude-two", "--engine", "claude-code"],
+        &["claude-gone", "--engine", "claude-code"],
+        &[
+            "claude-mini",
+            "--engine",
+            "claude-code",
+            "--machine",
+            "mini",
+        ],
+        &["chatgpt", "--engine", "codex"],
+    ] {
+        b.ok(&[&["account", "add"], args].concat());
+    }
+    b.ok(&["off", "claude-off", "--reason", "card declined"]);
+    // claude-felix read 22% and 52% used; claude-two never read: it comes after.
+    b.read(&["claude-felix"]);
+    assert_eq!(
+        picked(&b, &["--machine", "studio"]),
+        Ok("claude-felix".into())
+    );
+
+    // Its sessions at once (2) running, the account never read is next.
+    let full = [
+        "--machine",
+        "studio",
+        "--running",
+        "claude-felix=2,claude-two=1",
+    ];
+    assert_eq!(picked(&b, &full), Ok("claude-two".into()));
+
+    // A limit on it, and claude-two's two running: none, until the limit lifts.
+    let lifts = rfc3339(now() + 1800);
+    b.ok(&[
+        "limit",
+        "claude-felix",
+        "--window",
+        "five_hour",
+        "--resets-at",
+        &lifts,
+    ]);
+    let answer = b.ok(&[
+        "pick",
+        "--engine",
+        "claude-code",
+        "--machine",
+        "studio",
+        "--running",
+        "claude-two=2",
+    ]);
+    assert_eq!(
+        (&answer["none"], &answer["until"]),
+        (&json!(true), &json!(lifts)),
+        "{answer}"
+    );
+    let why = reasons(&answer);
+    let why: Vec<(&str, &str)> = why.iter().map(|(a, r)| (a.as_str(), r.as_str())).collect();
+    assert_eq!(
+        why,
+        [
+            ("claude-felix", "limit"),
+            ("claude-gone", "not_logged_in"),
+            ("claude-mini", "elsewhere"),
+            ("claude-off", "off"),
+            ("claude-two", "full"),
+        ]
+    );
+    assert_eq!(answer["why"][3]["why"], "switched off: card declined");
+    // On its machine, the bound account not logged in is said so.
+    let on_mini = picked(&b, &["--machine", "mini", "--running", "claude-two=2"]);
+    assert!(
+        on_mini
+            .unwrap_err()
+            .contains(&("claude-mini".into(), "not_logged_in".into())),
+    );
+}
+
+#[test]
+fn pick_stops_an_account_at_its_stop_percent_and_one_whose_window_would_run_out() {
+    let b = Books::new("pick-stop");
+    b.ok(&["account", "add", "claude-felix", "--engine", "claude-code"]);
+    // 95% of seven_day used: stopped, until it resets.
+    b.answers(10.0, 95.0);
+    b.read(&["claude-felix"]);
+    let answer = b.ok(&["pick", "--engine", "claude-code", "--machine", "studio"]);
+    assert_eq!(answer["why"][0]["reason"], "stopped", "{answer}");
+    assert_eq!(answer["until"], answer["why"][0]["until"]);
+    let why = answer["why"][0]["why"].as_str().unwrap();
+    assert!(
+        why.contains("seven_day is 95% used, at its stop of 90%"),
+        "{why}"
+    );
+    // 40% used, under half: no rate runs it out; a stop of 40 stops it.
+    b.answers(10.0, 40.0);
+    b.read(&["claude-felix", "--now"]);
+    assert_eq!(
+        picked(&b, &["--machine", "studio"]),
+        Ok("claude-felix".into())
+    );
+    let lower = ["--machine", "studio", "--stop-percent", "40"];
+    assert_eq!(
+        picked(&b, &lower),
+        Err(vec![("claude-felix".into(), "stopped".into())])
+    );
+
+    // 60% of five_hour used two hours in: 150% at its reset at that rate.
+    b.answers(60.0, 10.0);
+    b.read(&["claude-felix", "--now"]);
+    assert_eq!(
+        picked(&b, &["--machine", "studio"]),
+        Err(vec![("claude-felix".into(), "runs_out".into())])
+    );
+}
+
+#[test]
+fn pick_refuses_a_count_it_cannot_read_and_an_account_not_kept() {
+    let b = Books::new("pick-refusals");
+    b.ok(&["account", "add", "claude-felix", "--engine", "claude-code"]);
+    for (args, exit, part) in [
+        (vec!["--running", "nobody=1"], 1, "no account `nobody`"),
+        (
+            vec!["--running", "claude-felix"],
+            2,
+            "give it as <account>=<n>",
+        ),
+        (
+            vec!["--running", "claude-felix=two"],
+            2,
+            "give it as <account>=<n>",
+        ),
+        (vec!["--stop-percent", "0"], 2, "--stop-percent"),
+    ] {
+        let (code, json) = b.run(&[&["pick", "--engine", "claude-code"], &args[..]].concat());
+        assert_eq!(code, exit, "{args:?}: {json}");
+        let error = json["error"].as_str().unwrap();
+        assert!(error.contains(part), "{args:?}: {error}");
+    }
+    let (code, json) = b.run(&["pick", "--engine", "nope"]);
+    assert_eq!(code, 2, "{json}");
+    // An engine with no account here: none, and no why.
+    let answer = b.ok(&["pick", "--engine", "codex"]);
+    assert_eq!(answer, json!({ "none": true, "until": null, "why": [] }));
+}
+
 /// The pi stand-in's bearer (tests/contract/fake-pi) and its login's id.
 const PI_BEARER: &str = "eyJstand-in.chatgpt.bearer";
 const PI_ACCOUNT_ID: &str = "acct-standin";

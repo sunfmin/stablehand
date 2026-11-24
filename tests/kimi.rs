@@ -87,7 +87,7 @@ fn read_and_status_book_a_bound_kimi_login_s_usages() {
     let five = window(&read["windows"], "limit_5h");
     assert_eq!(
         (&five["used_percent"], &five["resets_at"], &five["source"]),
-        (&json!(0.3), &json!("2026-11-24T10:34:05Z"), &json!("read"))
+        (&json!(0.3), &json!("2099-11-24T10:34:05Z"), &json!("read"))
     );
     assert_eq!(
         window(&read["windows"], "limit_month_total")["used_percent"],
