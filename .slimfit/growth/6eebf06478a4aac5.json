@@ -1,0 +1,10 @@
+{
+  "tree": "c03daa7809330ca176b7e072c6b74e868ed57283+d1fba762150c532c",
+  "lines": 213,
+  "serves": "stablehand#9",
+  "considered": "claude_code.rs's bearer() and windows() (a different file and answer shape; a portable token is not read for grok, so nothing to share); usage-shape and real-curl (claude-specific jq and bearer swap; grok's are their own scripts beside them); one curl stand-in, fake-curl, extended by host rather than a second",
+  "reviewer": "codex:01a20d14-7f18-7010-9fe5-b879492da6c4:default",
+  "author": "claude-code:2e392e9b-264a-5495-8ede-e5418f3c0fa6:opus",
+  "cut": "In src/readers/grok.rs, use one closure to load the login and attach the relogin hint both before and after refresh, and use find_map to select the issuer entry. In tests/contract/real-grok-ready, tests/contract/real-grok-curl, and truefit.toml, fold readiness into a mode of the curl wrapper so both paths share the auth.json entry lookup. In tests/usage.rs, let the reader unit test own the full window projection and keep the CLI test focused on booking, pace, request headers, refusal, and refresh.",
+  "answer": "All three made: one load closure (with Login::usable) before and after refresh, find_map for the issuer entry; real-grok-ready deleted, readiness is real-grok-curl --ready sharing its one jq lookup; the CLI test checks one product window and the count, the full projection is the reader unit test's. Growth left is the reader, its stand-in cases and tests of a refresh that renews and one that does not, which the mutant picker asked for."
+}
