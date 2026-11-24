@@ -139,7 +139,8 @@ fn an_account_no_session_may_start_on_is_refused_with_its_fix() {
     r.ok(&["account", "login", "codex-1"]);
     let none: &[(&str, &str)] = &[];
     // Each case: the account, its environment, a part of its refusal.
-    let cases: &[(&str, &[(&str, &str)], &str)] = &[
+    type Case<'a> = (&'a str, &'a [(&'a str, &'a str)], &'a str);
+    let cases: &[Case] = &[
         ("claude-off", none, "card declined"),
         ("claude-off", none, "stablehand on claude-off"),
         ("claude-none", none, "stablehand account login claude-none"),
