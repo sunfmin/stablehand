@@ -1,0 +1,9 @@
+#!/bin/sh
+# The real curl, its stdin's stand-in grant `<grant>` swapped for this
+# user's dsh login (the token of deepseek-account-platform/default in
+# ~/.dsh/.credentials.yaml, or $DSH_HOME's), never printed.
+store="${DSH_HOME:-$HOME/.dsh}/.credentials.yaml"
+grant=$(awk '/^  deepseek-account-platform\/default:/ { f = 1; next }
+    f && /^  [^ ]/ { f = 0 }
+    f && /^ +token:/ { sub(/^ +token: */, ""); print; exit }' "$store" 2>/dev/null)
+sed "s|<grant>|$grant|" | curl "$@"

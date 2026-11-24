@@ -1,6 +1,6 @@
-//! Th books: what each reading, failed try and limit said of one account,
-//! and what they say of it now (GLOSSARY.md "Reading", "Window", "Limit",
-//! "Pace"). No I/O: the store hands in an account's entries, the caller the
+//! The books: what each reading, failed try and limit said of one account,
+//! and what they say of it now (GLOSSARY.md "Reading", "Window", "Balance",
+//! "Limit", "Pace"). No I/O: the store hands in an account's entries, the caller the
 //! clock.
 //!
 //! The rules are Guild's ledger's (`crates/ledger`), carried over: a
@@ -27,14 +27,34 @@ pub struct Window {
     pub minutes: Option<u64>,
 }
 
+/// One wallet's balance of a pay-as-you-go account (dsh) as its reader
+/// turned it out (GLOSSARY.md "Balance").
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Balance {
+    /// The engine's wallet it is: dsh's `normal` (topped up) or `bonus`.
+    pub wallet: String,
+    /// Its currency, as the engine names it: `CNY`, `USD`.
+    pub currency: String,
+    /// What is left in it.
+    pub amount: f64,
+}
+
 /// What one entry of the books says.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum What {
     /// A reading: the windows the engine answered.
     Read(Vec<Window>),
+    /// A reading of a pay-as-you-go account: its wallets' balances, no window.
+    Balance(Vec<Balance>),
     /// A try to read that failed, and why.
     Failed(String),
+    /// A try the engine refused the account's credential on, and why: the
+    /// account is not read again until it logs in again ([`What::LoggedIn`]).
+    Refused(String),
+    /// The account logged in again (`stablehand account login`): a
+    /// credential refused before it is asked again.
+    LoggedIn,
     /// A caller's report that a session met the account's limit: of the
     /// window it names, lifting when it says, where it knows.
     Limit {
@@ -97,6 +117,18 @@ pub struct WindowStatus {
     pub pace: Pace,
 }
 
+/// One wallet of an account, as last read.
+#[derive(Debug, Clone, PartialEq)]
+pub struct BalanceStatus {
+    pub wallet: String,
+    pub currency: String,
+    pub amount: f64,
+    /// When the reading it comes from was booked.
+    pub at: u64,
+    /// A later try to read failed: what is left now is not known.
+    pub stale: bool,
+}
+
 /// A caller's limit while it holds.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Held {
@@ -109,6 +141,8 @@ pub struct Held {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Status {
     pub windows: Vec<WindowStatus>,
+    /// Its wallets, where its engine reads a balance and no window.
+    pub balances: Vec<BalanceStatus>,
     /// The worst of its windows' paces; used up while a limit holds.
     pub pace: Pace,
     pub limit: Option<Held>,
@@ -117,6 +151,9 @@ pub struct Status {
     pub tried_at: Option<u64>,
     /// Why the last try failed, where it came after the last reading.
     pub failed: Option<String>,
+    /// The last try's credential was refused and the account has not logged
+    /// in since: it is not read until it does.
+    pub refused: bool,
 }
 
 /// How much of a window must be left at its reset, at its rate, for it to
@@ -151,14 +188,39 @@ pub fn status(entries: &[Entry], now: u64) -> Status {
             What::Read(windows) => Some((i, e.at, windows)),
             _ => None,
         });
-    let tried = book
-        .iter()
-        .rev()
-        .find(|e| matches!(e.what, What::Read(_) | What::Failed(_)));
-    let failed = tried.and_then(|e| match &e.what {
-        What::Failed(why) => Some(why.clone()),
+    let wallets = book.iter().rev().find_map(|e| match &e.what {
+        What::Balance(balances) => Some((e.at, balances)),
         _ => None,
     });
+    let tried = book.iter().rev().find(|e| {
+        matches!(
+            e.what,
+            What::Read(_) | What::Balance(_) | What::Failed(_) | What::Refused(_)
+        )
+    });
+    let failed = tried.and_then(|e| match &e.what {
+        What::Failed(why) | What::Refused(why) => Some(why.clone()),
+        _ => None,
+    });
+    let refused = book
+        .iter()
+        .rev()
+        .find(|e| !matches!(e.what, What::Limit { .. }))
+        .is_some_and(|e| matches!(e.what, What::Refused(_)));
+    let balances = wallets
+        .map(|(at, balances)| {
+            balances
+                .iter()
+                .map(|b| BalanceStatus {
+                    wallet: b.wallet.clone(),
+                    currency: b.currency.clone(),
+                    amount: b.amount,
+                    at,
+                    stale: failed.is_some(),
+                })
+                .collect()
+        })
+        .unwrap_or_default();
     let limit = held(&book, now);
     let mut windows: Vec<WindowStatus> = reading
         .map(|(i, at, read)| {
@@ -193,11 +255,13 @@ pub fn status(entries: &[Entry], now: u64) -> Status {
     };
     Status {
         windows,
+        balances,
         pace,
         limit,
-        read_at: reading.map(|(_, at, _)| at),
+        read_at: reading.map(|(_, at, _)| at).max(wallets.map(|(at, _)| at)),
         tried_at: tried.map(|e| e.at),
         failed,
+        refused,
     }
 }
 
@@ -361,15 +425,17 @@ fn window_pace(w: &WindowStatus, now: u64) -> Pace {
 }
 
 /// When the account of `status` may be read next: none when it may be now.
-/// It waits while its latest reading in force is [`READ_AGAIN`] old or
-/// fresher, or while its last try, whatever came of it, is under
-/// [`READ_AGAIN`] old.
+/// It waits while its latest reading in force (a window's, or a balance's)
+/// is [`READ_AGAIN`] old or fresher, or while its last try, whatever came
+/// of it, is under [`READ_AGAIN`] old. A refused one waits for a login
+/// ([`Status::refused`]), which this does not tell.
 pub fn read_next(status: &Status, now: u64) -> Option<u64> {
     let in_force = status
         .windows
         .iter()
         .filter(|w| w.source == Source::Read && w.used_percent.is_some())
         .map(|w| w.at)
+        .chain(status.balances.iter().map(|b| b.at))
         .max();
     let after_reading = in_force.map(|at| at + READ_AGAIN + 1);
     let after_try = status.tried_at.map(|at| at + READ_AGAIN);
