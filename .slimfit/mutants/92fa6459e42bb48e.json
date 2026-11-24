@@ -1,0 +1,20 @@
+{
+  "tree": "75153271fbf579b84e860c94d18ff6433a67d30c+d1fba762150c532c",
+  "picker": "codex:01a20dc3-1ee9-70b2-a911-a48c502793b7:default",
+  "author": "claude-code:83d8ff7f-0121-5999-8ab6-7111a08032d1:opus",
+  "picks": {
+    "rust": [
+      {
+        "name": "src/pick.rs:89:53: replace > with >= in pick",
+        "why": "This changes which account wins at equal headroom, a boundary the updated session-count cases do not exercise.",
+        "outcome": "killed",
+        "first_outcome": "killed"
+      }
+    ]
+  },
+  "removed_tests": {
+    "rust": [
+      "src/pick_tests.rs:273: an_account_whose_sessions_at_once_are_running_takes_none_more"
+    ]
+  }
+}
