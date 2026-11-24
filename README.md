@@ -35,6 +35,38 @@ stablehand on claude-felix
 - `account rm` of an account not kept answers `"removed": false`, so running it twice leaves the same register.
 - The register is one SQLite file, `$STABLEHAND_CONFIG_DIR/stablehand.db` (default `~/.config/stablehand`); the file is 0600, the directory 0700. It keeps no token: a portable login's token is sesame's.
 
+## The books: read, limit, status
+
+```sh
+stablehand read claude-felix        # ask its engine, book the reading
+stablehand read                     # every account
+stablehand read claude-felix --now  # even if read in the last hour
+stablehand limit claude-felix --window five_hour --resets-at 2026-11-24T15:00:00Z
+stablehand status                   # each account's windows and their pace
+```
+
+- `read` asks the account's engine through its **reader** and books what it
+  answered. An account read or tried in the last hour waits (`"outcome":
+  "waits"`, with `next_at`) unless `--now`.
+- A reader's failure is booked as a failed try and said (`"outcome": "failed"`, with its `"error"` and fix), and still exits 0; the account's last windows are kept, marked `"stale": true`.
+- An engine with no reader yet answers `"outcome": "no_reader"` and books nothing.
+- claude-code's reader asks `api.anthropic.com/api/oauth/usage` with the
+  account's bearer: a portable login's from sesame (`sesame token <name>`),
+  a bound one's from `<home>/.claude/.credentials.json`.
+- The bearer goes to curl on its stdin, never on a command line.
+- Its windows are `five_hour`, `seven_day` and any other the endpoint
+  lists. A `claude setup-token` token is refused a usage query (HTTP 403):
+  such an account is known by `limit` alone.
+- `limit` books a caller's report that a session met the account's limit: the window it names is used up until `--resets-at`, or until the next reading without it; without `--window`, the whole account is.
+- `status` answers each account's windows (each with its `group` where the
+  engine groups them), used %, resets at, source (`read` or `limit`),
+  `stale`, and pace: `tight` (at its recent rate it runs out before it
+  resets), `spare` (it resets within a quarter of its length with 20% or
+  more left), `used_up`, or `steady`. The account's pace is its worst
+  window's. The rules are Guild's ledger's: a reading over two hours old,
+  or a window under half used, is never tight on its own.
+- `account rm` removes the account's books with it.
+
 ## Install
 
 ```sh

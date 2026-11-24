@@ -1,8 +1,8 @@
 //! claude-code's reader: `GET https://api.anthropic.com/api/oauth/usage`
 //! with the account's OAuth bearer and `anthropic-beta: oauth-2025-04-20`.
-//! Its windows are the answer's objects with a `utilization`: `five_hour`,
-//! `seven_day`, and any other it lists. A `claude setup-token` token is
-//! refused it (HTTP 403, `oauth_scope_insufficient`): such an account is
+//! Its windows are the answer's objects with a `utilization` and a
+//! `resets_at`: `five_hour`, `seven_day`, and any other it lists. A
+//! `claude setup-token` token is refused it (HTTP 403, `oauth_scope_insufficient`): such an account is
 //! known by `stablehand limit` alone.
 use crate::account::Account;
 use crate::books::Window;
@@ -82,6 +82,9 @@ fn windows(status: u16, body: &str, name: &str) -> Result<Vec<Window>, String> {
         .as_object()
         .into_iter()
         .flatten()
+        // A window says when it resets, if only `null`: `extra_usage`, the
+        // month's credits, has a `utilization` and no `resets_at`.
+        .filter(|(_, w)| w.get("resets_at").is_some())
         .filter_map(|(key, w)| {
             Some(Window {
                 name: key.clone(),
@@ -105,10 +108,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_answer_s_windows_are_its_objects_with_a_utilization() {
+    fn the_answer_s_windows_are_its_objects_with_a_utilization_and_a_reset() {
         let body = r#"{"five_hour":{"utilization":22.0,"resets_at":"2026-11-24T10:30:00.029137+00:00","limit_dollars":null},
             "seven_day":{"utilization":52,"resets_at":null},"seven_day_opus":null,
-            "extra_usage":{"is_enabled":false},"limits":[{"percent":22}]}"#;
+            "extra_usage":{"is_enabled":true,"utilization":40.0,"monthly_limit":5000},"limits":[{"percent":22}]}"#;
         let got = windows(200, body, "c").unwrap();
         let shown: Vec<_> = got
             .iter()

@@ -1,0 +1,16 @@
+#!/bin/sh
+# The real curl, its stdin's stand-in bearers swapped for real ones, never
+# printed: `<login>` for this user's Claude Code login
+# (~/.claude/.credentials.json), `<setup-token>` for a `claude setup-token`
+# token, CLAUDE_CODE_OAUTH_TOKEN of the mytokens profile
+# $STABLEHAND_CONTRACT_SETUP_TOKEN (default claude-theplant-jp).
+login=$(jq -r '.claudeAiOauth.accessToken // empty' "$HOME/.claude/.credentials.json" 2>/dev/null)
+profile=${STABLEHAND_CONTRACT_SETUP_TOKEN:-claude-theplant-jp}
+config=$(cat)
+case "$config" in
+*"<setup-token>"*)
+    setup=$(eval "$(mytokens env "$profile")" && printf '%s' "$CLAUDE_CODE_OAUTH_TOKEN")
+    config=$(printf '%s' "$config" | sed "s|<setup-token>|$setup|")
+    ;;
+esac
+printf '%s\n' "$config" | sed "s|<login>|$login|" | curl "$@"

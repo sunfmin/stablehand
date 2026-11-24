@@ -1,0 +1,35 @@
+#!/bin/sh
+# usage-shape <fake-curl|real-curl> <args>...: runs that curl, beside this
+# script (the stand-in or the real one), as stablehand does,|real-curl> <args>...: runs that curl, beside this
+# script (the stand-in or the real one),
+# as stablehand does, its headers on stdin, and prints what stablehand reads
+# of the answer (src/readers/claude_code.rs, src/curl.rs), and no more:
+# curl's exit, the HTTP status, and, of a 200, the windows' shape; of any
+# other, the error's type, whether it says a message, and its error_code.
+program="$(dirname "$0")/$1"
+shift
+if [ ! -x "$program" ]; then
+    echo "usage-shape: no $program" >&2
+    exit 2
+fi
+out=$("$program" "$@" 2>/dev/null)
+code=$?
+echo "exit $code"
+[ "$code" = 0 ] || exit 0
+status=$(printf '%s' "$out" | tail -n 1)
+body=$(printf '%s' "$out" | sed '$d')
+echo "status $status"
+if [ "$status" = 200 ]; then
+    printf '%s' "$body" | jq -r '
+        def kind: if . == null or type == "string" then "time or none" else type end;
+        def window: "utilization \(.utilization | type), resets_at \(.resets_at | kind)";
+        "five_hour: \(.five_hour | window)",
+        "seven_day: \(.seven_day | window)",
+        "every window: \([to_entries[] | .value | objects | select(has("utilization") and has("resets_at")) | window]
+            | all(. == "utilization number, resets_at time or none"))"'
+else
+    printf '%s' "$body" | jq -r '
+        "error.type \(.error.type)",
+        "error.message \(.error.message | type)",
+        "error_code \(.error.details.error_code)"'
+fi

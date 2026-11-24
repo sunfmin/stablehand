@@ -1,5 +1,5 @@
 //! stablehand: one home for agent engine accounts, their logins and their
-//! usage windows (README.md, docs/adr/0001). Today: the account register.
+//! usage windows (README.md, docs/adr/0001): the account register and the books.
 mod account;
 mod books;
 mod curl;
@@ -20,14 +20,16 @@ use store::Store;
 
 const FOR_AI: &str = "\
 stablehand keeps each agent engine account (Claude Code, Codex, pi, Kimi Code,
-agy, Grok, dsh): how it logs in, where it may run, and, as later versions add
-it, how much of its usage windows is left.
+agy, Grok, dsh): how it logs in, where it may run, and how much of its usage
+windows is left: `stablehand read` asks the engine and books the reading,
+`stablehand limit` books a session's report that it met the limit, and
+`stablehand status` says what the books say now, each window's pace with it.
 
 Every command prints one JSON object on stdout. A refusal is {\"error\": \"…\"},
 each fault with the line that fixes it, exit 1, and nothing written; a command
 line clap cannot read is the same with exit 2. Start with `stablehand account
 list`; run `stablehand <command> --help` before a command's first use.
-The register is one SQLite file, $STABLEHAND_CONFIG_DIR/stablehand.db
+The register and the books are one SQLite file, $STABLEHAND_CONFIG_DIR/stablehand.db
 (default ~/.config/stablehand). It keeps no token.";
 
 #[derive(Parser)]
