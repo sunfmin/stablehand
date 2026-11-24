@@ -141,6 +141,14 @@ stablehand status                   # each account's windows and their pace
 - Its windows are `five_hour`, `seven_day` and any other the endpoint
   lists. A `claude setup-token` token is refused a usage query (HTTP 403):
   such an account is known by `limit` alone.
+- kimi's reader asks `api.kimi.com/coding/v1/usages`, as Kimi Code's own
+  `/usage` does, with the account's bearer: a portable login's from sesame
+  (`account login --token`), a bound one's from
+  `<home>/credentials/kimi-code.json` (its `KIMI_CODE_HOME`; `~/.kimi-code`
+  without `--home`). Its windows are `limit_5h` and any other it lists
+  (`limit_7d`, `limit_month_total`, `limit_month_code`). A bound login's
+  token lasts 15 minutes and only a kimi session refreshes it: read long
+  after one, it is refused (HTTP 401), said with that fix.
 - `limit` books a caller's report that a session met the account's limit: the window it names is used up until `--resets-at`, or until the next reading without it; without `--window`, the whole account is.
 - `status` answers each account's windows (each with its `group` where the
   engine groups them), used %, resets at, source (`read` or `limit`),
