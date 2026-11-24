@@ -10,6 +10,7 @@ use crate::books::{What, Window};
 mod chatgpt;
 pub mod claude_code;
 mod dsh;
+mod grok;
 mod kimi;
 
 /// A reader: what to book of an account now, a reading ([`What::Read`],
@@ -23,6 +24,7 @@ const READERS: &[(Engine, Read)] = &[
     (Engine::Codex, |a| windows(chatgpt::codex(a))),
     (Engine::Pi, |a| windows(chatgpt::pi(a))),
     (Engine::Kimi, |a| windows(kimi::read(a))),
+    (Engine::Grok, |a| windows(grok::read(a))),
     (Engine::Dsh, dsh::read),
 ];
 

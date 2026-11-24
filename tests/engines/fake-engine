@@ -2,7 +2,9 @@
 # A stand-in of an engine's login command (claude, codex, …), linked under the
 # engine's name: appends its argv and the home variable it was given to
 # $FAKE_ARGV_LOG, reads a line of stdin as an interactive login may, prints to
-# stdout as a login does, and exits 3 when FAKE_ENGINE_FAULT=fail.
+# stdout as a login does, and exits 3 when FAKE_ENGINE_FAULT=fail. Given
+# GROK_HOME and FAKE_ENGINE_LOGIN, it leaves that file as $GROK_HOME/auth.json,
+# as grok's refresh of an expired login does.
 home=
 for v in CLAUDE_CONFIG_DIR CODEX_HOME KIMI_CODE_HOME GROK_HOME PI_CODING_AGENT_DIR DSH_HOME; do
     eval "x=\${$v:-}"
@@ -11,5 +13,8 @@ done
 echo "$(basename "$0") $*${home}" >>"${FAKE_ARGV_LOG:?}"
 IFS= read -r _ || true
 echo "Login successful."
+if [ -n "$GROK_HOME" ] && [ -n "$FAKE_ENGINE_LOGIN" ]; then
+    cp "$FAKE_ENGINE_LOGIN" "$GROK_HOME/auth.json"
+fi
 [ "$FAKE_ENGINE_FAULT" = fail ] && exit 3
 exit 0

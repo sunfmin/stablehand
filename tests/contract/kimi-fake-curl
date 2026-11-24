@@ -7,7 +7,8 @@
 #
 # FAKE_CURL_FAULT: unreachable (curl exits 6), unauthorized (401).
 #   FAKE_CURL_BODY: a file whose body a 200 answers instead of the one
-#   below. FAKE_CURL_LOG: a file each call appends to: its arguments on one
+#   below, whose resets are far ahead so that no test of it runs out on
+#   the clock. FAKE_CURL_LOG: a file each call appends to: its arguments on one
 #   line, then its stdin.
 for url; do :; done
 config=$(cat)

@@ -168,6 +168,14 @@ stablehand status                   # each account's windows and their pace
   (`limit_7d`, `limit_month_total`, `limit_month_code`). A bound login's
   token lasts 15 minutes and only a kimi session refreshes it: read long
   after one, it is refused (HTTP 401), said with that fix.
+- grok's reader asks `cli-chat-proxy.grok.com/v1/billing?format=credits`
+  with the bearer of the grok login in the account's home
+  (`<home>/auth.json`, its `GROK_HOME`; `~/.grok` without `--home`), so a
+  grok account is bound. Its token lasts hours: an expired one is refreshed
+  by grok itself (`grok models`, no model turn). Its windows are the credit
+  period's, `weekly`: the account's, and one per product in its `group`
+  (`Api`, `GrokBuild`): a share of the account's credits, never paced on
+  its own.
 - `limit` books a caller's report that a session met the account's limit: the window it names is used up until `--resets-at`, or until the next reading without it; without `--window`, the whole account is.
 - `status` answers each account's windows (each with its `group` where the
   engine groups them), used %, resets at, source (`read` or `limit`),

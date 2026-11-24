@@ -183,6 +183,47 @@ fault = "not-logged-in"
 env = { PI_CODING_AGENT_DIR = "<empty>" }
 args = ["auth", "print-bearer-token", "--provider", "openai-codex"]
 
+# grok's reader (src/readers/grok.rs) asks cli-chat-proxy.grok.com/v1/billing
+# through curl, the bearer of the grok login on curl's stdin. Both sides
+# answer through grok-shape: curl's exit, the HTTP status, the credit
+# period's and the products' shape or the error's. The real side swaps
+# `<grok-login>` for this user's grok login.
+[[standin]]
+name = "grok"
+run = ["tests/contract/grok-shape", "fake-curl"]
+real = ["tests/contract/grok-shape", "real-grok-curl"]
+needs = "curl and jq on PATH, and a grok login in ~/.grok/auth.json not expired (run grok once to refresh it)"
+ready = ["tests/contract/real-grok-curl", "--ready"]
+version = ["sh", "-c", "grok --version"]
+faults = ["unauthorized", "unreachable"]
+fault_env = "FAKE_CURL_FAULT"
+
+[[standin.case]]
+name = "a-login-s-credits"
+args = ["--silent", "--show-error", "--max-time", "20", "--config", "-", "--write-out", "\n%{http_code}", "https://cli-chat-proxy.grok.com/v1/billing?format=credits"]
+stdin = """
+header = "Authorization: Bearer <grok-login>"
+header = "x-grok-client-version: 1.0.92"
+"""
+
+[[standin.case]]
+name = "a-refused-bearer"
+fault = "unauthorized"
+args = ["--silent", "--show-error", "--max-time", "20", "--config", "-", "--write-out", "\n%{http_code}", "https://cli-chat-proxy.grok.com/v1/billing?format=credits"]
+stdin = """
+header = "Authorization: Bearer not-a-token"
+header = "x-grok-client-version: 1.0.92"
+"""
+
+[[standin.case]]
+name = "a-host-not-reached"
+fault = "unreachable"
+args = ["--silent", "--show-error", "--max-time", "20", "--config", "-", "--write-out", "\n%{http_code}", "https://cli-chat-proxy.grok.invalid/v1/billing?format=credits"]
+stdin = """
+header = "Authorization: Bearer <grok-login>"
+header = "x-grok-client-version: 1.0.92"
+"""
+
 [promises]
 sources = ["README.md"]
 

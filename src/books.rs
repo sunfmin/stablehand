@@ -333,34 +333,29 @@ fn window_status(
         status.stale = true;
         return status;
     }
-    status.rate = recent_rate(&w.name, w.resets_at, w.minutes, book);
+    status.rate = recent_rate(w, book);
     status.pace = window_pace(&status, now);
     status
 }
 
-/// How fast `name` is being used, in percent an hour, from the readings of
-/// it in force (inside the window that resets at `resets_at`): the change
+/// How fast `w` is being used, in percent an hour, from the readings of it
+/// (its name in its group) in force, inside the window it resets: the change
 /// between the latest reading and the latest one at least
 /// [`RATE_SPAN_PARTS`]th of the window before it (else the earliest), over
 /// their time apart, taken as at least that span, so that one noisy pair
 /// does not swing it. None with fewer than two readings, or no reset or
 /// length known: the pace then takes the window's use since it opened.
-fn recent_rate(
-    name: &str,
-    resets_at: Option<u64>,
-    minutes: Option<u64>,
-    book: &[&Entry],
-) -> Option<f64> {
-    let span = minutes? * 60;
-    let opened = resets_at?.saturating_sub(span);
+fn recent_rate(w: &Window, book: &[&Entry]) -> Option<f64> {
+    let span = w.minutes? * 60;
+    let opened = w.resets_at?.saturating_sub(span);
     let readings: Vec<(u64, f64)> = book
         .iter()
         .filter(|e| e.at >= opened)
         .filter_map(|e| match &e.what {
             What::Read(windows) => windows
                 .iter()
-                .find(|w| w.name == name)
-                .map(|w| (e.at, w.used_percent)),
+                .find(|r| r.name == w.name && r.group == w.group)
+                .map(|r| (e.at, r.used_percent)),
             _ => None,
         })
         .collect();
