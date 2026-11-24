@@ -3,10 +3,10 @@
 //! and the login say of it, and its books now.
 //!
 //! The rules are Guild's ledger's quota (`crates/ledger`: `quota`,
-//! `Funds::stopped`, `Funds::runs_out`, `Funds::full`), carried over: an
+//! `Funds::stopped`, `Funds::runs_out`), carried over: an
 //! account any of whose windows is the stop percent used takes no new
-//! session until that window resets, those running go on; one past its
-//! sessions at once takes none; one whose window, at its present rate with
+//! session until that window resets, those running go on; one whose
+//! window, at its present rate with
 //! the sessions running and one more, runs out before it resets takes none;
 //! of the rest, the one with the most left is picked. A session of a model
 //! is judged by the books its model spends ([`spent`]).
@@ -24,8 +24,6 @@ pub struct Candidate<'a> {
     pub name: &'a str,
     /// Why no session may start on it here, whatever its books say.
     pub barred: Option<(Reason, String)>,
-    /// Sessions at once; none: no limit.
-    pub sessions: Option<u32>,
     /// The sessions now running on it, as the caller counts them.
     pub running: u32,
     pub status: Status,
@@ -45,8 +43,6 @@ pub enum Reason {
     Limit,
     /// A window of it is at the stop percent.
     Stopped,
-    /// Its sessions at once are running.
-    Full,
     /// A window of it would run out before it resets with one more session.
     RunsOut,
 }
@@ -185,16 +181,6 @@ fn passed(c: &Candidate, stop_percent: u8, now: u64) -> Option<(Reason, String, 
                 w.name
             ),
             w.resets_at,
-        ));
-    }
-    if let Some(limit) = c.sessions.filter(|&limit| c.running >= limit) {
-        return Some((
-            Reason::Full,
-            format!(
-                "{} sessions running, of its {limit} at once: one must end first",
-                c.running
-            ),
-            None,
         ));
     }
     let (w, at_reset) = s

@@ -18,12 +18,6 @@ pub enum Engine {
 }
 
 impl Engine {
-    /// Sessions at once when the person says none: claude-code's accounts
-    /// run 2, as Guild's ledger has it; the others are not limited here.
-    pub fn default_sessions(self) -> Option<u32> {
-        (self == Engine::ClaudeCode).then_some(2)
-    }
-
     /// Its name, as `--engine` takes it.
     pub fn name(self) -> String {
         let value = clap::ValueEnum::to_possible_value(&self).expect("every engine is a value");
@@ -113,8 +107,6 @@ pub struct Account {
     pub engine: Engine,
     /// The machine its bound login lives on; none: its login is portable.
     pub machine: Option<String>,
-    /// Sessions at once; none: no limit.
-    pub sessions: Option<u32>,
     /// When its portable token expires, `YYYY-MM-DD`.
     pub expires: Option<String>,
     /// Its bound login's home on `machine`.
@@ -163,9 +155,6 @@ pub struct Terms {
     /// The machine its bound login lives on; without it the login is portable.
     #[arg(long)]
     pub machine: Option<String>,
-    /// Sessions it runs at once (`add` without it: claude-code 2, other engines no limit).
-    #[arg(long)]
-    pub sessions: Option<u32>,
     /// When its portable token expires, YYYY-MM-DD (a portable login only).
     #[arg(long)]
     pub expires: Option<String>,
@@ -190,7 +179,6 @@ pub struct Change {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
 pub enum Field {
     Machine,
-    Sessions,
     Expires,
     Home,
     TokenCommand,
@@ -202,7 +190,6 @@ pub fn new(name: &str, engine: Engine, change: Change) -> Result<Account, Vec<St
         name: name.into(),
         engine,
         machine: None,
-        sessions: engine.default_sessions(),
         expires: None,
         home: None,
         off: None,
@@ -235,12 +222,6 @@ pub fn apply(account: &Account, change: Change) -> Result<Account, Vec<String>> 
         }
         next.machine = Some(machine);
     }
-    if let Some(sessions) = change.terms.sessions {
-        if sessions == 0 {
-            faults.push("--sessions 0 would start nothing: give 1 or more, or switch the account off with `stablehand off`".into());
-        }
-        next.sessions = Some(sessions);
-    }
     if let Some(expires) = change.terms.expires {
         if let Err(f) = check_date(&expires) {
             faults.push(f);
@@ -262,7 +243,6 @@ pub fn apply(account: &Account, change: Change) -> Result<Account, Vec<String>> 
     for field in change.unset {
         match field {
             Field::Machine => next.machine = None,
-            Field::Sessions => next.sessions = None,
             Field::Expires => next.expires = None,
             Field::Home => next.home = None,
             Field::TokenCommand => next.token_command = None,

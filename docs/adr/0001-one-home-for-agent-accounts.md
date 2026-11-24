@@ -25,7 +25,7 @@ None of these endpoints is documented for outside use.
 ## Decision
 
 - **stablehand is the one home** of an account: its engine, its login, where
-  it may run, its terms (sessions at once, a token's expiry), its readings
+  it may run, its terms (a token's expiry), its readings
   and its off switch. mytokens' `agent-account-*` entries move here and go;
   factorium asks stablehand for a pick and an account's credential.
 - **An account is a subscription, not an engine.** Engines that spend one

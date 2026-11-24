@@ -219,7 +219,6 @@ pub fn pick(
         candidates.push(Candidate {
             name: &a.name,
             barred,
-            sessions: a.sessions,
             running: session
                 .running
                 .iter()

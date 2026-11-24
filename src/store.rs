@@ -42,12 +42,15 @@ const MIGRATIONS: &[&str] = &[
 ",
     // The hash of the identity `account scan` read in the account's login.
     "ALTER TABLE accounts ADD COLUMN identity TEXT;",
+    // No sessions-at-once term: the pace counts the sessions running (stablehand#26).
+    "ALTER TABLE accounts DROP COLUMN sessions;",
 ];
 
 /// How long a process waits for another's write.
 const BUSY_TIMEOUT: Duration = Duration::from_secs(30);
 
-const COLUMNS: &str = "name, engine, machine, sessions, expires, home, off_by, off_at, off_reason, token_command, identity";
+const COLUMNS: &str =
+    "name, engine, machine, expires, home, off_by, off_at, off_reason, token_command, identity";
 
 pub struct Store {
     conn: Connection,
@@ -102,7 +105,7 @@ fn engine_of(row: &Row) -> rusqlite::Result<Engine> {
 }
 
 fn account_of(row: &Row) -> rusqlite::Result<Account> {
-    let off = match (row.get(6)?, row.get(7)?, row.get(8)?) {
+    let off = match (row.get(5)?, row.get(6)?, row.get(7)?) {
         (Some(by), Some(at), Some(reason)) => Some(Off { by, at, reason }),
         _ => None,
     };
@@ -110,12 +113,11 @@ fn account_of(row: &Row) -> rusqlite::Result<Account> {
         name: row.get(0)?,
         engine: engine_of(row)?,
         machine: row.get(2)?,
-        sessions: row.get(3)?,
-        expires: row.get(4)?,
-        home: row.get(5)?,
+        expires: row.get(3)?,
+        home: row.get(4)?,
         off,
-        token_command: row.get(9)?,
-        identity: row.get(10)?,
+        token_command: row.get(8)?,
+        identity: row.get(9)?,
     })
 }
 
@@ -191,13 +193,12 @@ impl Store {
         self.conn
             .execute(
                 &format!(
-                    "{verb} accounts ({COLUMNS}) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)"
+                    "{verb} accounts ({COLUMNS}) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)"
                 ),
                 params![
                     a.name,
                     a.engine.name(),
                     a.machine,
-                    a.sessions,
                     a.expires,
                     a.home,
                     off.map(|o| &o.by),

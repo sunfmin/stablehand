@@ -55,13 +55,11 @@ fn steady(used: f64) -> Vec<Entry> {
     )]
 }
 
-/// The account `name`, its books `entries` at `now`, two sessions at once,
-/// none running.
+/// The account `name`, its books `entries` at `now`, none running.
 fn acct(name: &'static str, entries: &[Entry], now: u64) -> Candidate<'static> {
     Candidate {
         name,
         barred: None,
-        sessions: Some(2),
         running: 0,
         status: status(entries, now),
     }
@@ -71,7 +69,6 @@ fn acct(name: &'static str, entries: &[Entry], now: u64) -> Candidate<'static> {
 /// `now`: its reason and until when; none where it is picked.
 fn passed_over(entries: &[Entry], running: u32, now: u64) -> Option<(Reason, Option<u64>)> {
     let mut a = acct("solo", entries, now);
-    a.sessions = None;
     a.running = running;
     match pick(&[a], STOP_PERCENT, now) {
         Pick::Account(_) => None,
@@ -85,7 +82,6 @@ fn passed_over(entries: &[Entry], running: u32, now: u64) -> Option<(Reason, Opt
 fn why_of(entries: &[Entry], running: u32) -> String {
     let mut a = acct("solo", entries, NOW);
     a.running = running;
-    a.sessions = None;
     match pick(&[a], STOP_PERCENT, NOW) {
         Pick::None { why, .. } => why[0].why.clone(),
         picked => panic!("picked: {picked:?}"),
@@ -267,38 +263,16 @@ fn a_week_at_ninety_percent_is_stopped() {
     );
 }
 
-// Sessions at once (promise `account_sessions_within`).
+// No count of sessions running passes an account over by itself: its
+// windows and their pace decide (stablehand#26).
 
 #[test]
-fn an_account_whose_sessions_at_once_are_running_takes_none_more() {
-    let mut solo = acct("solo", &[], NOW);
-    solo.sessions = Some(1);
-    solo.running = 1;
-    let mut pair = acct("pair", &[], NOW);
-    pair.running = 1;
+fn any_number_running_is_judged_only_by_the_windows_and_their_pace() {
+    let mut busy = acct("busy", &[], NOW);
+    busy.running = 40;
     assert_eq!(
-        pick(&[solo, pair], STOP_PERCENT, NOW),
-        Pick::Account("pair".into())
-    );
-
-    let mut pair = acct("pair", &[], NOW);
-    pair.running = 2;
-    let Pick::None { until, why } = pick(&[pair], STOP_PERCENT, NOW) else {
-        panic!("picked a full account");
-    };
-    assert_eq!((until, why[0].reason), (None, Reason::Full));
-    assert!(
-        why[0].why.starts_with("2 sessions running, of its 2"),
-        "{}",
-        why[0].why
-    );
-    // No limit: any number runs.
-    let mut free = acct("free", &[], NOW);
-    free.sessions = None;
-    free.running = 40;
-    assert_eq!(
-        pick(&[free], STOP_PERCENT, NOW),
-        Pick::Account("free".into())
+        pick(&[busy], STOP_PERCENT, NOW),
+        Pick::Account("busy".into())
     );
 }
 
@@ -385,11 +359,11 @@ fn an_account_read_only_stale_comes_after_every_one_read_fresh() {
 #[test]
 fn none_waits_until_the_earliest_any_lifts() {
     let soon = NOW + 30 * MINUTE;
-    let mut full = acct("full", &[], NOW);
-    full.running = 2;
+    let mut off = acct("off", &[], NOW);
+    off.barred = Some((Reason::Off, "switched off".into()));
     let accounts = [
         acct("stopped", &five_hour(95.0, 100), NOW),
-        full,
+        off,
         acct("limited", &[limit(NOW - MINUTE, None, Some(soon))], NOW),
     ];
     let Pick::None { until, why } = pick(&accounts, STOP_PERCENT, NOW) else {
@@ -401,7 +375,7 @@ fn none_waits_until_the_earliest_any_lifts() {
         reasons,
         [
             ("stopped", Reason::Stopped),
-            ("full", Reason::Full),
+            ("off", Reason::Off),
             ("limited", Reason::Limit)
         ]
     );
@@ -523,7 +497,6 @@ fn agy_pick(s: Status, model: Option<&str>) -> Result<String, (Reason, String)> 
     let a = Candidate {
         name: "agy",
         barred: None,
-        sessions: None,
         running: 0,
         status: s,
     };
