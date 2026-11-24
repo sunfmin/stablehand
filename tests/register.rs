@@ -278,4 +278,42 @@ fn the_store_is_0600_in_a_0700_directory() {
     std::fs::set_permissions(&db, std::fs::Permissions::from_mode(0o644)).unwrap();
     r.ok(&["account", "list"]);
     assert_eq!(mode(&db), 0o600);
+    // Only group's and other's bits are taken away.
+    std::fs::set_permissions(&db, std::fs::Permissions::from_mode(0o700)).unwrap();
+    r.ok(&["account", "list"]);
+    assert_eq!(mode(&db), 0o700);
+}
+
+#[test]
+fn a_store_that_is_no_database_is_refused_naming_its_file() {
+    let r = Register::new("corrupt");
+    std::fs::create_dir_all(&r.dir).unwrap();
+    std::fs::write(r.dir.join("stablehand.db"), vec![7u8; 4096]).unwrap();
+    let out = r.run(&["account", "list"]);
+    assert_eq!(out.code, 1);
+    let fault = out.json["error"].as_str().unwrap();
+    assert!(
+        fault.contains("stablehand.db") && fault.contains("not a database"),
+        "{fault}"
+    );
+}
+
+#[test]
+fn help_and_version_are_text_not_refusals() {
+    for args in [
+        &["--help"][..],
+        &["--version"],
+        &["account", "add", "--help"],
+    ] {
+        let out = Command::new(env!("CARGO_BIN_EXE_stablehand"))
+            .args(args)
+            .output()
+            .unwrap();
+        let stdout = String::from_utf8(out.stdout).unwrap();
+        assert!(out.status.success(), "{args:?}");
+        assert!(
+            stdout.starts_with("stablehand") || stdout.starts_with("Add an account"),
+            "{args:?}: {stdout}"
+        );
+    }
 }

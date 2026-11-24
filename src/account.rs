@@ -254,7 +254,14 @@ mod tests {
 
     #[test]
     fn a_date_is_a_real_calendar_day() {
-        for good in ["2027-01-31", "2028-02-29", "2000-02-29", "2026-12-01"] {
+        for good in [
+            "2027-01-31",
+            "2028-02-29",
+            "2000-02-29",
+            "2026-12-01",
+            "2027-04-30",
+            "2026-11-30",
+        ] {
             assert_eq!(check_date(good), Ok(()), "{good}");
         }
         for bad in [
