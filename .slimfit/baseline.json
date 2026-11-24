@@ -1,32 +1,21 @@
 {
   "suites": {
     "rust": {
-      "prod_lines": 628,
-      "test_lines": 368,
-      "tests": 10,
+      "prod_lines": 919,
+      "test_lines": 773,
+      "tests": 15,
       "failures": 0,
       "test_seconds": 0.004,
-      "covered_lines": 349,
+      "covered_lines": 581,
       "uncovered_lines": 3
     }
   },
   "loosened": [],
   "kept": [],
-  "kept_spans": [
-    {
-      "suite": "rust",
-      "file": "src/main.rs",
-      "start": 20,
-      "end": 22,
-      "function": "main",
-      "hash": "0de1e8cecd3ef7f4",
-      "reason": "The binary's entry point: it only hands argv to clap's Cli::parse, and runs only when the binary is spawned, which coverage does not record. A fast test could at most call it, not assert what it decides."
-    }
-  ],
   "measured": {
     "rust": {
-      "uncovered_lines": 22,
-      "test_seconds": 0.204
+      "uncovered_lines": 26,
+      "test_seconds": 0.659
     }
   }
 }
