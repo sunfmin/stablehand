@@ -20,6 +20,10 @@ pub enum Code {
     BadOrder,
     /// `pick` has nothing to walk: no order is kept and no `--engine` named, or `--model` names no model of the order and no `--engine` is named. Set one: `stablehand order set claude-code@opus codex`.
     NoOrder,
+    /// `run` given arguments with no command, a command no engine's without `--engine`, a command, `--engine` and `--account` of different engines, two models, `--model` for an engine that takes none (dsh), `--home` for a bound claude-code account (docs/adr/0002), or a `--home` holding a login file that is no link to the account's.
+    BadRun,
+    /// `run` found no account that takes one more session now: nothing started; its `until` and `why` are `pick`'s.
+    NonePicked,
     /// `account scan --path` names no directory.
     BadPath,
     /// Something stablehand reads or runs failed (the register, mytokens, an engine's reader): the text says what, and how to fix it.

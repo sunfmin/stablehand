@@ -3,12 +3,14 @@
 mod account;
 mod books;
 mod bounded;
+mod command;
 mod curl;
 mod login;
 mod order;
 mod pick;
 mod readers;
 mod refusal;
+mod run;
 mod scan;
 mod statusline;
 mod store;
@@ -91,6 +93,43 @@ enum Cmd {
         /// Answer one JSON object instead of a portable login's `export` line.
         #[arg(long, verbatim_doc_comment)]
         json: bool,
+    },
+    /// Start an engine's own command on the account, and model, stablehand picks, handing it the login: `stablehand run claude -p hi`.
+    ///
+    /// The engine is the command's (`claude` is claude-code's: {const:PROGRAMS}), else `--engine`'s, else `--account`'s. With no command, the whole order is walked (`stablehand order show`) and the picked engine's own program starts, interactive: `stablehand run`. The engine, model and account are `stablehand pick`'s (`--engine`, `--account`, `--model` narrow it; a model the command names, `--model opus`, narrows it too).
+    ///
+    /// ## What the child gets
+    ///
+    /// - Its login, in its environment alone, never on a command line: portable, the engine's token variable (`CLAUDE_CODE_OAUTH_TOKEN`) set to what the account's `--token-command` prints; bound, the engine's home variable (`CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `HOME` for agy, …) set to the account's home, the token variable cleared. With `--home <dir>`, the home variable is `<dir>`, and a bound account's login files (`stablehand credential`) are linked into it.
+    /// - The model: where the command names none, the engine's model flag and the picked model are put after its program (`claude --model opus -p hi`). dsh takes none: its profile names it.
+    /// - The terminal, as stablehand's. stablehand waits for it: its exit code is stablehand's, and a signal that ends it ends stablehand the same way. A signal a process sends stablehand (`kill -TERM`) is passed on to it; the terminal's (^C) reach it themselves.
+    ///
+    /// stderr gets one line of what was chosen, `stablehand: claude-code on claude-felix (opus)`, never a value. While the child runs, its session is kept in the register, and `stablehand pick` counts it beside `--running`; it is dropped when the child ends, or found dead by its pid.
+    ///
+    /// ## What it refuses
+    ///
+    /// Nothing started, `{"error", "code"}` on stdout: none picked (`none_picked`, exit 1, with `pick`'s `until` and `why`); arguments with no command (`stablehand run -- -p hi`: they mean something else to each engine), a command of no engine without `--engine`, engines that differ, `--home` for a bound claude-code account (Claude Code replaces a linked login with a copy when it refreshes it, docs/adr/0002), a `--home` holding a login file that is no link to the account's (`bad_run`, exit 1); an account no session may start on (`no_session`, exit {const:EXIT_USAGE}).
+    #[command(next_help_heading = SESSIONS, verbatim_doc_comment)]
+    Run {
+        /// The engine, where the command is not its program.
+        #[arg(long, value_enum, verbatim_doc_comment)]
+        engine: Option<Engine>,
+        /// Start on this account only.
+        #[arg(long, verbatim_doc_comment)]
+        account: Option<String>,
+        /// Start on this model only, by the id its engine starts it with.
+        #[arg(long, value_parser = clap::builder::NonEmptyStringValueParser::new(), verbatim_doc_comment)]
+        model: Option<String>,
+        /// The engine's home: its home variable set to it, a bound account's login files linked into it; made if missing.
+        #[arg(long, verbatim_doc_comment)]
+        home: Option<String>,
+        /// The engine's command and its arguments, after `--` where they start with `-`.
+        #[arg(
+            trailing_var_arg = true,
+            allow_hyphen_values = true,
+            verbatim_doc_comment
+        )]
+        command: Vec<String>,
     },
     /// Claude Code's status line command: books the session's rate limits as a reading of the account.
     ///
@@ -249,7 +288,7 @@ enum Register {
     ///
     /// ## What trips you up
     ///
-    /// `--running` is the caller's count, on this machine or wherever it knows: stablehand counts no session itself. An account left out of it has none running.
+    /// `--running` is the caller's count, on this machine or wherever it knows; the sessions `stablehand run` keeps running are counted beside it, and no other. An account left out of both has none running.
     #[command(next_help_heading = SESSIONS, verbatim_doc_comment)]
     Pick {
         /// Walk only this engine's steps; repeatable. One not in the order is tried after the rest.
@@ -442,6 +481,7 @@ fn manual() -> Help {
         .table::<Code>("refusal")
         .constant("EXIT_USAGE", Code::Usage.exit())
         .constant("ENGINES", engines_help())
+        .constant("PROGRAMS", command::programs())
         .constant("TOKEN_COMMANDS", login::TOKEN_COMMANDS)
         .constant("DEFAULT_HOMES", default_homes())
         .constant("IDENTITIES", scan::IDENTITIES)
@@ -466,6 +506,28 @@ fn main() -> ExitCode {
     };
     match cli.cmd {
         Cmd::Credential { name, json } => answer(credential(&name, json)),
+        Cmd::Run {
+            engine,
+            account,
+            model,
+            home,
+            command,
+        } => {
+            let asked = run::Asked {
+                command,
+                engine,
+                account,
+                model,
+                home,
+            };
+            match now()
+                .map_err(Refused::from)
+                .and_then(|now| run::run(asked, now))
+            {
+                Ok(code) => code,
+                Err(r) => answer(Err(r)),
+            }
+        }
         Cmd::Statusline { account, then } => statusline::run(&account, then.as_deref()),
         Cmd::Help { topic } => {
             let text = match topic {
@@ -655,37 +717,14 @@ fn run(cmd: Register) -> Result<Value, Refused> {
             {
                 kept(&store, name)?;
             }
-            let machine = match machine {
-                Some(m) => m,
-                None => login::this_machine()?,
-            };
-            let walk = order::walk(&store.order()?, &engine, model.as_deref());
-            if walk.is_empty() {
-                return Err(Refused::new(
-                    Code::NoOrder,
-                    format!(
-                        "nothing to walk: {}; set the order, `stablehand order set claude-code@opus codex`, or name `--engine <engine>`",
-                        model.map_or(
-                            "no order is kept and no --engine named".into(),
-                            |m| format!(
-                                "no engine of the order lists model `{m}` and no --engine is named"
-                            )
-                        )
-                    ),
-                ));
-            }
-            let session = usage::Session {
-                running: &running,
-                machine: &machine,
-            };
-            Ok(usage::pick(
-                &store,
-                &all,
-                &walk,
-                &session,
+            let ask = usage::Ask {
+                engines: engine,
+                model,
+                running,
+                machine,
                 stop_percent,
-                now()?,
-            )?)
+            };
+            usage::pick_now(&store, &all, ask, now()?)
         }
         Register::Order { cmd } => {
             if let OrderCmd::Set { ranks } = cmd {

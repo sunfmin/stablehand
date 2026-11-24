@@ -456,6 +456,7 @@ dependencies = [
  "agent-help",
  "base64",
  "clap",
+ "libc",
  "rusqlite",
  "serde",
  "serde_json",

@@ -170,3 +170,43 @@ fn holding(dir: &std::path::Path, secret: &str) -> Vec<String> {
     }
     found
 }
+
+impl Register {
+    /// A PATH whose engine programs (claude, codex, agy, …) are the session
+    /// stand-in (tests/engines/fake-session), before the test's own bin.
+    pub fn session_path(&self) -> String {
+        let bin = self.root.join("session-bin");
+        if !bin.exists() {
+            std::fs::create_dir_all(&bin).unwrap();
+            let stand_in =
+                PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/engines/fake-session");
+            for p in ["claude", "codex", "pi", "kimi", "agy", "grok", "dsh"] {
+                std::os::unix::fs::symlink(&stand_in, bin.join(p)).unwrap();
+            }
+        }
+        format!(
+            "{}:{}:/usr/bin:/bin",
+            bin.display(),
+            self.root.join("bin").display()
+        )
+    }
+
+    /// The binary started on `args` with `env` as [`Register::raw`] runs it,
+    /// not waited for; its stdout piped.
+    pub fn spawn(&self, args: &[&str], env: &[(&str, &str)]) -> std::process::Child {
+        Command::new(env!("CARGO_BIN_EXE_stablehand"))
+            .args(args)
+            .env("STABLEHAND_CONFIG_DIR", &self.dir)
+            .env("USER", "tester")
+            .env("FAKE_MYTOKENS_DIR", self.root.join("mytokens"))
+            .env("FAKE_ARGV_LOG", self.root.join("argv.log"))
+            .env("STABLEHAND_MACHINE", "mini")
+            .env("PATH", self.session_path())
+            .envs(env.iter().copied())
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(stderr_log(&self.root))
+            .spawn()
+            .unwrap()
+    }
+}

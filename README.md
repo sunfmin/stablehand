@@ -313,8 +313,8 @@ stablehand pick --engine agy --model claude-opus-5-5-high
   no reading in force, or only stale ones, after every one with one; of
   equals, the first by name.
 - `--running <account>=<n>,…` is the caller's count of the sessions now
-  running on each account (factorium knows its workers); stablehand counts
-  none itself, and counts across machines only as the caller does. A name in
+  running on each account (factorium knows its workers), counted beside the
+  sessions `stablehand run` keeps; across machines only as the caller counts. A name in
   it that is no account kept is refused.
 - At a step with a model (agy's `claude-opus-5-5-high`, as `agy models`
   lists it), an account whose windows are grouped by model is judged only by the
@@ -327,6 +327,40 @@ stablehand pick --engine agy --model claude-opus-5-5-high
   says when: off, not logged in, full, no account), and each one's
   `reason`: `no_account`, `off`, `elsewhere`, `not_logged_in`, `limit`,
   `stopped`, `full` or `runs_out`.
+
+## Starting a session on the pick
+
+```sh
+stablehand run claude -p hi          # claude-code, on the account (and model) pick answers
+stablehand run                       # the order's pick, its engine's own program, interactive
+stablehand run --account claude-felix --model opus claude
+stablehand run --home /tmp/s1 codex  # a session home of its own, the login linked in
+# stderr: stablehand: claude-code on claude-felix (opus)
+```
+
+- The engine is the command's program (`claude` claude-code, `codex`,
+  `pi`, `kimi`, `agy`, `grok`, `dsh`), else `--engine`, else
+  `--account`'s. With no command the whole order is walked and the picked
+  engine's own program starts (dsh's `dsh tui`). Arguments with no command
+  (`stablehand run -- -p hi`) are refused: they mean something else to each
+  engine.
+- The engine, model and account are `pick`'s; `--engine`, `--account`,
+  `--model`, and a model the command names, narrow it. None picked starts
+  nothing and exits 1, `{"error", "code": "none_picked", "until", "why"}`.
+- The login reaches the child in its environment alone: portable, its
+  token variable (`CLAUDE_CODE_OAUTH_TOKEN`) from the account's token
+  command; bound, its home variable (`CLAUDE_CONFIG_DIR`, `CODEX_HOME`,
+  `HOME` for agy, …) set to the account's home. With `--home <dir>` the
+  home variable is `<dir>` and a bound login's files are linked into it;
+  refused for a bound claude-code account, since Claude Code replaces a
+  linked login with a copy when it refreshes (docs/adr/0002).
+- Where the command names no model, the engine's model flag and the picked
+  model are added (`claude --model opus -p hi`); dsh takes none.
+- stderr gets one line of what was chosen, never a value. run waits for the
+  child: the terminal is its, its exit code is stablehand's, a signal that
+  ends it ends stablehand alike, and a signal sent to stablehand is passed on.
+- While it runs, its session is kept in the register and `pick` counts it
+  beside `--running`; it is dropped when it ends, or found dead by its pid.
 
 ## Install
 

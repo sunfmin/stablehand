@@ -30,6 +30,44 @@ impl Engine {
         value.get_name().to_string()
     }
 
+    /// The line that starts a session of it, interactive (`stablehand run`
+    /// with no command): its program first, the name `run` knows it by.
+    pub fn start(self) -> &'static [&'static str] {
+        use Engine::*;
+        match self {
+            ClaudeCode => &["claude"],
+            Codex => &["codex"],
+            Pi => &["pi"],
+            Kimi => &["kimi"],
+            Agy => &["agy"],
+            Grok => &["grok"],
+            // dsh boots a profile: its terminal one.
+            Dsh => &["dsh", "tui"],
+        }
+    }
+
+    /// The flags that name a session's model, the first the one `run` adds;
+    /// none: the engine takes no model on its command line (dsh's is its
+    /// profile's).
+    pub fn model_flags(self) -> &'static [&'static str] {
+        use Engine::*;
+        match self {
+            ClaudeCode | Pi | Agy => &["--model"],
+            Codex | Kimi | Grok => &["--model", "-m"],
+            Dsh => &[],
+        }
+    }
+
+    /// The engine whose program is `program` (a path's last part): `claude`
+    /// is claude-code's.
+    pub fn of_program(program: &str) -> Option<Engine> {
+        let name = std::path::Path::new(program).file_name()?.to_str()?;
+        <Engine as clap::ValueEnum>::value_variants()
+            .iter()
+            .copied()
+            .find(|e| e.start()[0] == name)
+    }
+
     /// How the engine logs in, its own way (docs/adr/0001 "Logins are the
     /// engine's own"): the one table of each engine's login facts.
     pub fn login(self) -> Login {
