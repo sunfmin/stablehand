@@ -232,7 +232,6 @@ enum Register {
     ///
     /// - a caller's limit holds on (`stablehand limit`), until it lifts;
     /// - any of whose windows is `--stop-percent` used, until that window resets: the rest is the margin of the sessions already running;
-    /// - running its sessions at once (`account add --sessions`), counted by `--running`;
     /// - one of whose windows, at its present rate shared by the sessions running and one more, runs out before it resets. A reading over two hours old, or a window under half used, runs on at no rate.
     ///
     /// Of the rest, the one with the most left of its most used window; one with no reading in force, or only stale ones, after every one with one; of equals, the first by name.
@@ -243,7 +242,7 @@ enum Register {
     ///
     /// ## What it answers
     ///
-    /// `{"engine", "model" (null: the engine's own), "account", "why", "model_in_no_group"}`, or `{"none": true, "until": <the earliest time any passed over lifts, or null>, "why", "model_in_no_group"}`. `why` is each (engine, model, account) passed over before the answer, in the walk's order: `[{"engine", "model", "account" (null for an engine skipped), "reason", "why", "until"}]`, `reason` one of `no_account`, `off`, `elsewhere`, `not_logged_in`, `limit`, `stopped`, `full`, `runs_out`. It refuses a `--running` name that is no account kept, and a walk with nothing in it.
+    /// `{"engine", "model" (null: the engine's own), "account", "why", "model_in_no_group"}`, or `{"none": true, "until": <the earliest time any passed over lifts, or null>, "why", "model_in_no_group"}`. `why` is each (engine, model, account) passed over before the answer, in the walk's order: `[{"engine", "model", "account" (null for an engine skipped), "reason", "why", "until"}]`, `reason` one of `no_account`, `off`, `elsewhere`, `not_logged_in`, `limit`, `stopped`, `runs_out`. It refuses a `--running` name that is no account kept, and a walk with nothing in it.
     ///
     /// The order is a preference only: the command an engine starts with, its flags, and which caller keeps to which engine stay the caller's.
     ///
@@ -315,7 +314,7 @@ fn running(s: &str) -> Result<(String, u32), String> {
 enum AccountCmd {
     /// Add an account.
     ///
-    /// Answers `{"account": {"name", "engine", "login" ("portable" or "bound"), "machine", "sessions", "expires", "home", "off", "token_command", "identity" (the hash of the identity `stablehand account scan` read in its login)}}`, a field it lacks null. Refuses, writing nothing, a name already kept, an unknown engine (exit {const:EXIT_USAGE}), a date that is no YYYY-MM-DD day, `--expires` or `--token-command` with `--machine` (a bound login is its engine's files, no token) and `--home` without `--machine`.
+    /// Answers `{"account": {"name", "engine", "login" ("portable" or "bound"), "machine", "expires", "home", "off", "token_command", "identity" (the hash of the identity `stablehand account scan` read in its login)}}`, a field it lacks null. Refuses, writing nothing, a name already kept, an unknown engine (exit {const:EXIT_USAGE}), a date that is no YYYY-MM-DD day, `--expires` or `--token-command` with `--machine` (a bound login is its engine's files, no token) and `--home` without `--machine`.
     ///
     /// ## Logging in
     ///
@@ -360,7 +359,7 @@ enum AccountCmd {
         engine: Option<Engine>,
         #[command(flatten)]
         terms: Terms,
-        /// Clear a term: machine (the login becomes portable), sessions (no limit), expires, home, token-command. Repeatable.
+        /// Clear a term: machine (the login becomes portable), expires, home, token-command. Repeatable.
         #[arg(long, value_enum, verbatim_doc_comment)]
         unset: Vec<Field>,
     },

@@ -667,16 +667,29 @@ fn pick_takes_the_engine_s_usable_accounts_and_passes_over_each_by_guild_s_rules
         Ok("claude-felix".into())
     );
 
-    // Its sessions at once (2) running, the account never read is next.
-    let full = [
+    // No count of sessions running passes an account over by itself: its
+    // windows and their pace decide (stablehand#26). claude-felix's pace,
+    // shared by three, runs out; claude-two, never read, runs on at no rate.
+    let many = [
         "--machine",
         "studio",
         "--running",
-        "claude-felix=2,claude-two=1",
+        "claude-felix=2,claude-two=40",
     ];
-    assert_eq!(picked(&b, &full), Ok("claude-two".into()));
+    assert_eq!(picked(&b, &many), Ok("claude-two".into()));
+    let one_more = ["--machine", "studio", "--running", "claude-two=40"];
+    assert_eq!(picked(&b, &one_more), Ok("claude-felix".into()));
 
-    // A limit on it, and claude-two's two running: none, until the limit lifts.
+    // claude-two off, claude-felix at two running is passed over by its pace.
+    b.ok(&["off", "claude-two", "--reason", "paused"]);
+    let two = ["--machine", "studio", "--running", "claude-felix=2"];
+    assert!(
+        picked(&b, &two)
+            .unwrap_err()
+            .contains(&("claude-felix".into(), "runs_out".into()))
+    );
+
+    // A limit on it: none, until the limit lifts.
     let lifts = rfc3339(now() + 1800);
     b.ok(&[
         "limit",
@@ -709,7 +722,7 @@ fn pick_takes_the_engine_s_usable_accounts_and_passes_over_each_by_guild_s_rules
             ("claude-gone", "not_logged_in"),
             ("claude-mini", "elsewhere"),
             ("claude-off", "off"),
-            ("claude-two", "full"),
+            ("claude-two", "off"),
         ]
     );
     assert_eq!(answer["why"][3]["why"], "switched off: card declined");
