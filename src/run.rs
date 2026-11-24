@@ -102,12 +102,26 @@ pub fn run(asked: Asked, now: u64) -> Result<ExitCode, Refused> {
     hand_login(&mut child, &a, asked.home.as_deref())?;
     let said = model.map_or(String::new(), |m| format!(" ({m})"));
     eprintln!("stablehand: {} on {}{said}", engine.name(), a.name);
-    forward_signals();
-    let mut started = child
-        .spawn()
-        .map_err(|e| format!("`{}` did not start: {e}: is it on PATH?", line[0]))?;
+    // Held from before the child starts until its pid is known, so each is
+    // either stablehand's own (nothing started) or the child's.
+    let unheld = hold_signals();
+    // SAFETY: between fork and exec it only calls release_signals, which
+    // calls pthread_sigmask, async-signal-safe.
+    unsafe {
+        std::os::unix::process::CommandExt::pre_exec(&mut child, move || {
+            release_signals(unheld);
+            Ok(())
+        });
+    }
+    let spawned = child.spawn();
+    if let Ok(started) = &spawned {
+        CHILD.store(started.id() as i32, Ordering::SeqCst);
+        forward_signals();
+    }
+    release_signals(unheld);
+    let mut started =
+        spawned.map_err(|e| format!("`{}` did not start: {e}: is it on PATH?", line[0]))?;
     let pid = started.id();
-    CHILD.store(pid as i32, Ordering::SeqCst);
     if let Err(e) = store.start_session(&a.name, pid, now) {
         eprintln!("stablehand: its session is not counted: {e}");
     }
@@ -214,7 +228,7 @@ pub fn alive(pid: u32) -> bool {
     found || std::io::Error::last_os_error().raw_os_error() == Some(libc::EPERM)
 }
 
-/// The child's pid, once started: where a signal is forwarded.
+/// The child's pid: where a signal is forwarded, set before any is.
 static CHILD: AtomicI32 = AtomicI32::new(0);
 
 /// The signals passed on to the child.
@@ -237,7 +251,7 @@ fn forward_signals() {
         // SAFETY: the kernel hands a valid siginfo to an SA_SIGINFO handler.
         let sender = unsafe { sender(info) };
         let child = CHILD.load(Ordering::SeqCst);
-        if sender != 0 && child > 0 && sender != child {
+        if sender != 0 && sender != child {
             // SAFETY: kill is async-signal-safe.
             unsafe { libc::kill(child, sig) };
         }
@@ -253,6 +267,29 @@ fn forward_signals() {
             libc::sigaction(sig, &action, std::ptr::null_mut());
         }
     }
+}
+
+/// Blocks the signals of [`PASSED`]; answers the mask to restore (the
+/// child restores it before it runs its program).
+fn hold_signals() -> libc::sigset_t {
+    // SAFETY: sigset_t is plain data, filled by sigemptyset and sigaddset.
+    unsafe {
+        let mut held: libc::sigset_t = std::mem::zeroed();
+        let mut before: libc::sigset_t = std::mem::zeroed();
+        libc::sigemptyset(&mut held);
+        for sig in PASSED {
+            libc::sigaddset(&mut held, sig);
+        }
+        libc::pthread_sigmask(libc::SIG_BLOCK, &held, &mut before);
+        before
+    }
+}
+
+/// Restores the mask [`hold_signals`] answered: a signal held meanwhile is
+/// delivered now.
+fn release_signals(before: libc::sigset_t) {
+    // SAFETY: `before` is a mask pthread_sigmask filled.
+    unsafe { libc::pthread_sigmask(libc::SIG_SETMASK, &before, std::ptr::null_mut()) };
 }
 
 /// The pid that sent a signal; 0 for the kernel's.
@@ -279,5 +316,7 @@ fn passed_on(status: ExitStatus) -> ExitCode {
         libc::signal(sig, libc::SIG_DFL);
         libc::raise(sig);
     }
-    ExitCode::from(128 + sig as u8)
+    // raise returns only for a signal whose default ends nothing, and no
+    // such signal ended the child.
+    ExitCode::FAILURE
 }

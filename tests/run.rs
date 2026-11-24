@@ -137,7 +137,11 @@ fn what_it_refuses_starts_nothing() {
     let r = kept()("run-refused");
     for (args, code, part) in [
         (&["--", "-p", "hi"][..], "bad_run", "no command"),
-        (&["ls"], "bad_run", "no engine's program"),
+        (
+            &["ls"],
+            "bad_run",
+            "no engine's program (`claude` claude-code, `codex` codex",
+        ),
         (
             &["--engine", "codex", "claude"],
             "bad_run",
