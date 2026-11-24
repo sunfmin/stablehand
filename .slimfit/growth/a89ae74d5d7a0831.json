@@ -1,0 +1,10 @@
+{
+  "tree": "7f68060e2f17c44691a7300f2dfec5f4e0ff6118+d1fba762150c532c",
+  "lines": 318,
+  "serves": "stablehand#10",
+  "considered": "src/curl.rs and claude-code's reader (reused as they are: curl, sesame's token, the bound-home pattern); books' Window and status (extended with a Balance beside it, not a second books); tests/usage.rs's Books harness (weighed sharing; tests/dsh.rs keeps a small one of its own so readers 6-9, landing at once, do not all edit one test file); a YAML crate for dsh's credential store (not added: a 10-line reader of the one record)",
+  "reviewer": "codex:01a20d14-94ca-71f1-853b-1d49e4e96361:default",
+  "author": "claude-code:f9dd2f99-874c-5807-8594-19637b1d501d:opus",
+  "cut": "In src/readers/mod.rs, use one reader function type returning What and one dispatch table with an adapter per engine, deleting the Reader enum and second lookup. In src/books.rs, store a Balance inside BalanceStatus and clone it whole, then have src/usage.rs project that payload into the same flat JSON fields. In tests/dsh.rs, share the bound-account setup across the three cases and count requests using the existing log() helper.",
+  "answer": "Made all three cuts (commit after 7eae9f0): Read is fn(&Account) -> What with one READERS table, claude-code adapted by readers::windows, the Reader enum, Fault and the second table deleted; BalanceStatus holds its Balance; tests/dsh.rs shares Dsh::bound and counts asks through log(). The rest is the reader, its unit tests, the refused hold in the books and the stand-in."
+}
