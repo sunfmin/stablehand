@@ -1,0 +1,29 @@
+{
+  "tip": "7afc0bb6cbf778290ebcdd3b5fc917e81dafcb79",
+  "from": "4b825dc642cb6eb9a060e54bf8d69288fbee4904",
+  "pool": 16,
+  "drawn": {
+    "rust": [
+      {
+        "name": "src/version.rs:34:5: replace split_dirty -> (&str, &str) with (\"\", \"\")",
+        "outcome": "killed"
+      },
+      {
+        "name": "src/version.rs:41:5: replace tagged -> Option<String> with None",
+        "outcome": "killed"
+      },
+      {
+        "name": "src/version.rs:53:26: replace && with || in untagged",
+        "outcome": "killed"
+      },
+      {
+        "name": "src/version.rs:34:5: replace split_dirty -> (&str, &str) with (\"xyzzy\", \"xyzzy\")",
+        "outcome": "killed"
+      },
+      {
+        "name": "src/version.rs:51:5: replace untagged -> Option<String> with None",
+        "outcome": "killed"
+      }
+    ]
+  }
+}
