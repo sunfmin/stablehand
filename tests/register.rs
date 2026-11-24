@@ -318,4 +318,7 @@ fn each_refusal_carries_its_code_and_the_exit_it_decides() {
         );
         assert!(out.json["error"].is_string(), "{args:?}: {}", out.json);
     }
+    let later = "2999-01-01T00:00:00Z";
+    let booked = r.ok(&["limit", "a", "--resets-at", later]);
+    assert_eq!(booked["limit"]["resets_at"], later, "{booked}");
 }
