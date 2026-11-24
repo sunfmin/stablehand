@@ -57,6 +57,9 @@ impl Engine {
             home_var,
             bound,
             token,
+            // The others read a token from where their own login put it, as
+            // far as stablehand knows: their sessions start bound.
+            token_var: (self == ClaudeCode).then_some("CLAUDE_CODE_OAUTH_TOKEN"),
             usage_host,
         }
     }
@@ -71,6 +74,8 @@ pub struct Login {
     pub bound: &'static [&'static str],
     /// The command that prints a long-lived token, where the engine has one.
     pub token: Option<&'static [&'static str]>,
+    /// The variable a session reads a portable token from, where the engine has one.
+    pub token_var: Option<&'static str>,
     /// The host its usage is read from: the one host sesame sends its token to.
     pub usage_host: &'static str,
 }
@@ -114,14 +119,18 @@ pub struct Shown<'a> {
 
 impl Account {
     pub fn shown(&self) -> Shown<'_> {
-        let login = if self.machine.is_some() {
+        Shown {
+            account: self,
+            login: self.login(),
+        }
+    }
+
+    /// Its login's kind: `bound` to a machine, or `portable`.
+    pub fn login(&self) -> &'static str {
+        if self.machine.is_some() {
             "bound"
         } else {
             "portable"
-        };
-        Shown {
-            account: self,
-            login,
         }
     }
 }

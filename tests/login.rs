@@ -235,8 +235,8 @@ fn help_lists_each_engines_login() {
         .unwrap();
     let help = String::from_utf8(out.stdout).unwrap();
     for line in [
-        "claude-code: bound `claude auth login`, CLAUDE_CONFIG_DIR; token `claude setup-token`",
-        "codex: bound `codex login`, CODEX_HOME; token none: --token",
+        "claude-code: bound `claude auth login`, CLAUDE_CONFIG_DIR; token `claude setup-token`, in CLAUDE_CODE_OAUTH_TOKEN",
+        "codex: bound `codex login`, CODEX_HOME; token none: --token, in none: bound only",
         "agy: bound `agy`, HOME;",
     ] {
         assert!(help.contains(line), "{line}: {help}");

@@ -4,6 +4,11 @@
     "sentence": "stablehand is being built: today it says only its version (`stablehand --version`). Its commands land one ticket at a time, each described here as it lands.",
     "source": "README.md:7"
   },
+  "a6f37d0f243d": {
+    "mark": "promise",
+    "sentence": "**Portable**: the engine's token variable (claude-code: `CLAUDE_CODE_OAUTH_TOKEN`), its value the token sesame keeps (`sesame token stablehand-<name> --json`). **Bound**: the engine's home variable set to the account's home, on its machine only.",
+    "source": "README.md:79"
+  },
   "d44ebf590010": {
     "mark": "not",
     "sentence": "A login is the engine's own (docs/adr/0001): stablehand runs the engine's command, never a vendor's OAuth client.",

@@ -76,6 +76,33 @@ says = '''from 30 days ahead its `warning`
 source = "README.md:63"
 check = ["test"]
 
+# tests/env.rs a_portable_account_starts_with_its_token_from_sesame, a_bound_account_starts_in_its_home_on_its_machine
+[[promise]]
+name = "env-portable-token-bound-home"
+says = '''**Portable**: the
+  engine's token variable (claude-code: `CLAUDE_CODE_OAUTH_TOKEN`), its value
+  the token sesame keeps (`sesame token stablehand-<name> --json`). **Bound**:
+  the engine's home variable set to the account's home, on its machine only.'''
+source = "README.md:79"
+check = ["test"]
+
+# tests/env.rs a_portable_account_starts_with_its_token_from_sesame
+[[promise]]
+name = "env-value-on-stdout-alone"
+says = '''The value is written to
+  stdout alone: no file is left behind, and no child is given it on its
+  command line.'''
+source = "README.md:84"
+check = ["test"]
+
+# tests/env.rs an_account_no_session_may_start_on_is_refused_with_its_fix
+[[promise]]
+name = "env-refuses-exit-2"
+says = '''It refuses, exit 2 with `{"error": "…"}` naming the fix, an account that is
+  off, not logged in, or bound to another machine'''
+source = "README.md:87"
+check = ["test"]
+
 [[standin]]
 name = "sesame"
 run = ["tests/contract/sesame-steps", "tests/contract/fake-sesame"]
