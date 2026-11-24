@@ -4,9 +4,12 @@
 //! stdin stablehand was given, and no child is given it on its command line.
 use crate::account::Account;
 use crate::refusal::{Code, Refused};
+use serde::Serialize;
 use std::io::IsTerminal;
 use std::os::fd::AsFd;
+use std::path::Path;
 use std::process::{Command, Stdio};
+use std::time::UNIX_EPOCH;
 
 /// The sesame provider that holds a portable account's token.
 pub fn provider(a: &Account) -> String {
@@ -79,13 +82,48 @@ fn sesame(args: &[&str], stdin: Stdio, shown: bool) -> Result<bool, String> {
     call(&[&["sesame"], args].concat(), None, stdin, shown)
 }
 
-/// Whether `a` is logged in: a bound login as the register recorded it, a
-/// portable one as sesame says ([`token`]).
+/// Whether `a` is logged in: a bound login as the register recorded it, or
+/// its home on this machine holding its engine's login file ([`login_file`]);
+/// a portable one as sesame says ([`token`]).
 pub fn logged_in(a: &Account) -> Result<bool, String> {
     if a.machine.is_some() {
-        return Ok(a.logged_in_at.is_some());
+        return Ok(a.logged_in_at.is_some() || login_file(a)?.is_some());
     }
     token(a).map(|t| t.is_some())
+}
+
+/// A bound login's file, as its engine's login wrote it in its home.
+#[derive(Debug, Serialize)]
+pub struct LoginFile {
+    pub path: String,
+    /// When it was last written (UTC, RFC 3339).
+    pub written_at: String,
+}
+
+/// The engine's login file in `a`'s home, where `a` is bound to this machine
+/// and its home holds one: only looked at, never written.
+pub fn login_file(a: &Account) -> Result<Option<LoginFile>, String> {
+    let (Some(machine), Some(home), Some(_)) = (&a.machine, &a.home, a.engine.login().file) else {
+        return Ok(None);
+    };
+    if &this_machine()? != machine {
+        return Ok(None);
+    }
+    let path = a.engine.login_file(Path::new(home));
+    let Some(written) = std::fs::metadata(&path)
+        .ok()
+        .filter(std::fs::Metadata::is_file)
+        .and_then(|m| m.modified().ok())
+    else {
+        return Ok(None);
+    };
+    let secs = written
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs());
+    Ok(Some(LoginFile {
+        path: path.display().to_string(),
+        written_at: crate::time::utc(secs),
+    }))
 }
 
 /// The token sesame keeps for `a`, if it keeps one: `sesame token <provider>
@@ -146,15 +184,15 @@ pub fn env(a: &Account) -> Result<(&'static str, String), Refused> {
             "account `{name}` has no home: `stablehand account edit {name} --home <dir>`, then `stablehand account login {name}` on {machine}"
         ));
     };
-    if a.logged_in_at.is_none() {
-        return no_session(format!(
-            "account `{name}` is not logged in: run `stablehand account login {name}` on {machine}"
-        ));
-    }
     let here = this_machine()?;
     if &here != machine {
         return no_session(format!(
             "account `{name}` is bound to {machine} and this machine is {here} ($STABLEHAND_MACHINE, else `hostname -s`): start its session on {machine}, or on another account"
+        ));
+    }
+    if !logged_in(a)? {
+        return no_session(format!(
+            "account `{name}` is not logged in: run `stablehand account login {name}` on {machine}"
         ));
     }
     Ok((login.home_var, home.clone()))

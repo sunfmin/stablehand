@@ -30,33 +30,68 @@ impl Engine {
         value.get_name().to_string()
     }
 
+    /// Its login's file in `home` (its [`Login::file`]), for an engine whose
+    /// file stablehand knows: its reader, and a bound home's status.
+    pub fn login_file(self, home: &std::path::Path) -> std::path::PathBuf {
+        let file = self.login().file;
+        home.join(file.expect("asked only of an engine whose login file is known"))
+    }
+
     /// How the engine logs in, its own way (docs/adr/0001 "Logins are the
     /// engine's own"): the one table of each engine's login facts.
     pub fn login(self) -> Login {
         use Engine::*;
-        let (home_var, bound, token, usage_host): (_, &[&str], Option<&[&str]>, _) = match self {
-            ClaudeCode => (
-                "CLAUDE_CONFIG_DIR",
-                &["claude", "auth", "login"],
-                Some(&["claude", "setup-token"]),
-                "api.anthropic.com",
-            ),
-            Codex => ("CODEX_HOME", &["codex", "login"], None, "chatgpt.com"),
-            Pi => ("PI_CODING_AGENT_DIR", &["pi"], None, "chatgpt.com"),
-            Kimi => ("KIMI_CODE_HOME", &["kimi", "login"], None, "api.kimi.com"),
-            Agy => ("HOME", &["agy"], None, "cloudcode-pa.googleapis.com"),
-            Grok => (
-                "GROK_HOME",
-                &["grok", "login"],
-                None,
-                "cli-chat-proxy.grok.com",
-            ),
-            Dsh => ("DSH_HOME", &["dsh", "tui"], None, "platform.deepseek.com"),
-        };
+        let (home_var, bound, token, usage_host, file): (_, &[&str], Option<&[&str]>, _, _) =
+            match self {
+                ClaudeCode => (
+                    "CLAUDE_CONFIG_DIR",
+                    &["claude", "auth", "login"],
+                    Some(&["claude", "setup-token"]),
+                    "api.anthropic.com",
+                    Some(".credentials.json"),
+                ),
+                Codex => (
+                    "CODEX_HOME",
+                    &["codex", "login"],
+                    None,
+                    "chatgpt.com",
+                    Some("auth.json"),
+                ),
+                Pi => (
+                    "PI_CODING_AGENT_DIR",
+                    &["pi"],
+                    None,
+                    "chatgpt.com",
+                    Some("auth.json"),
+                ),
+                Kimi => (
+                    "KIMI_CODE_HOME",
+                    &["kimi", "login"],
+                    None,
+                    "api.kimi.com",
+                    Some("credentials/kimi-code.json"),
+                ),
+                Agy => ("HOME", &["agy"], None, "cloudcode-pa.googleapis.com", None),
+                Grok => (
+                    "GROK_HOME",
+                    &["grok", "login"],
+                    None,
+                    "cli-chat-proxy.grok.com",
+                    Some("auth.json"),
+                ),
+                Dsh => (
+                    "DSH_HOME",
+                    &["dsh", "tui"],
+                    None,
+                    "platform.deepseek.com",
+                    Some(".credentials.yaml"),
+                ),
+            };
         Login {
             home_var,
             bound,
             token,
+            file,
             // The others read a token from where their own login put it, as
             // far as stablehand knows: their sessions start bound.
             token_var: (self == ClaudeCode).then_some("CLAUDE_CODE_OAUTH_TOKEN"),
@@ -72,6 +107,9 @@ pub struct Login {
     pub home_var: &'static str,
     /// The command that logs a bound account in, run in its home.
     pub bound: &'static [&'static str],
+    /// The file its login writes in its home, where stablehand knows one: a
+    /// bound home holding it is logged in. agy's is not known.
+    pub file: Option<&'static str>,
     /// The command that prints a long-lived token, where the engine has one.
     pub token: Option<&'static [&'static str]>,
     /// The variable a session reads a portable token from, where the engine has one.

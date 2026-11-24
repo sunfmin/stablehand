@@ -10,6 +10,18 @@ use std::process::{Command, Stdio};
 
 const PREFIX: &str = "agent-account-";
 const TOKEN: &str = "CLAUDE_CODE_OAUTH_TOKEN";
+/// Where factorium's workers keep each bound account's home, under `$HOME`
+/// (its harness's `HOMES`): a bound account is imported with that home.
+const HOMES: &str = ".agent-accounts";
+
+/// The home factorium's workers give the bound account `name` on this host.
+fn workers_home(name: &str) -> Result<String, String> {
+    let home = std::env::var("HOME")
+        .ok()
+        .filter(|h| !h.is_empty())
+        .ok_or("$HOME is not set: run the import as the person whose accounts they are")?;
+    Ok(format!("{home}/{HOMES}/{name}"))
+}
 
 /// One `agent-account-*` entry as a line of `mytokens list` lists it.
 #[derive(Debug, PartialEq)]
@@ -97,9 +109,14 @@ fn planned(e: &Entry) -> Result<Account, Vec<String>> {
             "{id}: a token and a MACHINE, and a bound login has no token: drop one of them in mytokens, or add the account by hand"
         )]);
     }
+    let home = match machine {
+        Some(_) => Some(workers_home(e.name()).map_err(|f| vec![f])?),
+        None => None,
+    };
     let change = Change {
         terms: Terms {
             machine,
+            home,
             ..Terms::default()
         },
         ..Change::default()
@@ -108,17 +125,46 @@ fn planned(e: &Entry) -> Result<Account, Vec<String>> {
         .map_err(|faults| faults.into_iter().map(|f| format!("{id}: {f}")).collect())
 }
 
-/// Imports every entry not kept yet (`dry_run`: says what it would): all its
-/// entries' faults refuse it before anything is written.
+/// What an import does with one entry.
+#[derive(Clone, Copy, PartialEq)]
+enum Step {
+    Kept,
+    Add,
+    /// A kept bound account with no home is given the workers' one.
+    GiveHome,
+}
+
+/// The kept account `kept` with the workers' home, where it is bound and has none.
+fn homed(kept: &Account) -> Result<Option<Account>, Refused> {
+    if kept.machine.is_none() || kept.home.is_some() {
+        return Ok(None);
+    }
+    let change = Change {
+        terms: Terms {
+            home: Some(workers_home(&kept.name)?),
+            ..Terms::default()
+        },
+        ..Change::default()
+    };
+    let a = account::apply(kept, change).map_err(|f| f.join("; "))?;
+    Ok(Some(a))
+}
+
+/// Imports every entry not kept yet, and gives a kept bound account with no
+/// home the workers' (`dry_run`: says what it would): all its entries' faults
+/// refuse it before anything is written.
 pub fn import(store: &Store, dry_run: bool) -> Result<Value, Refused> {
     let list = read(&["mytokens", "list"])?;
     let mut faults = Vec::new();
     let mut plan = Vec::new();
     for e in entries(&list) {
         match store.get(e.name())? {
-            Some(kept) => plan.push((e, kept, false)),
+            Some(kept) => match homed(&kept)? {
+                Some(a) => plan.push((e, a, Step::GiveHome)),
+                None => plan.push((e, kept, Step::Kept)),
+            },
             None => match planned(&e) {
-                Ok(a) => plan.push((e, a, true)),
+                Ok(a) => plan.push((e, a, Step::Add)),
                 Err(f) => faults.extend(f),
             },
         }
@@ -130,12 +176,17 @@ pub fn import(store: &Store, dry_run: bool) -> Result<Value, Refused> {
         ));
     }
     let mut done = Vec::new();
-    for (e, a, new) in &plan {
-        let token = *new && e.has(TOKEN);
-        let result = match (new, dry_run) {
-            (false, _) => "already kept",
-            (true, true) => "would add",
-            (true, false) => {
+    for (e, a, step) in &plan {
+        let token = *step == Step::Add && e.has(TOKEN);
+        let result = match (step, dry_run) {
+            (Step::Kept, _) => "already kept",
+            (Step::GiveHome, true) => "would give its home",
+            (Step::GiveHome, false) => {
+                store.put(a)?;
+                "given its home"
+            }
+            (Step::Add, true) => "would add",
+            (Step::Add, false) => {
                 if token {
                     let again =
                         "; then `stablehand account import --from-mytokens` again imports the rest";

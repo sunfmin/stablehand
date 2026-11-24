@@ -7,7 +7,7 @@
 //! its group. The token lasts a few hours: one expired is refreshed by grok
 //! itself (`grok models`, no model turn), never by stablehand. `grok usage`
 //! cannot show a plan's usage outside a session: it is not used.
-use crate::account::Account;
+use crate::account::{Account, Engine};
 use crate::books::Window;
 use crate::{curl, time};
 use serde_json::Value;
@@ -67,7 +67,7 @@ impl Login {
     }
 
     fn of(home: &Path) -> Result<Login, String> {
-        let file = home.join("auth.json");
+        let file = Engine::Grok.login_file(home);
         let at = |why: String| format!("{}: {why}", file.display());
         let text = std::fs::read_to_string(&file).map_err(|e| at(e.to_string()))?;
         let auth: Value = serde_json::from_str(&text).map_err(|e| at(format!("not JSON: {e}")))?;
