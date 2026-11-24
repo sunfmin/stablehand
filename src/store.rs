@@ -9,7 +9,8 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 /// The schema, one step per `PRAGMA user_version`: append a step, never edit one.
-const MIGRATIONS: &[&str] = &["
+const MIGRATIONS: &[&str] = &[
+    "
     CREATE TABLE accounts (
         name TEXT PRIMARY KEY,
         engine TEXT NOT NULL,
@@ -21,12 +22,15 @@ const MIGRATIONS: &[&str] = &["
         off_at TEXT,
         off_reason TEXT
     );
-"];
+",
+    "ALTER TABLE accounts ADD COLUMN logged_in_at TEXT;",
+];
 
 /// How long a process waits for another's write.
 const BUSY_TIMEOUT: Duration = Duration::from_secs(30);
 
-const COLUMNS: &str = "name, engine, machine, sessions, expires, home, off_by, off_at, off_reason";
+const COLUMNS: &str =
+    "name, engine, machine, sessions, expires, home, off_by, off_at, off_reason, logged_in_at";
 
 pub struct Store {
     conn: Connection,
@@ -80,11 +84,6 @@ fn engine_of(row: &Row) -> rusqlite::Result<Engine> {
     })
 }
 
-fn engine_name(e: Engine) -> String {
-    let value = clap::ValueEnum::to_possible_value(&e).expect("every engine is a value");
-    value.get_name().to_string()
-}
-
 fn account_of(row: &Row) -> rusqlite::Result<Account> {
     let off = match (row.get(6)?, row.get(7)?, row.get(8)?) {
         (Some(by), Some(at), Some(reason)) => Some(Off { by, at, reason }),
@@ -98,6 +97,7 @@ fn account_of(row: &Row) -> rusqlite::Result<Account> {
         expires: row.get(4)?,
         home: row.get(5)?,
         off,
+        logged_in_at: row.get(9)?,
     })
 }
 
@@ -172,10 +172,12 @@ impl Store {
         let off = a.off.as_ref();
         self.conn
             .execute(
-                &format!("{verb} accounts ({COLUMNS}) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)"),
+                &format!(
+                    "{verb} accounts ({COLUMNS}) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)"
+                ),
                 params![
                     a.name,
-                    engine_name(a.engine),
+                    a.engine.name(),
                     a.machine,
                     a.sessions,
                     a.expires,
@@ -183,6 +185,7 @@ impl Store {
                     off.map(|o| &o.by),
                     off.map(|o| &o.at),
                     off.map(|o| &o.reason),
+                    a.logged_in_at,
                 ],
             )
             .map(|n| n == 1)

@@ -1,6 +1,7 @@
 //! stablehand: one home for agent engine accounts, their logins and their
 //! usage windows (README.md, docs/adr/0001). Today: the account register.
 mod account;
+mod login;
 mod store;
 // build.rs runs it to stamp the version; compiled here too, for its tests.
 #[cfg_attr(not(test), allow(dead_code))]
@@ -77,10 +78,37 @@ enum AccountCmd {
     ///
     /// Answers {"accounts": [{…}, …]}, each as `add` answers it.
     List,
-    /// One account.
+    /// One account, and whether it is logged in.
     ///
-    /// Answers {"account": {…}}, as `add` does.
+    /// Answers {"account": {…}, "logged_in": true|false, "days_left": n|null,
+    /// "warning": "…"|null}: a bound login is logged in as `account login`
+    /// recorded it (`logged_in_at`), a portable one when sesame holds its
+    /// token (`sesame token stablehand-<name>`); `days_left` counts to
+    /// --expires, and `warning` says from 30 days ahead to make a new token.
     Show { name: String },
+    /// Log an account in by its engine's own login.
+    ///
+    /// Portable: runs the engine's token command (below; with --token,
+    /// none), then sesame asks for the token with hidden input, or reads it
+    /// from stdin when stdin is no terminal, and keeps it as the provider
+    /// `stablehand-<name>` (made with `sesame provider add` if missing). The
+    /// token is on no command line, in no log and not in the register. Bound:
+    /// on the account's machine ($STABLEHAND_MACHINE, else `hostname -s`),
+    /// runs the engine's login (below) with the variable it reads for its home
+    /// set to the account's --home, and records when. Answers as `show` does.
+    /// Refuses, writing nothing, a bound login on another machine or with no
+    /// home, --token or --expires on a bound login, and an engine with no
+    /// token command without --token.
+    #[command(after_long_help = engines_help())]
+    Login {
+        name: String,
+        /// Paste the token instead of running the engine's token command.
+        #[arg(long)]
+        token: bool,
+        /// When the new token expires, YYYY-MM-DD, kept as the account's --expires.
+        #[arg(long)]
+        expires: Option<String>,
+    },
     /// Change an account's terms: only those given change.
     ///
     /// Answers {"account": {…}}; refuses as `add` does, judging the account as it would be.
@@ -100,6 +128,25 @@ enum AccountCmd {
     /// Answers {"name": …, "removed": true}, or false when
     /// there was none: run twice, the same register.
     Rm { name: String },
+}
+
+/// Each engine's login, as `account login --help` lists it.
+fn engines_help() -> String {
+    let lines = <Engine as clap::ValueEnum>::value_variants()
+        .iter()
+        .map(|e| {
+            let l = e.login();
+            let token = l
+                .token
+                .map_or("none: --token".into(), |t| format!("`{}`", t.join(" ")));
+            format!(
+                "  {}: bound `{}`, {}; token {token}",
+                e.name(),
+                l.bound.join(" "),
+                l.home_var
+            )
+        });
+    format!("Engines:\n{}", lines.collect::<Vec<_>>().join("\n"))
 }
 
 fn main() -> ExitCode {
@@ -133,6 +180,20 @@ fn faults(f: Vec<String>) -> String {
 
 fn shown(a: &Account) -> Value {
     json!({ "account": a.shown() })
+}
+
+fn now() -> Result<u64, String> {
+    let since = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH);
+    since.map(|d| d.as_secs()).map_err(|e| e.to_string())
+}
+
+/// `a` as `show` answers it: with whether it is logged in.
+fn with_status(a: &Account) -> Result<Value, String> {
+    let today = (now()? / 86_400) as i64;
+    let mut v = serde_json::to_value(account::status(a, login::logged_in(a)?, today))
+        .map_err(|e| e.to_string())?;
+    v["account"] = json!(a.shown());
+    Ok(v)
 }
 
 /// The account `name`, or the refusal that says how to find one.
@@ -174,7 +235,24 @@ fn run(cmd: Cmd) -> Result<Value, String> {
                 let shown: Vec<_> = all.iter().map(Account::shown).collect();
                 Ok(json!({ "accounts": shown }))
             }
-            AccountCmd::Show { name } => kept(&store, &name).map(|a| shown(&a)),
+            AccountCmd::Show { name } => with_status(&kept(&store, &name)?),
+            AccountCmd::Login {
+                name,
+                token,
+                expires,
+            } => {
+                let change = Change {
+                    terms: Terms {
+                        expires,
+                        ..Terms::default()
+                    },
+                    ..Change::default()
+                };
+                let a = account::apply(&kept(&store, &name)?, change).map_err(faults)?;
+                let a = login::login(&a, token, account::utc(now()?))?;
+                store.put(&a)?;
+                with_status(&a)
+            }
             AccountCmd::Edit {
                 name,
                 engine,
@@ -203,13 +281,9 @@ fn run(cmd: Cmd) -> Result<Value, String> {
             if reason.trim().is_empty() {
                 return Err("--reason is empty: say why the account is off".into());
             }
-            let now = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map_err(|e| e.to_string())?
-                .as_secs();
             a.off = Some(Off {
                 by: std::env::var("USER").unwrap_or_else(|_| "unknown".into()),
-                at: account::utc(now),
+                at: account::utc(now()?),
                 reason,
             });
             store.put(&a)?;

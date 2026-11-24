@@ -3,5 +3,10 @@
     "mark": "not",
     "sentence": "stablehand is being built: today it says only its version (`stablehand --version`). Its commands land one ticket at a time, each described here as it lands.",
     "source": "README.md:7"
+  },
+  "d44ebf590010": {
+    "mark": "not",
+    "sentence": "A login is the engine's own (docs/adr/0001): stablehand runs the engine's command, never a vendor's OAuth client.",
+    "source": "README.md:47"
   }
 }

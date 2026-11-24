@@ -1,65 +1,18 @@
 //! The account register, run through the binary: each command's JSON and
 //! exit code, against a config dir of the test's own.
+mod support;
+
 use serde_json::{Value, json};
 use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
 use std::process::Command;
-
-struct Register {
-    dir: PathBuf,
-}
-
-struct Out {
-    code: i32,
-    json: Value,
-}
-
-impl Register {
-    fn new(name: &str) -> Register {
-        let dir = std::env::temp_dir()
-            .join(format!("stablehand-test-{}", std::process::id()))
-            .join(name);
-        let _ = std::fs::remove_dir_all(&dir);
-        Register {
-            dir: dir.join("config"),
-        }
-    }
-
-    fn run(&self, args: &[&str]) -> Out {
-        let out = Command::new(env!("CARGO_BIN_EXE_stablehand"))
-            .args(args)
-            .env("STABLEHAND_CONFIG_DIR", &self.dir)
-            .env("USER", "tester")
-            .output()
-            .unwrap();
-        let stdout = String::from_utf8(out.stdout).unwrap();
-        assert_eq!(stdout.lines().count(), 1, "one JSON line: {stdout}");
-        Out {
-            code: out.status.code().unwrap(),
-            json: serde_json::from_str(&stdout).unwrap(),
-        }
-    }
-
-    fn ok(&self, args: &[&str]) -> Value {
-        let out = self.run(args);
-        assert_eq!(out.code, 0, "{args:?}: {}", out.json);
-        out.json
-    }
-
-    /// The refusal's message, after checking it is one and wrote nothing.
-    fn refused(&self, args: &[&str], code: i32) -> String {
-        let before = self.ok(&["account", "list"]);
-        let out = self.run(args);
-        assert_eq!(out.code, code, "{args:?}: {}", out.json);
-        assert_eq!(self.ok(&["account", "list"]), before, "{args:?} wrote");
-        out.json["error"].as_str().unwrap().to_string()
-    }
-}
+use support::Register;
 
 fn account(name: &str, engine: &str, sessions: Value) -> Value {
     json!({
         "name": name, "engine": engine, "login": "portable", "machine": null,
         "sessions": sessions, "expires": null, "home": null, "off": null,
+        "logged_in_at": null,
     })
 }
 
@@ -112,7 +65,7 @@ fn add_list_show_edit_and_rm() {
         r.ok(&["account", "list"]),
         json!({ "accounts": [bound, want, kimi["account"]] })
     );
-    assert_eq!(r.ok(&["account", "show", "chatgpt"]), codex);
+    assert_eq!(r.ok(&["account", "show", "chatgpt"])["account"], bound);
 
     // Only the terms given change; --unset clears; the account is judged as it would be.
     let edited = r.ok(&[
@@ -138,7 +91,7 @@ fn add_list_show_edit_and_rm() {
         "--unset", "sessions",
     ]);
     assert_eq!(portable["account"], account("chatgpt", "pi", Value::Null));
-    assert_eq!(r.ok(&["account", "show", "claude-felix"]), edited);
+    assert_eq!(r.ok(&["account", "show", "claude-felix"])["account"], moved);
 
     // rm, run twice, leaves the same register.
     let gone = json!({ "name": "chatgpt", "removed": true });
@@ -231,12 +184,18 @@ fn off_keeps_who_when_and_why_and_on_forgets_it() {
         at.len() == 20 && at.ends_with('Z') && at.as_bytes()[10] == b'T',
         "{at}"
     );
-    assert_eq!(r.ok(&["account", "show", "grok-1"]), off);
+    assert_eq!(
+        r.ok(&["account", "show", "grok-1"])["account"],
+        off["account"]
+    );
 
     let on = r.ok(&["on", "grok-1"]);
     assert_eq!(on["account"], account("grok-1", "grok", Value::Null));
     assert_eq!(r.ok(&["on", "grok-1"]), on);
-    assert_eq!(r.ok(&["account", "show", "grok-1"]), on);
+    assert_eq!(
+        r.ok(&["account", "show", "grok-1"])["account"],
+        on["account"]
+    );
 }
 
 #[test]
