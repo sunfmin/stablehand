@@ -5,6 +5,7 @@ mod books;
 mod bounded;
 mod curl;
 mod login;
+mod order;
 mod pick;
 mod readers;
 mod refusal;
@@ -39,7 +40,7 @@ const LEARN: &str = "Learn";
 ///
 /// stablehand runs no login and keeps no secret: a person logs an engine in by the engine itself, and stablehand finds the login where it is. A bound account is logged in when its home holds its engine's login file; a portable one when the command it names (`--token-command`) prints its token, the token kept where the person keeps secrets (the Keychain, 1Password, mytokens).
 ///
-/// `stablehand credential <name>` hands a session's caller an account's login (a token, or the login files to link into the session's own home); `stablehand read` asks an account's engine for its windows and books the reading, `stablehand limit` books a session's report that it met the account's limit, `stablehand status` says what the books say now, each window's pace with it, and `stablehand pick --engine <engine>` which account one more session may start on.
+/// `stablehand credential <name>` hands a session's caller an account's login (a token, or the login files to link into the session's own home); `stablehand read` asks an account's engine for its windows and books the reading, `stablehand limit` books a session's report that it met the account's limit, `stablehand status` says what the books say now, each window's pace with it, and `stablehand pick` what the next session starts on: the first engine, model and account of the order (`stablehand order`) one more session may start on. The session itself, its command, flags and home, is the caller's.
 ///
 /// Start with `stablehand account list`. Run `stablehand <command> --help` before a command's first run.
 ///
@@ -135,6 +136,12 @@ enum Register {
         #[command(subcommand)]
         cmd: AccountCmd,
     },
+    /// Set or show the order: the engines, and of each the models, the next session starts on, highest first (`stablehand pick` walks it).
+    #[command(next_help_heading = REGISTER, verbatim_doc_comment)]
+    Order {
+        #[command(subcommand)]
+        cmd: OrderCmd,
+    },
     /// Switch an account off: nothing is picked on it until `stablehand on`.
     ///
     /// Keeps who (`$USER`), when (UTC) and why; switching off an account already off replaces them. Answers `{"account": {…}}`.
@@ -211,9 +218,13 @@ enum Register {
         #[arg(verbatim_doc_comment)]
         name: Option<String>,
     },
-    /// Which account of an engine one more session may start on now.
+    /// What the next session starts on: the first engine, model and account of the order one more session may start on now.
     ///
-    /// Reads no engine: it judges the books as `stablehand status` shows them (run `stablehand read` first for fresh windows). The candidates are the engine's accounts usable on this machine (portable, or bound to it), logged in, and not off.
+    /// Reads no engine: it judges the books as `stablehand status` shows them (run `stablehand read` first for fresh windows). It walks the order (`stablehand order show`): each engine in turn, and of each its models in turn (the engine's own where the order lists none); at each (engine, model), the engine's accounts usable on this machine (portable, or bound to it), logged in, and not off, judged by the rules below. An engine of the order with no account kept is skipped, and said (`no_account`): nothing starts on a login stablehand does not keep.
+    ///
+    /// ## Narrowing the walk
+    ///
+    /// `--engine` (repeatable) and `--model` narrow the walk to them, in the order's order. An engine or a model not in the order may still be named: it is tried after the rest, an engine named without `--model` on its own model. With neither, and no order kept, there is nothing to walk: it refuses (`no_order`).
     ///
     /// ## The rules
     ///
@@ -228,21 +239,23 @@ enum Register {
     ///
     /// ## A session's model
     ///
-    /// With `--model <id>`, an account whose windows are grouped by model (agy: `Gemini Models`, `Claude and GPT models`) is judged only by the windows of the group holding that model (its windows' `models` in `stablehand status`), and those in no group: every rule above, a limit on a window of another group left out. One no group of which holds the model is judged by every window, as without `--model`, and named in the answer's `model_in_no_group`. An engine that groups no window is judged as without it.
+    /// At a step with a model, an account whose windows are grouped by model (agy: `Gemini Models`, `Claude and GPT models`) is judged only by the windows of the group holding that model (its windows' `models` in `stablehand status`), and those in no group: every rule above, a limit on a window of another group left out. So one agy account is two pools: its Gemini group used up, the walk falls to its Claude model. One no group of which holds the model is judged by every window, and named in the answer's `model_in_no_group`. An engine that groups no window is judged as without a model.
     ///
     /// ## What it answers
     ///
-    /// `{"account": "<name>"}`, or `{"none": true, "until": <the earliest time any lifts, or null>, "why": [{"account", "reason", "why", "until"}]}`, `reason` one of `off`, `elsewhere`, `not_logged_in`, `limit`, `stopped`, `full`, `runs_out`. With `--model`, either answer also says `"model"` and `"model_in_no_group"`, the accounts judged by every window. An engine with no account here answers none with an empty `why`. It refuses a `--running` name that is no account kept.
+    /// `{"engine", "model" (null: the engine's own), "account", "why", "model_in_no_group"}`, or `{"none": true, "until": <the earliest time any passed over lifts, or null>, "why", "model_in_no_group"}`. `why` is each (engine, model, account) passed over before the answer, in the walk's order: `[{"engine", "model", "account" (null for an engine skipped), "reason", "why", "until"}]`, `reason` one of `no_account`, `off`, `elsewhere`, `not_logged_in`, `limit`, `stopped`, `full`, `runs_out`. It refuses a `--running` name that is no account kept, and a walk with nothing in it.
+    ///
+    /// The order is a preference only: the command an engine starts with, its flags, and which caller keeps to which engine stay the caller's.
     ///
     /// ## What trips you up
     ///
     /// `--running` is the caller's count, on this machine or wherever it knows: stablehand counts no session itself. An account left out of it has none running.
     #[command(next_help_heading = SESSIONS, verbatim_doc_comment)]
     Pick {
-        /// The engine the session runs in.
+        /// Walk only this engine's steps; repeatable. One not in the order is tried after the rest.
         #[arg(long, value_enum, verbatim_doc_comment)]
-        engine: Engine,
-        /// The model the session runs, by the id its engine starts it with (`agy models`: `claude-opus-5-5-high`): only the windows of the group holding it decide.
+        engine: Vec<Engine>,
+        /// Walk only the steps of this model, by the id its engine starts it with (`agy models`: `claude-opus-5-5-high`); one not in the order is tried on each `--engine` after the rest.
         #[arg(long, value_parser = clap::builder::NonEmptyStringValueParser::new(), verbatim_doc_comment)]
         model: Option<String>,
         /// The sessions now running per account, `<account>=<n>`, comma-separated or repeated.
@@ -255,6 +268,35 @@ enum Register {
         #[arg(long, default_value_t = pick::STOP_PERCENT, value_parser = clap::value_parser!(u8).range(1..=100), verbatim_doc_comment)]
         stop_percent: u8,
     },
+}
+
+/// The order: which engines, and of each which models, the next session starts on.
+#[derive(Subcommand)]
+enum OrderCmd {
+    /// Set the order, highest first: each `<engine>[@<model>[,<model>…]]`.
+    ///
+    /// One order per machine, kept in the register's database; it replaces the one kept. An engine is one of stablehand's (below); its models are the ids its engine starts a session with, highest first (claude-code's `opus`), none naming the engine's own. agy's are checked against the ids `agy models` lists, run in the home of the first agy account bound to this machine (the user's own without one). The order is a preference only: the command an engine starts with, its flags and its guard stay the caller's.
+    ///
+    /// `stablehand order set claude-code@opus codex grok agy@gemini-4-neon-high,claude-opus-5-5-high`
+    ///
+    /// ## What it answers
+    ///
+    /// `{"order": [{"engine", "models": [...]}]}`, as `stablehand order show` does. It refuses, writing nothing (`bad_order`), an engine it does not know, one given twice, an empty model or one given twice, and an agy model `agy models` does not list, or `agy models` failing.
+    ///
+    /// ## Engines
+    ///
+    /// {const:ENGINES}
+    #[command(verbatim_doc_comment)]
+    Set {
+        /// `<engine>[@<model>[,<model>…]]`, highest first.
+        #[arg(required = true, verbatim_doc_comment)]
+        ranks: Vec<String>,
+    },
+    /// The order kept, highest first.
+    ///
+    /// Answers `{"order": [{"engine", "models": [...]}]}`, empty when none is set.
+    #[command(verbatim_doc_comment)]
+    Show,
 }
 
 /// One `--running` count, `<account>=<n>`.
@@ -617,15 +659,74 @@ fn run(cmd: Register) -> Result<Value, Refused> {
                 Some(m) => m,
                 None => login::this_machine()?,
             };
+            let walk = order::walk(&store.order()?, &engine, model.as_deref());
+            if walk.is_empty() {
+                return Err(Refused::new(
+                    Code::NoOrder,
+                    format!(
+                        "nothing to walk: {}; set the order, `stablehand order set claude-code@opus codex`, or name `--engine <engine>`",
+                        model.map_or(
+                            "no order is kept and no --engine named".into(),
+                            |m| format!(
+                                "no engine of the order lists model `{m}` and no --engine is named"
+                            )
+                        )
+                    ),
+                ));
+            }
             let session = usage::Session {
-                engine,
-                model: model.as_deref(),
                 running: &running,
                 machine: &machine,
             };
-            Ok(usage::pick(&store, &all, &session, stop_percent, now()?)?)
+            Ok(usage::pick(
+                &store,
+                &all,
+                &walk,
+                &session,
+                stop_percent,
+                now()?,
+            )?)
         }
+        Register::Order { cmd } => match cmd {
+            OrderCmd::Set { ranks } => {
+                let bad = |f: Vec<String>| Refused::new(Code::BadOrder, f.join("; "));
+                let order = order::parse(&ranks).map_err(bad)?;
+                let agy = order::agy_models(&order);
+                if !agy.is_empty() {
+                    let listed =
+                        readers::agy::models(&agy_home(&store)?).map_err(|e| bad(vec![e]))?;
+                    let unknown: Vec<String> = agy
+                        .iter()
+                        .filter(|m| !listed.iter().any(|l| l == *m))
+                        .map(|m| {
+                            format!(
+                                "`agy models` lists no `{m}`: give one of {}",
+                                listed.join(", ")
+                            )
+                        })
+                        .collect();
+                    if !unknown.is_empty() {
+                        return Err(bad(unknown));
+                    }
+                }
+                store.set_order(&order)?;
+                Ok(json!({ "order": order }))
+            }
+            OrderCmd::Show => Ok(json!({ "order": store.order()? })),
+        },
     }
+}
+
+/// Where `agy models` runs: the home of the first agy account bound to this
+/// machine, else the user's own.
+fn agy_home(store: &Store) -> Result<String, Refused> {
+    let here = login::this_machine()?;
+    let home = store
+        .list()?
+        .into_iter()
+        .find(|a| a.engine == Engine::Agy && a.machine.as_deref() == Some(here.as_str()))
+        .and_then(|a| a.home);
+    Ok(home.unwrap_or_else(|| std::env::var("HOME").unwrap_or_default()))
 }
 
 /// The account `name`, or every account where none is named.

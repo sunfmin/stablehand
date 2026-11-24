@@ -41,6 +41,11 @@
   failed.
 - **Pace**: per window, whether at its recent rate it runs out before it
   resets (**tight**), resets with much left (**spare**), or is **used up**.
-- **Pick**: the answer to "which account may one more session start on now":
-  an account, or none with until when and why.
+- **Order**: the engines, and of each the models, the next session starts
+  on, highest first (`claude-code@opus codex grok agy@gemini-4-neon-high,claude-opus-5-5-high`);
+  one per machine, kept beside the accounts. A preference only: the
+  command an engine starts with, its flags and its guard are the caller's.
+- **Pick**: the answer to "what may one more session start on now": the
+  first engine, model and account of the order whose account takes it,
+  or none with until when and why. The session itself is the caller's.
 - **Off**: an account the person switched off; nothing is picked on it.

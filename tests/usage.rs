@@ -672,9 +672,16 @@ fn pick_refuses_a_count_it_cannot_read_and_an_account_not_kept() {
     }
     let (code, json) = b.run(&["pick", "--engine", "nope"]);
     assert_eq!(code, 2, "{json}");
-    // An engine with no account here: none, and no why.
+    // An engine with no account here: none, and said.
     let answer = b.ok(&["pick", "--engine", "codex"]);
-    assert_eq!(answer, json!({ "none": true, "until": null, "why": [] }));
+    assert_eq!(
+        (&answer["none"], &answer["until"], walked(&answer)),
+        (
+            &json!(true),
+            &Value::Null,
+            vec![step("codex", "-", "-", "no_account")]
+        )
+    );
 }
 
 /// The pi stand-in's bearer (tests/contract/fake-pi) and its login's id.
@@ -1132,7 +1139,7 @@ fn pick_of_a_model_judges_an_agy_account_by_its_group_s_windows() {
     // one not, until its 5h window resets.
     assert_eq!(
         pick_of(&b, "agy", &["--model", "claude-opus-5-5-high"]),
-        json!({"account": "agy-mini", "model": "claude-opus-5-5-high", "model_in_no_group": []})
+        json!({"engine": "agy", "model": "claude-opus-5-5-high", "account": "agy-mini", "why": [], "model_in_no_group": []})
     );
     let gemini = pick_of(&b, "agy", &["--model", "gemini-4-neon-high"]);
     assert_eq!(
@@ -1158,7 +1165,7 @@ fn pick_of_a_model_judges_an_agy_account_by_its_group_s_windows() {
     // Without --model, as before: the account is judged whole, no model said.
     let whole = pick_of(&b, "agy", &[]);
     assert_eq!(reasons(&whole), [("agy-mini".into(), "stopped".into())]);
-    assert!(whole.get("model").is_none(), "{whole}");
+    assert_eq!(whole["model"], Value::Null, "{whole}");
     // `agy models` failing, the windows book no model: every model is in
     // no group, and the account is judged whole.
     b.set("FAKE_AGY_MODELS", "fails");
@@ -1189,8 +1196,8 @@ fn pick_of_a_model_leaves_an_engine_with_no_groups_as_it_was() {
     let with = pick_of(&b, "claude-code", &args);
     let without = pick_of(&b, "claude-code", &args[2..]);
     assert_eq!(
-        (&with["why"], &with["model_in_no_group"]),
-        (&without["why"], &json!([]))
+        (&with["why"][0]["why"], &with["model_in_no_group"]),
+        (&without["why"][0]["why"], &json!([]))
     );
     assert_eq!(reasons(&with), [("claude-felix".into(), "stopped".into())]);
 }
@@ -1237,4 +1244,196 @@ fn an_agy_account_portable_or_bound_elsewhere_is_not_run() {
         log.ends_with(&format!("HOME={}\n", b.root.join("home").display())),
         "{log}"
     );
+}
+
+/// Each (engine, model, account, reason) the answer says it passed over, in order.
+fn walked(answer: &Value) -> Vec<(String, String, String, String)> {
+    let s = |p: &Value, k: &str| p[k].as_str().unwrap_or("-").to_string();
+    answer["why"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|p| {
+            (
+                s(p, "engine"),
+                s(p, "model"),
+                s(p, "account"),
+                s(p, "reason"),
+            )
+        })
+        .collect()
+}
+
+fn step(
+    engine: &str,
+    model: &str,
+    account: &str,
+    reason: &str,
+) -> (String, String, String, String) {
+    (engine.into(), model.into(), account.into(), reason.into())
+}
+
+/// The host's order (factorium's kit): claude-code on opus, codex, grok, and
+/// agy on Gemini, then on Claude.
+const KIT: [&str; 6] = [
+    "order",
+    "set",
+    "claude-code@opus",
+    "codex",
+    "grok",
+    "agy@gemini-4-neon-high,claude-opus-5-5-high",
+];
+
+#[test]
+fn pick_walks_the_order_and_a_used_up_gemini_group_falls_to_agy_s_opus() {
+    let b = Books::new("order-walk");
+    let home = b.agy_home();
+    let add = ["account", "add", "agy-mini", "--engine", "agy"];
+    b.ok(&[&add[..], &["--machine", "mini", "--home", &home]].concat());
+    b.read(&["agy-mini"]);
+    // claude-felix's five_hour 95% used: stopped until it resets.
+    b.portable("claude-felix");
+    let five_resets = b.answers(95.0, 10.0);
+    b.read(&["claude-felix"]);
+
+    // The agy ids are checked against `agy models`, run in agy-mini's home.
+    let set = b.ok(&KIT);
+    let order = json!({ "order": [
+        { "engine": "claude-code", "models": ["opus"] },
+        { "engine": "codex", "models": [] },
+        { "engine": "grok", "models": [] },
+        { "engine": "agy", "models": ["gemini-4-neon-high", "claude-opus-5-5-high"] },
+    ]});
+    assert_eq!(set, order);
+    assert_eq!(b.ok(&["order", "show"]), order);
+    let log = std::fs::read_to_string(b.root.join("agy.log")).unwrap();
+    assert!(log.ends_with(&format!("models HOME={home}\n")), "{log}");
+
+    // The walk: claude-code stopped, codex and grok kept no account, agy's
+    // Gemini group used up, so agy on Opus.
+    let pick = b.ok(&["pick"]);
+    assert_eq!(
+        (&pick["engine"], &pick["model"], &pick["account"]),
+        (
+            &json!("agy"),
+            &json!("claude-opus-5-5-high"),
+            &json!("agy-mini")
+        ),
+        "{pick}"
+    );
+    assert_eq!(
+        walked(&pick),
+        [
+            step("claude-code", "opus", "claude-felix", "stopped"),
+            step("codex", "-", "-", "no_account"),
+            step("grok", "-", "-", "no_account"),
+            step("agy", "gemini-4-neon-high", "agy-mini", "stopped"),
+        ]
+    );
+    let skipped = pick["why"][1]["why"].as_str().unwrap();
+    assert!(skipped.contains("no codex account is kept"), "{skipped}");
+
+    // --engine and --model narrow the walk, in the order's order.
+    let gemini = b.ok(&["pick", "--engine", "agy", "--model", "gemini-4-neon-high"]);
+    assert_eq!(
+        (&gemini["none"], walked(&gemini)),
+        (
+            &json!(true),
+            vec![step("agy", "gemini-4-neon-high", "agy-mini", "stopped")]
+        )
+    );
+    let opus = b.ok(&["pick", "--model", "claude-opus-5-5-high"]);
+    assert_eq!(
+        (&opus["engine"], &opus["account"], walked(&opus)),
+        (&json!("agy"), &json!("agy-mini"), vec![])
+    );
+    let two = b.ok(&["pick", "--engine", "codex", "--engine", "claude-code"]);
+    assert_eq!(
+        (&two["until"], walked(&two)),
+        (
+            &json!(five_resets),
+            vec![
+                step("claude-code", "opus", "claude-felix", "stopped"),
+                step("codex", "-", "-", "no_account"),
+            ]
+        )
+    );
+    // An engine or model not in the order is tried after the rest.
+    let kimi = b.ok(&["pick", "--engine", "kimi", "--engine", "claude-code"]);
+    assert_eq!(
+        walked(&kimi),
+        [
+            step("claude-code", "opus", "claude-felix", "stopped"),
+            step("kimi", "-", "-", "no_account"),
+        ]
+    );
+    let gpt = b.ok(&["pick", "--engine", "agy", "--model", "gpt-oss-120b-medium"]);
+    assert_eq!(
+        (&gpt["model"], &gpt["account"]),
+        (&json!("gpt-oss-120b-medium"), &json!("agy-mini"))
+    );
+
+    // agy's Claude group limited for an hour too: none, until the earliest
+    // of the three lifts.
+    let lifts = rfc3339(now() + 3600);
+    let limit = ["limit", "agy-mini", "--window", "3p-5h", "--resets-at"];
+    b.ok(&[&limit[..], &[&lifts]].concat());
+    let none = b.ok(&["pick"]);
+    assert_eq!(
+        (&none["none"], &none["until"], walked(&none).len()),
+        (&json!(true), &json!(lifts), 5),
+        "{none}"
+    );
+}
+
+#[test]
+fn order_set_refuses_what_stablehand_does_not_know_and_writes_nothing() {
+    let b = Books::new("order-refusals");
+    let home = b.agy_home();
+    let add = ["account", "add", "agy-mini", "--engine", "agy"];
+    b.ok(&[&add[..], &["--machine", "mini", "--home", &home]].concat());
+    // No order and no --engine: nothing to walk.
+    let (code, none) = b.run(&["pick"]);
+    assert_eq!((code, &none["code"]), (1, &json!("no_order")), "{none}");
+    assert!(
+        none["error"]
+            .as_str()
+            .unwrap()
+            .contains("stablehand order set")
+    );
+    b.ok(&["order", "set", "codex"]);
+    for (args, part) in [
+        (vec!["nope"], "no engine `nope`"),
+        (vec!["agy@gemini-9"], "`agy models` lists no `gemini-9`"),
+        (vec!["codex", "codex@gpt"], "`codex` is given twice"),
+        (vec!["agy@"], "`agy@` names no model"),
+        (
+            vec!["agy@claude-opus-5-5-high,claude-opus-5-5-high"],
+            "twice",
+        ),
+    ] {
+        let (code, json) = b.run(&[&["order", "set"], &args[..]].concat());
+        assert_eq!(
+            (code, &json["code"]),
+            (1, &json!("bad_order")),
+            "{args:?}: {json}"
+        );
+        let error = json["error"].as_str().unwrap();
+        assert!(error.contains(part), "{args:?}: {error}");
+    }
+    // `agy models` failing, an agy model cannot be checked: refused, the fix said.
+    b.set("FAKE_AGY_MODELS", "fails");
+    let (code, json) = b.run(&["order", "set", "agy@claude-opus-5-5-high"]);
+    assert_eq!(code, 1, "{json}");
+    assert!(
+        json["error"].as_str().unwrap().contains("agy models"),
+        "{json}"
+    );
+    assert_eq!(
+        b.ok(&["order", "show"]),
+        json!({ "order": [{ "engine": "codex", "models": [] }] })
+    );
+    // --model naming no model of the order, and no --engine: nothing to walk.
+    let (code, json) = b.run(&["pick", "--model", "opus"]);
+    assert_eq!((code, &json["code"]), (1, &json!("no_order")), "{json}");
 }
