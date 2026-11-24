@@ -1,7 +1,13 @@
 //! stablehand: one home for agent engine accounts, their logins and their
 //! usage windows (README.md, docs/adr/0001). Today: the account register.
 mod account;
+mod books;
+mod curl;
+mod readers;
+mod sesame;
 mod store;
+mod time;
+mod usage;
 // build.rs runs it to stamp the version; compiled here too, for its tests.
 #[cfg_attr(not(test), allow(dead_code))]
 mod version;
@@ -52,6 +58,55 @@ enum Cmd {
     ///
     /// An account already on stays as it is. Answers {"account": {…}}.
     On { name: String },
+    /// Read an account's usage windows from its engine, and book the reading.
+    ///
+    /// Without a name, every account. An account is read at most once an hour:
+    /// one read or tried in the last hour waits, unless --now. A reader's
+    /// failure is booked as a failed try and said; the account's last windows
+    /// are kept, marked stale. Answers {"reads": [{account, outcome, windows,
+    /// …}]}, outcome "read", "failed" (with "error", the reason and its fix),
+    /// "waits" (with "next_at") or "no_reader" (its engine has no reader yet);
+    /// each window as `status` shows it. A failed read still exits 0.
+    Read {
+        /// The account to read; without it, every account.
+        name: Option<String>,
+        /// Read even if it was read or tried in the last hour.
+        #[arg(long)]
+        now: bool,
+    },
+    /// Report that a session met an account's limit.
+    ///
+    /// Books it now: the window it names is used up until --resets-at, or, with
+    /// no --resets-at, until the next reading. Without --window the whole
+    /// account is used up. Answers {"limit": {account, at, window, resets_at}}.
+    /// Refuses a --resets-at that is no RFC 3339 time or is past.
+    Limit {
+        name: String,
+        /// The engine's name for the window that ran out (five_hour, seven_day).
+        #[arg(long)]
+        window: Option<String>,
+        /// When the limit lifts, RFC 3339 (2026-11-24T15:00:00Z).
+        #[arg(long)]
+        resets_at: Option<String>,
+    },
+    /// What the books say of each account now: its windows and their pace.
+    ///
+    /// Reads no engine (`stablehand read` does). Answers {"accounts": [{name,
+    /// engine, off, pace, windows, limit, read_at, tried_at, failed,
+    /// read_next}]}. Each window: {name, group (null where the engine groups
+    /// none), used_percent (null once it has reset since it was read),
+    /// resets_at, source ("read" or "limit"), at (when that was booked), stale
+    /// (a later try failed, or it has reset since), pace}. A pace is "tight"
+    /// (at its recent rate it runs out before it resets), "spare" (it resets
+    /// within a quarter of its length with 20% or more left), "used_up", or
+    /// "steady" (neither, or it cannot be told); the account's is its worst
+    /// window's, "used_up" while a limit holds. A reading over two hours old,
+    /// or a window under half used, is never tight on its own. Times are UTC
+    /// RFC 3339.
+    Status {
+        /// The account; without it, every account.
+        name: Option<String>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -203,13 +258,9 @@ fn run(cmd: Cmd) -> Result<Value, String> {
             if reason.trim().is_empty() {
                 return Err("--reason is empty: say why the account is off".into());
             }
-            let now = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map_err(|e| e.to_string())?
-                .as_secs();
             a.off = Some(Off {
                 by: std::env::var("USER").unwrap_or_else(|_| "unknown".into()),
-                at: account::utc(now),
+                at: time::utc(now()?),
                 reason,
             });
             store.put(&a)?;
@@ -222,5 +273,30 @@ fn run(cmd: Cmd) -> Result<Value, String> {
             }
             Ok(shown(&a))
         }
+        Cmd::Read { name, now: anyway } => {
+            usage::read(&store, &chosen(&store, name)?, now()?, anyway)
+        }
+        Cmd::Limit {
+            name,
+            window,
+            resets_at,
+        } => usage::limit(&store, &kept(&store, &name)?, window, resets_at, now()?),
+        Cmd::Status { name } => usage::status(&store, &chosen(&store, name)?, now()?),
+    }
+}
+
+/// The clock: seconds since the Unix epoch.
+fn now() -> Result<u64, String> {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .map_err(|e| e.to_string())
+}
+
+/// The account `name`, or every account where none is named.
+fn chosen(store: &Store, name: Option<String>) -> Result<Vec<Account>, String> {
+    match name {
+        Some(name) => kept(store, &name).map(|a| vec![a]),
+        None => store.list(),
     }
 }

@@ -1,15 +1,17 @@
-//! The register's one store: a SQLite database, `<config dir>/stablehand.db`,
+//! The register's and the books' one store: a SQLite database, `<config dir>/stablehand.db`,
 //! the config dir `$STABLEHAND_CONFIG_DIR` or `~/.config/stablehand`, guarded
 //! as sesame keeps its own: the directory 0700, the file 0600. It holds no
 //! secret: a portable login's token is sesame's.
 use crate::account::{Account, Engine, Off};
+use crate::books::{Entry, What};
 use rusqlite::{Connection, OptionalExtension, Row, params};
 use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 /// The schema, one step per `PRAGMA user_version`: append a step, never edit one.
-const MIGRATIONS: &[&str] = &["
+const MIGRATIONS: &[&str] = &[
+    "
     CREATE TABLE accounts (
         name TEXT PRIMARY KEY,
         engine TEXT NOT NULL,
@@ -21,7 +23,22 @@ const MIGRATIONS: &[&str] = &["
         off_at TEXT,
         off_reason TEXT
     );
-"];
+",
+    "
+    -- The books: one row per reading (its windows, JSON), failed try (why)
+    -- or limit (its window and reset, where said).
+    CREATE TABLE books (
+        account TEXT NOT NULL,
+        at INTEGER NOT NULL,
+        kind TEXT NOT NULL CHECK (kind IN ('read', 'failed', 'limit')),
+        windows TEXT,
+        failed TEXT,
+        limit_window TEXT,
+        limit_resets_at INTEGER
+    );
+    CREATE INDEX books_by_account ON books (account, at);
+",
+];
 
 /// How long a process waits for another's write.
 const BUSY_TIMEOUT: Duration = Duration::from_secs(30);
@@ -189,11 +206,82 @@ impl Store {
             .map_err(|e| self.err(e))
     }
 
-    /// Removes the account `name`; false when there was none.
+    /// Removes the account `name` and its books; false when there was no account.
     pub fn remove(&self, name: &str) -> Result<bool, String> {
-        self.conn
+        let tx = self.conn.unchecked_transaction().map_err(|e| self.err(e))?;
+        tx.execute("DELETE FROM books WHERE account = ?1", [name])
+            .map_err(|e| self.err(e))?;
+        let removed = tx
             .execute("DELETE FROM accounts WHERE name = ?1", [name])
-            .map(|n| n == 1)
+            .map_err(|e| self.err(e))?;
+        tx.commit().map_err(|e| self.err(e))?;
+        Ok(removed == 1)
+    }
+}
+
+fn entry_of(row: &Row) -> rusqlite::Result<Entry> {
+    let at: i64 = row.get(0)?;
+    let kind: String = row.get(1)?;
+    let what = match kind.as_str() {
+        "read" => {
+            let text: String = row.get(2)?;
+            What::Read(serde_json::from_str(&text).map_err(|e| {
+                rusqlite::Error::FromSqlConversionFailure(2, rusqlite::types::Type::Text, e.into())
+            })?)
+        }
+        "failed" => What::Failed(row.get(3)?),
+        _ => What::Limit {
+            window: row.get(4)?,
+            resets_at: row.get::<_, Option<i64>>(5)?.map(|r| r as u64),
+        },
+    };
+    Ok(Entry {
+        at: at as u64,
+        what,
+    })
+}
+
+impl Store {
+    /// Books `entry` in `account`'s books.
+    pub fn book(&self, account: &str, entry: &Entry) -> Result<(), String> {
+        let (kind, windows, failed, window, resets_at) = match &entry.what {
+            What::Read(w) => (
+                "read",
+                Some(serde_json::to_string(w).map_err(|e| e.to_string())?),
+                None,
+                None,
+                None,
+            ),
+            What::Failed(why) => ("failed", None, Some(why.as_str()), None, None),
+            What::Limit { window, resets_at } => (
+                "limit",
+                None,
+                None,
+                window.as_deref(),
+                resets_at.map(|r| r as i64),
+            ),
+        };
+        self.conn
+            .execute(
+                "INSERT INTO books (account, at, kind, windows, failed, limit_window, limit_resets_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                params![account, entry.at as i64, kind, windows, failed, window, resets_at],
+            )
+            .map(|_| ())
+            .map_err(|e| self.err(e))
+    }
+
+    /// `account`'s books, oldest first.
+    pub fn entries(&self, account: &str) -> Result<Vec<Entry>, String> {
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT at, kind, windows, failed, limit_window, limit_resets_at
+                 FROM books WHERE account = ?1 ORDER BY at, rowid",
+            )
+            .map_err(|e| self.err(e))?;
+        stmt.query_map([account], entry_of)
+            .and_then(|rows| rows.collect())
             .map_err(|e| self.err(e))
     }
 }

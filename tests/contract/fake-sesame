@@ -1,0 +1,23 @@
+#!/bin/sh
+# Stand-in for `sesame token <provider> --json` (src/sesame.rs), as sesame
+# answers a token handed in the environment (truefit.toml, standin
+# "sesame"): SESAME_TOKEN_<PROVIDER> (upper case, `-` as `_`) is the token,
+# of a provider SESAME_PROVIDERS defines; any other provider is unknown.
+if [ "$1" != token ] || [ "$3" != --json ]; then
+    echo "fake-sesame: only \`token <provider> --json\` is stood in for" >&2
+    exit 2
+fi
+case "$SESAME_PROVIDERS" in
+*"\"$2\""*) ;;
+*)
+    echo "sesame: unknown provider \`$2\`" >&2
+    exit 1
+    ;;
+esac
+var=SESAME_TOKEN_$(printf '%s' "$2" | tr 'a-z-' 'A-Z_')
+eval "token=\${$var}"
+if [ -z "$token" ]; then
+    echo "sesame: not logged in to $2: sesame login $2" >&2
+    exit 1
+fi
+printf '{"access_token":"%s","expires_at":null}\n' "$token"
