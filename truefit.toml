@@ -97,6 +97,92 @@ stdin = """
 header = "Authorization: Bearer <login>"
 header = "Accept: application/json"
 """
+# codex's reader (src/readers/chatgpt.rs) asks `codex app-server`
+# `account/rateLimits/read` on its stdin, held open until it answers;
+# codex-shape asks it so, and keeps only what the reader reads: whether primary and
+# secondary are each a window or none, or that an error says a message.
+[[standin]]
+name = "codex"
+run = ["tests/contract/codex-shape", "fake-codex"]
+real = ["tests/contract/codex-shape", "codex"]
+needs = "codex and jq on PATH, and a ChatGPT login of codex's in ~/.codex/auth.json (or $CODEX_HOME's)"
+ready = ["sh", "-c", "command -v codex >/dev/null && command -v jq >/dev/null && jq -e .tokens.account_id \"${CODEX_HOME:-$HOME/.codex}/auth.json\" >/dev/null"]
+version = ["codex", "--version"]
+faults = ["logged-out"]
+fault_env = "FAKE_CODEX_FAULT"
+
+[[standin.case]]
+name = "an-account-s-windows"
+args = ["app-server"]
+
+[[standin.case]]
+name = "a-home-logged-out"
+fault = "logged-out"
+env = { CODEX_HOME = "<empty>" }
+args = ["app-server"]
+
+# pi's reader (src/readers/chatgpt.rs) asks
+# chatgpt.com/backend-api/wham/usage through curl, pi's bearer and its
+# login's ChatGPT-Account-Id on curl's stdin. wham-shape keeps only what the
+# reader reads; the real side swaps the stand-ins for pi's login.
+[[standin]]
+name = "pi"
+run = ["tests/contract/wham-shape", "fake-curl"]
+real = ["tests/contract/wham-shape", "real-curl-pi"]
+needs = "curl, jq and pi on PATH, and pi logged in to openai-codex (`pi auth login openai-codex`)"
+ready = ["sh", "-c", "command -v curl >/dev/null && command -v jq >/dev/null && pi auth check --provider openai-codex >/dev/null"]
+version = ["pi", "--version"]
+faults = ["unauthorized", "unreachable"]
+fault_env = "FAKE_CURL_FAULT"
+
+[[standin.case]]
+name = "a-login-s-windows"
+args = ["--silent", "--show-error", "--max-time", "20", "--config", "-", "--write-out", "\n%{http_code}", "https://chatgpt.com/backend-api/wham/usage"]
+stdin = """
+header = "Authorization: Bearer <login>"
+header = "ChatGPT-Account-Id: <account-id>"
+"""
+
+[[standin.case]]
+name = "a-refused-bearer"
+fault = "unauthorized"
+args = ["--silent", "--show-error", "--max-time", "20", "--config", "-", "--write-out", "\n%{http_code}", "https://chatgpt.com/backend-api/wham/usage"]
+stdin = """
+header = "Authorization: Bearer not-a-token"
+header = "ChatGPT-Account-Id: <account-id>"
+"""
+
+[[standin.case]]
+name = "a-host-not-reached"
+fault = "unreachable"
+args = ["--silent", "--show-error", "--max-time", "20", "--config", "-", "--write-out", "\n%{http_code}", "https://chatgpt.invalid/backend-api/wham/usage"]
+stdin = """
+header = "Authorization: Bearer <login>"
+header = "ChatGPT-Account-Id: <account-id>"
+"""
+
+# pi's bearer: `pi auth print-bearer-token --provider openai-codex`, which
+# the pi reader runs first. pi-bearer-shape never prints it.
+[[standin]]
+name = "pi-bearer"
+run = ["tests/contract/pi-bearer-shape", "fake-pi"]
+real = ["tests/contract/pi-bearer-shape", "pi"]
+needs = "pi on PATH, logged in to openai-codex (`pi auth login openai-codex`)"
+ready = ["pi", "auth", "check", "--provider", "openai-codex"]
+version = ["pi", "--version"]
+faults = ["not-logged-in"]
+fault_env = "FAKE_PI_FAULT"
+
+[[standin.case]]
+name = "a-login-s-bearer"
+args = ["auth", "print-bearer-token", "--provider", "openai-codex"]
+
+[[standin.case]]
+name = "no-login"
+fault = "not-logged-in"
+env = { PI_CODING_AGENT_DIR = "<empty>" }
+args = ["auth", "print-bearer-token", "--provider", "openai-codex"]
+
 [promises]
 sources = ["README.md"]
 

@@ -5,6 +5,7 @@
 use crate::account::{Account, Engine};
 use crate::books::Window;
 
+mod chatgpt;
 pub mod claude_code;
 mod kimi;
 
@@ -15,6 +16,8 @@ pub type Read = fn(&Account) -> Result<Vec<Window>, String>;
 /// Each engine that has a reader, and its reader.
 const READERS: &[(Engine, Read)] = &[
     (Engine::ClaudeCode, claude_code::read),
+    (Engine::Codex, chatgpt::codex),
+    (Engine::Pi, chatgpt::pi),
     (Engine::Kimi, kimi::read),
 ];
 

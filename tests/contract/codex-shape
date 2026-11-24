@@ -1,0 +1,34 @@
+#!/bin/sh
+# codex-shape <fake-codex|codex> app-server: runs that codex (the stand-in
+# beside this script, or the real one on PATH) as stablehand's codex reader
+# does (src/readers/chatgpt.rs): its requests on its stdin, held open until
+# the answer to request 1 comes; and prints what the reader reads of that
+# answer, and no more: of a result, whether rateLimits' primary and
+# secondary are each a window or none; of an error, that it says a message.
+# CODEX_HOME=<empty> runs it in an empty home of its own: logged out.
+case "$1" in fake-*) program="$(dirname "$0")/$1" ;; *) program=$1 ;; esac
+shift
+d=$(mktemp -d)
+trap 'rm -rf "$d"' EXIT
+if [ "$CODEX_HOME" = "<empty>" ]; then
+    mkdir "$d/home"
+    export CODEX_HOME="$d/home"
+fi
+mkfifo "$d/in"
+answer=$("$program" "$@" <"$d/in" 2>/dev/null | (
+    exec 3>"$d/in"
+    printf '%s\n' '{"id":0,"method":"initialize","params":{"clientInfo":{"name":"stablehand","version":"0"}}}' \
+        '{"method":"initialized"}' \
+        '{"id":1,"method":"account/rateLimits/read","params":{"excludeResetCreditDetails":true}}' >&3
+    sed -n '/^{.*"id":1[,}]/{p;q;}'
+))
+printf '%s' "$answer" | jq -r '
+    def window: if . == null then "window or none"
+        elif ([.usedPercent, .windowDurationMins, .resetsAt] | map(type) | all(. == "number"))
+        then "window or none" else "no window" end;
+    if .error then "error.message \(.error.message | type)"
+    else .result.rateLimits
+        | "primary: \(.primary | window)",
+          "secondary: \(.secondary | window)",
+          "a window: \([.primary, .secondary] | map(select(. != null)) | length > 0)"
+    end'

@@ -1,0 +1,17 @@
+#!/bin/sh
+# Stand-in for `pi auth print-bearer-token --provider openai-codex` as
+# stablehand's pi reader runs it (src/readers/chatgpt.rs): the bearer of the
+# openai-codex login in PI_CODING_AGENT_DIR, one line (truefit.toml, standin
+# "pi-bearer").
+#
+# FAKE_PI_FAULT: not-logged-in (exits 1, saying so on stderr). FAKE_PI_LOG: a
+#   file each run appends its arguments and PI_CODING_AGENT_DIR to.
+if [ -n "$FAKE_PI_LOG" ]; then
+    echo "pi $* PI_CODING_AGENT_DIR=${PI_CODING_AGENT_DIR:-}" >>"$FAKE_PI_LOG"
+fi
+[ "$*" = "auth print-bearer-token --provider openai-codex" ] || { echo "fake-pi: not $*" >&2; exit 2; }
+if [ "$FAKE_PI_FAULT" = not-logged-in ]; then
+    echo 'Error: Provider "openai-codex" is not configured with an OAuth bearer token' >&2
+    exit 1
+fi
+echo "eyJstand-in.chatgpt.bearer"

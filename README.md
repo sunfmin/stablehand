@@ -141,6 +141,15 @@ stablehand status                   # each account's windows and their pace
 - Its windows are `five_hour`, `seven_day` and any other the endpoint
   lists. A `claude setup-token` token is refused a usage query (HTTP 403):
   such an account is known by `limit` alone.
+- codex's and pi's readers read a ChatGPT account's `primary` and
+  `secondary` windows, where it answers them (used %, length, resets at), through the engine's own
+  bound login, on its machine: codex's app server (`codex app-server`,
+  `account/rateLimits/read`, in its `CODEX_HOME`; no turn spent), and for pi
+  `chatgpt.com/backend-api/wham/usage` with the bearer `pi auth
+  print-bearer-token --provider openai-codex` gives (in its
+  `PI_CODING_AGENT_DIR`) and its login's `ChatGPT-Account-Id`, on curl's
+  stdin. A codex and a pi login of one ChatGPT account (one
+  `ChatGPT-Account-Id`) are one account: register it once.
 - kimi's reader asks `api.kimi.com/coding/v1/usages`, as Kimi Code's own
   `/usage` does, with the account's bearer: a portable login's from sesame
   (`account login --token`), a bound one's from

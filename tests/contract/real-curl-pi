@@ -1,0 +1,9 @@
+#!/bin/sh
+# The real curl, its stdin's stand-ins swapped for this user's pi
+# openai-codex login, never printed: `<login>` for the bearer
+# `pi auth print-bearer-token --provider openai-codex` gives, `<account-id>`
+# for the login's accountId in its auth.json ($PI_CODING_AGENT_DIR, else
+# ~/.pi/agent).
+login=$(pi auth print-bearer-token --provider openai-codex 2>/dev/null)
+id=$(jq -r '."openai-codex".accountId // empty' "${PI_CODING_AGENT_DIR:-$HOME/.pi/agent}/auth.json" 2>/dev/null)
+cat | sed -e "s|<login>|$login|" -e "s|<account-id>|$id|" | curl "$@"
