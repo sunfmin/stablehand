@@ -1,0 +1,36 @@
+{
+  "tree": "fd7e2859b1a0d5e232c8a9ab542dad492f30e239+d1fba762150c532c",
+  "picker": "codex:01a20d8d-e4ae-7551-804e-57a37b0ef62c:default",
+  "author": "claude-code:7d48bff0-647d-53a3-9510-3b8848687565:opus",
+  "picks": {
+    "rust": [
+      {
+        "name": "src/scan.rs:324:39: replace match guard *m == machine with true in scan",
+        "why": "The remote account points to an absent directory, so the tests may miss a scan using a readable local path from a remote account to claim a subscription.",
+        "outcome": "killed",
+        "first_outcome": "killed"
+      },
+      {
+        "name": "src/scan.rs:290:19: replace match guard e.kind() == std::io::ErrorKind::NotFound with true in mytokens_list",
+        "why": "The tests cover a missing executable and a nonzero exit, leaving other launch errors that would be misreported as missing from PATH.",
+        "outcome": "killed",
+        "first_outcome": "killed"
+      },
+      {
+        "name": "src/main.rs:376:5: replace default_homes -> String with String::new()",
+        "why": "The scan tests verify discovery in default homes, so they may miss the list of those homes disappearing from scan help.",
+        "outcome": "killed",
+        "first_outcome": "killed"
+      }
+    ]
+  },
+  "removed_tests": {
+    "rust": [
+      "tests/import.rs:29: imports_each_entry_its_token_command_and_keeps_what_is_kept",
+      "tests/import.rs:136: a_bound_entry_is_imported_bound_to_its_machine",
+      "tests/import.rs:148: an_entry_it_cannot_import_refuses_all_and_writes_nothing",
+      "tests/import.rs:183: what_mytokens_cannot_answer_is_named_with_its_fix",
+      "tests/import.rs:210: a_bound_account_is_given_the_workers_home_and_a_second_run_fills_it_in"
+    ]
+  }
+}

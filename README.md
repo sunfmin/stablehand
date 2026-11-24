@@ -79,29 +79,49 @@ stablehand account show claude-felix   # {"account": {…}, "logged_in": true, "
   `days_left`, and from 30 days ahead its `warning`
   says to make a new one.
 
-## Importing from mytokens
+## Finding the logins on this machine
 
 ```sh
-stablehand account import --from-mytokens --dry-run   # what it would add, no token shown
-stablehand account import --from-mytokens
+stablehand account scan                  # what it finds, writing nothing
+stablehand account scan --add            # register the new ones
+stablehand account scan --path /Users/agent/chatgpt   # one more home to look in
 ```
 
-- Each `agent-account-<name>` entry of this host's mytokens (`mytokens list`)
-  becomes the account `<name>`: its engine from `HARNESS`, bound to `MACHINE`
-  where the entry has one, else portable, its `--token-command` the
-  `mytokens get <service> --account <label> --field CLAUDE_CODE_OAUTH_TOKEN`
-  that prints its token: the token stays in mytokens, and the import reads
-  none.
-- A bound account is given the home factorium's workers use,
-  `~/.agent-accounts/<name>` (`$HOME` of this host); nothing is made there.
-- An account already kept is left as it is, answered `"already kept"`, so
-  running it again adds nothing; but a kept bound account with no home is
-  given that one, answered `"given its home"`, and a kept portable one with
-  no token command its entry's, `"given its token command"`, so a run fills
-  in what an earlier import left out. mytokens is only read: nothing in it is changed or removed.
-- `--dry-run` answers `"would add"` (or `"would give its home"`, `"would give its token command"`) for each, writing nothing.
-- It refuses, importing nothing, an entry whose `HARNESS` is no engine, one
-  with both a token and a `MACHINE`, and a field mytokens does not answer.
+- scan looks in each engine's own default home (`~/.claude`, `~/.codex`,
+  `~/.pi/agent`, `~/.kimi-code`, agy's `$HOME`, `~/.grok`, `~/.dsh`) and
+  in each `--path`, never in a home another program keeps for its own use
+  (factorium's `~/.agent-accounts`, Guild's `~/.guild/engines`) unless a
+  `--path` names it. A home is a login when it holds its engine's login
+  file.
+- It reads mytokens too, when it is on PATH, from `mytokens list` alone,
+  which names each entry's fields and never prints a value: an
+  `agent-account-<name>` entry with an engine's token field
+  (`CLAUDE_CODE_OAUTH_TOKEN`) is a portable account `<name>`, its
+  `--token-command` `mytokens get agent-account-<name> --field <that
+  field>`; one with no token (a bound one, its `MACHINE`) is `skipped`. No
+  token is read.
+- **One account per subscription.** The same subscription is often in
+  several homes (pi's `openai-codex` and codex on one ChatGPT account).
+  scan tells them apart by the identity each login file holds (Claude's
+  account and organization, ChatGPT's account id, kimi's user id, agy's
+  id token's email, grok's user id), read and compared in memory, never
+  printed, logged or stored: it answers, and keeps on an account it adds,
+  the identity's hash. Of one identity's logins the account is the one an
+  account kept already is, else the most recently written; the others are
+  `copy`, with the warning that copies of one refresh token refresh each
+  other out. An identity it cannot read (a format it does not know; dsh's
+  file holds none) is said as such, `identity_unknown`, never guessed. A
+  portable token tells no identity, so whether it is a home login's
+  subscription is `unknown`.
+- Without `--add` it writes nothing: it answers each login found (engine,
+  home, logged in at, identity's hash, `new`, `registered` or `copy`, and
+  the account: the one it is, or is a copy of, or the name `--add` gives,
+  `<engine>`, or `<engine>-2` … when the name is kept). An account kept is
+  never renamed.
+- With `--add` it registers the `new` ones and nothing else: a login as a
+  bound account on this machine in its home (`account add --machine <this>
+  --home <dir>`), a token as a portable account with its token command.
+  Run again, it adds nothing.
 
 ## An account's credential
 

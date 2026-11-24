@@ -87,21 +87,24 @@ pub fn login_file(a: &Account) -> Result<Option<LoginFile>, String> {
         return Ok(None);
     }
     let path = in_home(a, home);
-    let Some(written) = std::fs::metadata(&path)
-        .ok()
-        .filter(std::fs::Metadata::is_file)
-        .and_then(|m| m.modified().ok())
-    else {
+    let Some(written) = written(&path) else {
         return Ok(None);
     };
-    let written = written
-        .duration_since(UNIX_EPOCH)
-        .map_or(0, |d| d.as_secs());
     Ok(Some(LoginFile {
         path: path.display().to_string(),
         written_at: crate::time::utc(written),
         written,
     }))
+}
+
+/// When the file at `path` was last written, in seconds since 1970, where
+/// it is a file.
+pub fn written(path: &Path) -> Option<u64> {
+    let m = std::fs::metadata(path)
+        .ok()
+        .filter(std::fs::Metadata::is_file)?;
+    let at = m.modified().ok()?.duration_since(UNIX_EPOCH);
+    Some(at.map_or(0, |d| d.as_secs()))
 }
 
 /// Where `a`'s engine's login file is in `home`: the one list of login
