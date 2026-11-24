@@ -259,6 +259,13 @@ fn a_path_that_is_no_directory_is_refused_and_no_mytokens_is_said() {
             .unwrap()
             .contains("not on PATH")
     );
+    // Its help names each default home it looks in.
+    let (code, help) = r.raw(&["account", "scan", "--help"], &[], "");
+    assert_eq!(code, 0);
+    assert!(
+        help.contains("pi `~/.pi/agent`") && help.contains("agy `~`"),
+        "{help}"
+    );
 }
 
 #[test]
@@ -288,6 +295,15 @@ fn a_kept_home_tells_its_identity_and_what_is_not_the_same_login_is_not_taken_fo
     r.ok(&[&["account", "add", "other"][..], &portable].concat());
     r.mytokens_entry("agent-account-felix", &[("CLAUDE_CODE_OAUTH_TOKEN", TOKEN)]);
 
+    // An account bound to another machine is not this home's, whatever
+    // its home path holds here.
+    let grok = r#"{"https://auth.x.ai::e1": {"user_id": "G"}}"#;
+    file(&home, ".grok/auth.json", grok, None);
+    let far = r.path("far");
+    file(&far, "auth.json", grok, None);
+    let remote = ["--engine", "grok", "--machine", "studio", "--home", &far];
+    r.ok(&[&["account", "add", "far"][..], &remote].concat());
+
     let env = [("HOME", home.as_str())];
     let alone = format!("{home}/alone");
     let codex_home = format!("{home}/.codex");
@@ -298,10 +314,11 @@ fn a_kept_home_tells_its_identity_and_what_is_not_the_same_login_is_not_taken_fo
         logins,
         [
             json!(["codex", codex_home, "copy", "chatgpt"]),
+            json!(["grok", format!("{home}/.grok"), "new", "grok"]),
             json!(["claude-code", alone, "new", "claude-code"]),
         ]
     );
-    let unknown = out["logins"][1]["identity_unknown"].as_str().unwrap();
+    let unknown = out["logins"][2]["identity_unknown"].as_str().unwrap();
     assert!(unknown.contains(".claude.json"), "{unknown}");
     assert_eq!(
         tokens,
@@ -326,4 +343,10 @@ fn a_kept_home_tells_its_identity_and_what_is_not_the_same_login_is_not_taken_fo
         "{out}"
     );
     assert_eq!(out["logins"][0]["status"], "copy");
+
+    // One that cannot start is said so, not taken for one not on PATH.
+    std::fs::set_permissions(&script, std::os::unix::fs::PermissionsExt::from_mode(0o644)).unwrap();
+    let out = r.run_with(&["account", "scan"], &env, "").json;
+    let why = out["mytokens_unread"].as_str().unwrap();
+    assert!(why.contains("could not start"), "{why}");
 }
