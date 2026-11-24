@@ -35,7 +35,7 @@ stablehand on claude-felix
 - Each command prints one JSON object on stdout: `{"account": {…}}`, `{"accounts": […]}`, or for `rm` `{"name": …, "removed": true|false}`.
 - A refusal prints `{"error": "…"}`, naming each fault with its fix, exits non-zero and writes nothing: an unknown engine, a name already kept, a date that is no calendar day, `--expires` or `--token-command` on a bound login, `--home` on a portable one.
 - `account rm` of an account not kept answers `"removed": false`, so running it twice leaves the same register.
-- The register is one SQLite file, `$STABLEHAND_CONFIG_DIR/stablehand.db` (default `~/.config/stablehand`); the file is 0600, the directory 0700. It keeps no token: of a portable login it keeps the command that prints it.
+- The register is one SQLite file, `$STABLEHAND_CONFIG_DIR/stablehand.db` (default `~/.config/stablehand`); the file is 0600, the directory 0700. It keeps no token: of a portable login it keeps the command that prints it. The default is a released stablehand's only: a development build (`cargo build`, any version with `+`) refuses unless `STABLEHAND_CONFIG_DIR` is set, as its schema steps may not be the released ones. A store migrated by other steps than this stablehand's is refused, naming the step.
 
 ## Logging in
 

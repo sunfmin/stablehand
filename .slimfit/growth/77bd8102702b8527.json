@@ -1,0 +1,10 @@
+{
+  "tree": "4ea59f99855f299cf5327070b3be00ecef405c10+d1fba762150c532c",
+  "lines": 62,
+  "serves": "stablehand#27",
+  "considered": "Store::migrate's per-step loop (kept, widened to record each step's hash in one transaction); a schema check against sqlite_master in place of hashes (rejected: the incident's store and a released one differ forever by column order); storing step text instead of a hash (no shorter)",
+  "reviewer": "codex:01a20e0d-4e64-7672-8d51-eec371c56cfd:default",
+  "author": "claude-code:24dd790f-ad54-5c19-b7cd-d84df5b2ec84:opus",
+  "cut": "In src/store.rs, call the free migrate function directly from Store::open and delete the forwarding method, validate schema_steps as SQLite yields rows and set the loop start to at when any row exists instead of collecting a Vec, reuse the step lookup for hash validation and the refusal text, and format the SHA-256 digest directly as lowercase hex instead of formatting each byte.",
+  "answer": "Made all but the last: Store::open calls migrate, the forwarding method is gone; rows are checked as read, first = at on any row; one step lookup serves the check and the refusal. The digest cannot be formatted as lowercase hex directly: sha2 0.11's Array implements no LowerHex (E0277), so the per-byte hex stays, as in scan.rs."
+}

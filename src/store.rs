@@ -2,6 +2,10 @@
 //! the config dir `$STABLEHAND_CONFIG_DIR` or `~/.config/stablehand`, guarded
 //! the directory 0700, the file 0600. It holds no secret: of a portable
 //! login it keeps the command that prints its token, never the token.
+//!
+//! Only a released stablehand keeps its store in `~/.config/stablehand`
+//! unasked: a development build's steps may not be the released ones
+//! (stablehand#27), so it opens only where `$STABLEHAND_CONFIG_DIR` points.
 use crate::account::{Account, Engine, Off};
 use crate::books::Entry;
 use crate::order::Rank;
@@ -10,7 +14,9 @@ use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-/// The schema, one step per `PRAGMA user_version`: append a step, never edit one.
+/// The schema, one step per `PRAGMA user_version`: append a step, never edit
+/// one. Each step run is kept in the store by its hash (`schema_steps`), so
+/// a store another list of steps made is refused, never misread.
 const MIGRATIONS: &[&str] = &[
     "
     CREATE TABLE accounts (
@@ -64,15 +70,99 @@ pub struct Store {
     path: PathBuf,
 }
 
-/// `$STABLEHAND_CONFIG_DIR`, else `~/.config/stablehand`.
-fn config_dir() -> PathBuf {
-    if let Some(d) = std::env::var_os("STABLEHAND_CONFIG_DIR") {
-        return PathBuf::from(d);
+/// `$STABLEHAND_CONFIG_DIR`, else `~/.config/stablehand` for a released
+/// build (one `packaging/release.sh` stamped); a development build refuses it.
+fn config_dir(
+    set: Option<std::ffi::OsString>,
+    home: Option<std::ffi::OsString>,
+    release: Option<&str>,
+) -> Result<PathBuf, String> {
+    if let Some(d) = set {
+        return Ok(PathBuf::from(d));
     }
-    let home = std::env::var_os("HOME")
-        .map(PathBuf::from)
-        .unwrap_or_default();
-    home.join(".config").join("stablehand")
+    if release.is_none() {
+        return Err(format!(
+            "stablehand {} is a development build: its schema steps may not be the released ones, so it never opens ~/.config/stablehand unasked. Set STABLEHAND_CONFIG_DIR to a directory of its own (a copy of the store, if it needs the accounts), or run the installed stablehand",
+            env!("STABLEHAND_VERSION")
+        ));
+    }
+    Ok(PathBuf::from(home.unwrap_or_default())
+        .join(".config")
+        .join("stablehand"))
+}
+
+/// A schema step as the store keeps it: its SHA-256, hex.
+fn step_hash(step: &str) -> String {
+    use sha2::Digest;
+    let digest = sha2::Sha256::digest(step);
+    digest.iter().map(|b| format!("{b:02x}")).collect()
+}
+
+/// A step as a refusal names it: its first line of SQL.
+fn step_line(step: &str) -> &str {
+    step.lines()
+        .map(str::trim)
+        .find(|l| !l.is_empty() && !l.starts_with("--"))
+        .unwrap_or("")
+}
+
+/// Brings the store of `conn` to the last of `steps`, after checking each
+/// step it ran is the same step of `steps`, all in one transaction: a
+/// refusal or a failed step leaves the store as it was. A store from before
+/// the steps were kept (none recorded) is taken to have run these.
+fn migrate(conn: &Connection, steps: &[&str]) -> Result<(), String> {
+    let e = |e: rusqlite::Error| e.to_string();
+    // Immediate: two processes opening a new store wait for each other
+    // (BUSY_TIMEOUT) rather than both reading its version and one failing.
+    let tx = rusqlite::Transaction::new_unchecked(conn, rusqlite::TransactionBehavior::Immediate)
+        .map_err(e)?;
+    let at: i64 = tx
+        .query_row("PRAGMA user_version", [], |r| r.get(0))
+        .map_err(e)?;
+    let at = at as usize;
+    if at > steps.len() {
+        return Err(format!(
+            "the store is at schema step {at}, past this stablehand's last, {}: a later stablehand made it. Run that one (brew upgrade stablehand)",
+            steps.len()
+        ));
+    }
+    tx.execute_batch(
+        "CREATE TABLE IF NOT EXISTS schema_steps (step INTEGER PRIMARY KEY, hash TEXT NOT NULL);",
+    )
+    .map_err(e)?;
+    let mut first = 0;
+    {
+        let mut stmt = tx
+            .prepare("SELECT step, hash FROM schema_steps ORDER BY step")
+            .map_err(e)?;
+        let rows = stmt
+            .query_map([], |r| {
+                Ok((r.get::<_, i64>(0)? as usize, r.get::<_, String>(1)?))
+            })
+            .map_err(e)?;
+        for row in rows {
+            let (n, hash) = row.map_err(e)?;
+            first = at;
+            let ours = steps.get(n - 1);
+            if n > at || ours.map(|s| step_hash(s)) != Some(hash) {
+                let theirs = ours.map_or("none", |s| step_line(s));
+                return Err(format!(
+                    "schema step {n} of the store is not this stablehand's step {n} (`{theirs}`): another build's steps migrated it, and these would misread it. Restore the store's backup from before that build ran, or repair it by hand to what these steps make"
+                ));
+            }
+        }
+    }
+    for (i, step) in steps.iter().enumerate().skip(first) {
+        let n = i + 1;
+        let run = if i < at { "" } else { step };
+        tx.execute_batch(&format!(
+            "{run} INSERT INTO schema_steps (step, hash) VALUES ({n}, '{}'); PRAGMA user_version = {};",
+            step_hash(step),
+            n.max(at)
+        ))
+        .map_err(|err| format!("schema step {n} (`{}`): {err}", step_line(step)))?;
+    }
+    tx.commit().map_err(e)
 }
 
 /// Makes the directory 0700 if missing and the file 0600, tightening a wider one.
@@ -130,7 +220,12 @@ fn account_of(row: &Row) -> rusqlite::Result<Account> {
 
 impl Store {
     pub fn open() -> Result<Store, String> {
-        let path = config_dir().join("stablehand.db");
+        let dir = config_dir(
+            std::env::var_os("STABLEHAND_CONFIG_DIR"),
+            std::env::var_os("HOME"),
+            option_env!("STABLEHAND_RELEASE"),
+        )?;
+        let path = dir.join("stablehand.db");
         prepare(&path)?;
         let conn = Connection::open(&path).map_err(|e| format!("{}: {e}", path.display()))?;
         let store = Store { conn, path };
@@ -139,28 +234,12 @@ impl Store {
             .conn
             .busy_timeout(BUSY_TIMEOUT)
             .map_err(|e| store.err(e))?;
-        store.migrate()?;
+        migrate(&store.conn, MIGRATIONS).map_err(|e| format!("{}: {e}", store.path.display()))?;
         Ok(store)
     }
 
     fn err(&self, e: rusqlite::Error) -> String {
         format!("{}: {e}", self.path.display())
-    }
-
-    fn migrate(&self) -> Result<(), String> {
-        let at: i64 = self
-            .conn
-            .query_row("PRAGMA user_version", [], |r| r.get(0))
-            .map_err(|e| self.err(e))?;
-        for (i, step) in MIGRATIONS.iter().enumerate().skip(at as usize) {
-            self.conn
-                .execute_batch(&format!(
-                    "BEGIN; {step} PRAGMA user_version = {}; COMMIT;",
-                    i + 1
-                ))
-                .map_err(|e| self.err(e))?;
-        }
-        Ok(())
     }
 
     pub fn get(&self, name: &str) -> Result<Option<Account>, String> {
@@ -323,5 +402,101 @@ impl Store {
         stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))
             .and_then(|rows| rows.collect())
             .map_err(|e| self.err(e))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Connection, MIGRATIONS, config_dir, migrate};
+    use std::path::PathBuf;
+
+    fn version(conn: &Connection) -> i64 {
+        conn.query_row("PRAGMA user_version", [], |r| r.get(0))
+            .unwrap()
+    }
+
+    #[test]
+    fn a_store_another_list_of_steps_migrated_is_refused_by_the_step() {
+        // stablehand#27: a branch's list put the sessions table at step 7,
+        // where the released list drops accounts.sessions.
+        let conn = Connection::open_in_memory().unwrap();
+        let branch = [&MIGRATIONS[..6], &[MIGRATIONS[7]]].concat();
+        migrate(&conn, &branch).unwrap();
+        let fault = migrate(&conn, MIGRATIONS).unwrap_err();
+        assert!(fault.contains("schema step 7 of the store"), "{fault}");
+        assert!(
+            fault.contains("`ALTER TABLE accounts DROP COLUMN sessions;`"),
+            "{fault}"
+        );
+        assert!(!fault.contains("already exists"), "{fault}");
+        // Nothing of the released steps ran.
+        assert_eq!(version(&conn), 7);
+    }
+
+    #[test]
+    fn a_store_from_before_the_steps_were_kept_records_none_when_a_step_fails() {
+        let conn = Connection::open_in_memory().unwrap();
+        migrate(&conn, &MIGRATIONS[..2]).unwrap();
+        conn.execute_batch("DROP TABLE schema_steps; CREATE TABLE books (x);")
+            .unwrap();
+        let fault = migrate(&conn, MIGRATIONS).unwrap_err();
+        assert!(
+            fault.starts_with("schema step 3 (`CREATE TABLE books (`)"),
+            "{fault}"
+        );
+        let tables: i64 = conn
+            .query_row(
+                "SELECT count(*) FROM sqlite_master WHERE name = 'schema_steps'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!((version(&conn), tables), (2, 0));
+    }
+
+    #[test]
+    fn steps_run_once_each_kept_and_a_store_from_before_they_were_kept_is_taken_as_is() {
+        let conn = Connection::open_in_memory().unwrap();
+        migrate(&conn, &MIGRATIONS[..3]).unwrap();
+        // A store made before schema_steps: its steps are taken as these.
+        conn.execute_batch("DROP TABLE schema_steps;").unwrap();
+        migrate(&conn, MIGRATIONS).unwrap();
+        migrate(&conn, MIGRATIONS).unwrap();
+        assert_eq!(version(&conn), MIGRATIONS.len() as i64);
+        let kept: i64 = conn
+            .query_row("SELECT count(*) FROM schema_steps", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(kept, MIGRATIONS.len() as i64);
+        // A later list of steps: this one refuses its store, reading nothing.
+        let later = [MIGRATIONS, &["CREATE TABLE later (x);"]].concat();
+        migrate(&conn, &later).unwrap();
+        let fault = migrate(&conn, MIGRATIONS).unwrap_err();
+        assert!(fault.contains("past this stablehand's last"), "{fault}");
+    }
+
+    #[test]
+    fn a_step_that_fails_is_named_and_leaves_the_store_as_it_was() {
+        let conn = Connection::open_in_memory().unwrap();
+        let steps = ["CREATE TABLE a (x);", "CREATE TABLE a (x);"];
+        let fault = migrate(&conn, &steps).unwrap_err();
+        assert!(
+            fault.starts_with("schema step 2 (`CREATE TABLE a (x);`)"),
+            "{fault}"
+        );
+        assert_eq!(version(&conn), 0);
+        // The connection is usable after: no transaction left open.
+        migrate(&conn, &steps[..1]).unwrap();
+    }
+
+    #[test]
+    fn only_a_released_build_opens_the_host_store_unasked() {
+        let home = Some("/h".into());
+        let dir = config_dir(None, home.clone(), Some("v0.2.0")).unwrap();
+        assert_eq!(dir, PathBuf::from("/h/.config/stablehand"));
+        let fault = config_dir(None, home.clone(), None).unwrap_err();
+        assert!(fault.contains("development build"), "{fault}");
+        assert!(fault.contains("STABLEHAND_CONFIG_DIR"), "{fault}");
+        let set = config_dir(Some("/s".into()), home, None).unwrap();
+        assert_eq!(set, PathBuf::from("/s"));
     }
 }
