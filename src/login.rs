@@ -90,7 +90,7 @@ pub fn logged_in(a: &Account) -> Result<bool, String> {
 /// The token sesame keeps for `a`, if it keeps one: `sesame token <provider>
 /// --json` answers it as `access_token`, on its stdout, read here and no
 /// further.
-fn token(a: &Account) -> Result<Option<String>, String> {
+pub fn token(a: &Account) -> Result<Option<String>, String> {
     let p = provider(a);
     let argv = ["sesame", "token", &p, "--json"];
     let out = Command::new(argv[0])

@@ -1,0 +1,39 @@
+{
+  "tree": "5a714b46d5682b7cdbfbb933626d8ee06673a7f1+d1fba762150c532c",
+  "picker": "codex:01a20cc5-2084-7e00-a370-53004d9d8464:default",
+  "author": "claude-code:d3df97b6-fefd-5e23-933e-f4f391844339:opus",
+  "picks": {
+    "rust": [
+      {
+        "name": "src/books.rs:258:70: replace > with >= in window_status",
+        "why": "A limit without its own reset can expose the reading’s reset at the exact second it expires, while the tests cover a future fallback reset.",
+        "outcome": "killed",
+        "first_outcome": "killed"
+      },
+      {
+        "name": "src/books.rs:337:39: replace / with % in at_reset",
+        "why": "This removes the minimum elapsed time for the tested window lengths, and the single-reading pace tests leave enough elapsed time that the floor never decides the outcome.",
+        "outcome": "survived",
+        "first_outcome": "survived"
+      },
+      {
+        "name": "src/time.rs:73:29: replace || with && in parse",
+        "why": "A six-byte offset such as +09X00 would pass, while the malformed offset in the tests has both the wrong length and the wrong separator.",
+        "outcome": "killed",
+        "first_outcome": "killed"
+      },
+      {
+        "name": "src/time.rs:81:33: replace % with / in parse",
+        "why": "This would accept February 29 in 2100, and the existing 2100 case stops at February 28.",
+        "outcome": "killed",
+        "first_outcome": "killed"
+      },
+      {
+        "name": "src/time.rs:42:37: replace || with && in parse",
+        "why": "A date with just one wrong hyphen separator could parse because the numeric fields are sliced separately and the tests omit that malformed shape.",
+        "outcome": "killed",
+        "first_outcome": "killed"
+      }
+    ]
+  }
+}

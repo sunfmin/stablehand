@@ -1,8 +1,9 @@
-//! The register's one store: a SQLite database, `<config dir>/stablehand.db`,
+//! The register's and the books' one store: a SQLite database, `<config dir>/stablehand.db`,
 //! the config dir `$STABLEHAND_CONFIG_DIR` or `~/.config/stablehand`, guarded
 //! as sesame keeps its own: the directory 0700, the file 0600. It holds no
 //! secret: a portable login's token is sesame's.
 use crate::account::{Account, Engine, Off};
+use crate::books::Entry;
 use rusqlite::{Connection, OptionalExtension, Row, params};
 use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
@@ -24,6 +25,15 @@ const MIGRATIONS: &[&str] = &[
     );
 ",
     "ALTER TABLE accounts ADD COLUMN logged_in_at TEXT;",
+    "
+    -- The books: one row per entry, what it says as JSON (books::What).
+    CREATE TABLE books (
+        account TEXT NOT NULL,
+        at INTEGER NOT NULL,
+        what TEXT NOT NULL
+    );
+    CREATE INDEX books_by_account ON books (account, at);
+",
 ];
 
 /// How long a process waits for another's write.
@@ -192,11 +202,51 @@ impl Store {
             .map_err(|e| self.err(e))
     }
 
-    /// Removes the account `name`; false when there was none.
+    /// Removes the account `name` and its books; false when there was no account.
     pub fn remove(&self, name: &str) -> Result<bool, String> {
-        self.conn
+        let tx = self.conn.unchecked_transaction().map_err(|e| self.err(e))?;
+        tx.execute("DELETE FROM books WHERE account = ?1", [name])
+            .map_err(|e| self.err(e))?;
+        let removed = tx
             .execute("DELETE FROM accounts WHERE name = ?1", [name])
-            .map(|n| n == 1)
+            .map_err(|e| self.err(e))?;
+        tx.commit().map_err(|e| self.err(e))?;
+        Ok(removed == 1)
+    }
+}
+
+fn entry_of(row: &Row) -> rusqlite::Result<Entry> {
+    let text: String = row.get(1)?;
+    let what = serde_json::from_str(&text).map_err(|e| {
+        rusqlite::Error::FromSqlConversionFailure(1, rusqlite::types::Type::Text, e.into())
+    })?;
+    Ok(Entry {
+        at: row.get::<_, i64>(0)? as u64,
+        what,
+    })
+}
+
+impl Store {
+    /// Books `entry` in `account`'s books.
+    pub fn book(&self, account: &str, entry: &Entry) -> Result<(), String> {
+        let what = serde_json::to_string(&entry.what).map_err(|e| e.to_string())?;
+        self.conn
+            .execute(
+                "INSERT INTO books (account, at, what) VALUES (?1, ?2, ?3)",
+                params![account, entry.at as i64, what],
+            )
+            .map(|_| ())
+            .map_err(|e| self.err(e))
+    }
+
+    /// `account`'s books, oldest first.
+    pub fn entries(&self, account: &str) -> Result<Vec<Entry>, String> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT at, what FROM books WHERE account = ?1 ORDER BY at, rowid")
+            .map_err(|e| self.err(e))?;
+        stmt.query_map([account], entry_of)
+            .and_then(|rows| rows.collect())
             .map_err(|e| self.err(e))
     }
 }

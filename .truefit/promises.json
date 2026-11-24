@@ -1,8 +1,23 @@
 {
+  "0c79334f1611": {
+    "mark": "promise",
+    "sentence": "`status` answers each account's windows (each with its `group` where the engine groups them), used %, resets at, source (`read` or `limit`), `stale`, and pace: `tight` (at its recent rate it runs out before it resets), `spare` (it resets within a quarter of its length with 20% or more left), `used_up`, or `steady`. The account's pace is its worst window's.",
+    "source": "README.md:61"
+  },
   "20ee0a5e4e42": {
     "mark": "not",
     "sentence": "stablehand is being built: today it says only its version (`stablehand --version`). Its commands land one ticket at a time, each described here as it lands.",
     "source": "README.md:7"
+  },
+  "75f5834f48d7": {
+    "mark": "promise",
+    "sentence": "The rules are Guild's ledger's: a reading over two hours old, or a window under half used, is never tight on its own.",
+    "source": "README.md:66"
+  },
+  "a08c8f71737f": {
+    "mark": "promise",
+    "sentence": "The bearer goes to curl on its stdin, never on a command line.",
+    "source": "README.md:56"
   },
   "a6f37d0f243d": {
     "mark": "promise",

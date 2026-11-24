@@ -232,20 +232,50 @@ fn a_store_that_is_no_database_is_refused_naming_its_file() {
 
 #[test]
 fn help_and_version_are_text_not_refusals() {
-    for args in [
-        &["--help"][..],
-        &["--version"],
-        &["account", "add", "--help"],
-    ] {
+    // Each: its arguments, and how its answer starts.
+    let cases: &[(&[&str], &str)] = &[
+        (&["--help"], "# `stablehand`\n"),
+        (&["-h"], "# `stablehand`\n"),
+        (&["help"], "# `stablehand`\n"),
+        (&["--version"], "stablehand 0."),
+        (
+            &["account", "add", "--help"],
+            "# `stablehand account add`\n\nAdd an account.",
+        ),
+        (&["status", "--help"], "# `stablehand status`\n"),
+    ];
+    for (args, starts) in cases {
         let out = Command::new(env!("CARGO_BIN_EXE_stablehand"))
-            .args(args)
+            .args(*args)
             .output()
             .unwrap();
         let stdout = String::from_utf8(out.stdout).unwrap();
         assert!(out.status.success(), "{args:?}");
+        assert!(stdout.starts_with(starts), "{args:?}: {stdout}");
+    }
+    // The whole manual holds every command; a topic it lacks is a usage error.
+    let all = Command::new(env!("CARGO_BIN_EXE_stablehand"))
+        .args(["help", "all"])
+        .output()
+        .unwrap();
+    let all = String::from_utf8(all.stdout).unwrap();
+    for command in ["account rm", "read", "limit", "status"] {
         assert!(
-            stdout.starts_with("stablehand") || stdout.starts_with("Add an account"),
-            "{args:?}: {stdout}"
+            all.contains(&format!("`stablehand {command}`")),
+            "{command}"
         );
     }
+    let out = Command::new(env!("CARGO_BIN_EXE_stablehand"))
+        .args(["help", "nosuch"])
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(2));
+    let json: Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert!(
+        json["error"]
+            .as_str()
+            .unwrap()
+            .contains("no topic `nosuch`"),
+        "{json}"
+    );
 }

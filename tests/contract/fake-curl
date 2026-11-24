@@ -1,0 +1,38 @@
+#!/bin/sh
+# Stand-in for curl as stablehand runs it (src/curl.rs):
+#   curl --silent --show-error --max-time N --config - --write-out '\n%{http_code}' <url>
+# with its headers on stdin as curl config. It answers
+# api.anthropic.com/api/oauth/usage as the real endpoint does (truefit.toml,
+# standin "claude-code"): the body, a newline, the HTTP status.
+#
+# FAKE_CURL_FAULT: unreachable (curl exits 6), unauthorized (401), scope
+#   (403, a `claude setup-token` token). FAKE_CURL_BODY: a file whose body
+#   a 200 answers instead of the one below. FAKE_CURL_LOG: a file each call
+#   appends to: its arguments on one line, then its stdin.
+for url; do :; done
+config=$(cat)
+if [ -n "$FAKE_CURL_LOG" ]; then
+    printf '%s\n%s\n' "$(printf '%s' "$*" | tr '\n' ' ')" "$config" >>"$FAKE_CURL_LOG"
+fi
+host=${url#*://}
+host=${host%%/*}
+case "$FAKE_CURL_FAULT" in
+unreachable)
+    echo "curl: (6) Could not resolve host: $host" >&2
+    exit 6
+    ;;
+unauthorized)
+    printf '%s\n401' '{"type":"error","error":{"type":"authentication_error","message":"Invalid bearer token"},"request_id":"req_011CStandin"}'
+    exit 0
+    ;;
+scope)
+    printf '%s\n403' '{"type":"error","error":{"type":"permission_error","message":"OAuth token does not meet scope requirement user:profile","details":{"required_scopes":["user:profile"],"match":"any","error_visibility":"user_facing","error_code":"oauth_scope_insufficient"}},"request_id":"req_011CStandin"}'
+    exit 0
+    ;;
+esac
+if [ -n "$FAKE_CURL_BODY" ]; then
+    body=$(cat "$FAKE_CURL_BODY")
+else
+    body='{"five_hour":{"utilization":22.0,"resets_at":"2026-11-24T10:30:00.029137+00:00","limit_dollars":null,"used_dollars":null,"remaining_dollars":null,"locked_reason":null},"seven_day":{"utilization":52.0,"resets_at":"2026-11-29T11:00:00.029154+00:00","limit_dollars":null,"used_dollars":null,"remaining_dollars":null,"locked_reason":null},"seven_day_opus":null,"seven_day_sonnet":null,"extra_usage":{"is_enabled":false,"utilization":null}}'
+fi
+printf '%s\n200' "$body"

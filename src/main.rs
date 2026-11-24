@@ -1,36 +1,54 @@
 //! stablehand: one home for agent engine accounts, their logins and their
-//! usage windows (README.md, docs/adr/0001). Today: the account register.
+//! usage windows (README.md, docs/adr/0001): the account register and the books.
 mod account;
+mod books;
+mod curl;
 mod import;
 mod login;
+mod readers;
 mod store;
+mod time;
+mod usage;
 // build.rs runs it to stamp the version; compiled here too, for its tests.
 #[cfg_attr(not(test), allow(dead_code))]
 mod version;
 
 use account::{Account, Change, Engine, Field, Off, Terms};
-use clap::{Parser, Subcommand};
+use agent_help::Help;
+use clap::{CommandFactory, FromArgMatches, Parser, Subcommand};
 use serde_json::{Value, json};
 use std::process::ExitCode;
 use store::Store;
 
-const FOR_AI: &str = "\
-stablehand keeps each agent engine account (Claude Code, Codex, pi, Kimi Code,
-agy, Grok, dsh): how it logs in, where it may run, and, as later versions add
-it, how much of its usage windows is left.
+agent_help::binary!("stablehand");
 
-Every command but `env` prints one JSON object on stdout. A refusal is {\"error\": \"…\"},
-each fault with the line that fixes it, exit 1, and nothing written; a command
-line clap cannot read is the same with exit 2. One command answers shell text:
-`stablehand env <name>` prints a session's `export` lines (--json: one object),
-and refuses an account no session may start on with exit 2. Start with
-`stablehand account list`; run `stablehand <command> --help` before a command's
-first use.
-The register is one SQLite file, $STABLEHAND_CONFIG_DIR/stablehand.db
-(default ~/.config/stablehand). It keeps no token.";
+/// Who keeps the register: the person, or an agent for them.
+const REGISTER: &str = "Keep the register";
+/// Who starts sessions on the accounts: factorium, Guild, a person.
+const SESSIONS: &str = "Start sessions";
+/// The manual itself.
+const LEARN: &str = "Learn";
+/// A command line stablehand cannot read, or an account `env` refuses.
+const EXIT_USAGE: u8 = 2;
 
+/// One home for agent engine accounts (Claude Code, Codex, pi, Kimi Code, agy, Grok, dsh): how each logs in, where it may run, and how much of its usage windows is left.
+///
+/// `stablehand env <name>` gives a session on an account its engine's variables; `stablehand read` asks an account's engine for its windows and books the reading, `stablehand limit` books a session's report that it met the account's limit, and `stablehand status` says what the books say now, each window's pace with it.
+///
+/// Start with `stablehand account list`. Run `stablehand <command> --help` before a command's first run.
+///
+/// ## Rules to know first
+///
+/// - Every command but `env` prints one JSON object on stdout. A refusal is `{"error": "…"}`, each fault with the line that fixes it, exit 1, and nothing written; a command line stablehand cannot read is the same with exit {const:EXIT_USAGE}. `--help`, `help` and `--version` answer text.
+/// - `stablehand env <name>` answers shell text, a session's `export` lines (`--json`: one object), and refuses an account no session may start on with exit {const:EXIT_USAGE}.
+/// - The register and the books are one SQLite file, `$STABLEHAND_CONFIG_DIR/stablehand.db` (default `~/.config/stablehand`). It keeps no token: a portable login's token is sesame's.
 #[derive(Parser)]
-#[command(name = "stablehand", version = env!("STABLEHAND_VERSION"), before_help = FOR_AI)]
+#[command(
+    name = "stablehand",
+    version = env!("STABLEHAND_VERSION"),
+    disable_help_subcommand = true,
+    verbatim_doc_comment
+)]
 struct Cli {
     #[command(subcommand)]
     cmd: Cmd,
@@ -40,149 +58,201 @@ struct Cli {
 enum Cmd {
     /// What a session on an account starts with: its engine's variables.
     ///
-    /// Portable: the engine's token variable (below), its value the token
-    /// sesame keeps (`sesame token stablehand-<name> --json`). Bound: the
-    /// engine's home variable (below) set to the account's --home, on its
-    /// machine only ($STABLEHAND_MACHINE, else `hostname -s`). Prints one
-    /// `export NAME='value'` line each, the value one shell word, for a shell
-    /// to read (`. <file>`, or `eval`); with --json, {"name", "login",
-    /// "env": {NAME: value}}. Written to stdout alone: no file, and no child
-    /// is given a value on its command line. Refuses, exit 2, with the fix,
-    /// an account off, not logged in, bound to another machine or with no
-    /// home, and a portable one of an engine with no token variable; exit 1
-    /// is no such account, or sesame that could not be asked.
-    #[command(after_long_help = engines_help())]
+    /// Portable: the engine's token variable (below), its value the token sesame keeps (`sesame token stablehand-<name> --json`). Bound: the engine's home variable (below) set to the account's `--home`, on its machine only (`$STABLEHAND_MACHINE`, else `hostname -s`).
+    ///
+    /// ## What it answers
+    ///
+    /// One `export NAME='value'` line each, the value one shell word, for a shell to read (`. <file>`, or `eval`); with `--json`, `{"name", "login", "env": {NAME: value}}`. Written to stdout alone: no file, and no child is given a value on its command line.
+    ///
+    /// ## What it refuses
+    ///
+    /// Exit {const:EXIT_USAGE}, with the fix: an account off, not logged in, bound to another machine or with no home, and a portable one of an engine with no token variable. Exit 1: no such account, or sesame that could not be asked.
+    ///
+    /// ## Engines
+    ///
+    /// {const:ENGINES}
+    #[command(next_help_heading = SESSIONS, verbatim_doc_comment)]
     Env {
         name: String,
         /// Answer one JSON object instead of `export` lines.
-        #[arg(long)]
+        #[arg(long, verbatim_doc_comment)]
         json: bool,
+    },
+    /// Show one topic of this manual, or all of it.
+    ///
+    /// `stablehand help all` shows the whole manual, every command in full; without a topic it shows what `stablehand --help` does.
+    #[command(next_help_heading = LEARN, verbatim_doc_comment)]
+    Help {
+        /// The topic, or `all`.
+        #[arg(verbatim_doc_comment)]
+        topic: Option<String>,
     },
     #[command(flatten)]
     Register(Register),
 }
 
-/// The commands that read and change the register.
+/// The commands that read and change the register and the books.
 #[derive(Subcommand)]
 enum Register {
-    /// Add, list, show, change or remove an account.
+    /// Add, list, show, log in, change, import or remove an account.
+    #[command(next_help_heading = REGISTER, verbatim_doc_comment)]
     Account {
         #[command(subcommand)]
         cmd: AccountCmd,
     },
     /// Switch an account off: nothing is picked on it until `stablehand on`.
     ///
-    /// Keeps who (`$USER`), when (UTC) and why; switching off an account
-    /// already off replaces them. Answers {"account": {…}}.
+    /// Keeps who (`$USER`), when (UTC) and why; switching off an account already off replaces them. Answers `{"account": {…}}`.
+    #[command(next_help_heading = REGISTER, verbatim_doc_comment)]
     Off {
         name: String,
         /// Why it is off, kept with it.
-        #[arg(long)]
+        #[arg(long, verbatim_doc_comment)]
         reason: String,
     },
     /// Switch an account back on, forgetting why it was off.
     ///
-    /// An account already on stays as it is. Answers {"account": {…}}.
+    /// An account already on stays as it is. Answers `{"account": {…}}`.
+    #[command(next_help_heading = REGISTER, verbatim_doc_comment)]
     On { name: String },
+    /// Read an account's usage windows from its engine, and book the reading.
+    ///
+    /// Without a name, every account. An account is read at most once an hour: one read or tried in the last hour waits, unless `--now`. A reader's failure is booked as a failed try and said; the account's last windows are kept, marked stale. A failed read still exits 0.
+    ///
+    /// ## What it answers
+    ///
+    /// `{"reads": [{"account", "outcome", "windows", …}]}`, `outcome` one of `read`, `failed` (with `error`, the reason and its fix), `waits` (with `next_at`) or `no_reader` (its engine has no reader yet); each window as `stablehand status` shows it.
+    ///
+    /// ## What trips you up
+    ///
+    /// A claude-code account whose login is a `claude setup-token` token is refused a usage query: its read fails, and its windows come from `stablehand limit` alone.
+    #[command(next_help_heading = SESSIONS, verbatim_doc_comment)]
+    Read {
+        /// The account to read; without it, every account.
+        #[arg(verbatim_doc_comment)]
+        name: Option<String>,
+        /// Read even if it was read or tried in the last hour.
+        #[arg(long, verbatim_doc_comment)]
+        now: bool,
+    },
+    /// Report that a session met an account's limit.
+    ///
+    /// Books it now: the window it names is used up until `--resets-at`, or, with no `--resets-at`, until the next reading. Without `--window` the whole account is used up.
+    ///
+    /// ## What it answers
+    ///
+    /// `{"limit": {"account", "at", "window", "resets_at"}}`. It refuses, booking nothing, a `--resets-at` that is no RFC 3339 time or is past, and an empty `--window`.
+    #[command(next_help_heading = SESSIONS, verbatim_doc_comment)]
+    Limit {
+        name: String,
+        /// The engine's name for the window that ran out (`five_hour`, `seven_day`).
+        #[arg(long, verbatim_doc_comment)]
+        window: Option<String>,
+        /// When the limit lifts, RFC 3339 (`2026-11-24T15:00:00Z`).
+        #[arg(long, verbatim_doc_comment)]
+        resets_at: Option<String>,
+    },
+    /// What the books say of each account now: its windows and their pace.
+    ///
+    /// Reads no engine (`stablehand read` does). Times are UTC RFC 3339.
+    ///
+    /// ## What it answers
+    ///
+    /// `{"accounts": [{"name", "engine", "off", "pace", "windows", "limit", "read_at", "tried_at", "failed", "read_next"}]}`. Each window is `{"name", "group" (null where the engine groups none), "used_percent" (null once it has reset since it was read), "resets_at", "source" ("read" or "limit"), "at" (when that was booked), "stale" (a later try failed, or it has reset since), "pace"}`.
+    ///
+    /// ## Pace
+    ///
+    /// A window's pace is `tight` (at its recent rate it runs out before it resets), `spare` (it resets within a quarter of its length with 20% or more left), `used_up`, or `steady` (neither, or it cannot be told). The account's is its worst window's, `used_up` while a limit holds. A reading over two hours old, or a window under half used, is never tight on its own.
+    #[command(next_help_heading = SESSIONS, verbatim_doc_comment)]
+    Status {
+        /// The account; without it, every account.
+        #[arg(verbatim_doc_comment)]
+        name: Option<String>,
+    },
 }
 
 #[derive(Subcommand)]
 enum AccountCmd {
     /// Add an account.
     ///
-    /// Answers {"account": {name, engine, login ("portable" or
-    /// "bound"), machine, sessions, expires, home, off}}, a field it lacks
-    /// null. Refuses, writing nothing, a name already kept, an unknown engine
-    /// (exit 2),
-    /// a date that is no YYYY-MM-DD day, --expires with --machine (a bound
-    /// login has no token to expire) and --home without --machine.
+    /// Answers `{"account": {"name", "engine", "login" ("portable" or "bound"), "machine", "sessions", "expires", "home", "off", "logged_in_at"}}`, a field it lacks null. Refuses, writing nothing, a name already kept, an unknown engine (exit {const:EXIT_USAGE}), a date that is no YYYY-MM-DD day, `--expires` with `--machine` (a bound login has no token to expire) and `--home` without `--machine`.
+    #[command(verbatim_doc_comment)]
     Add {
         /// The account's name, one word (claude-felix).
+        #[arg(verbatim_doc_comment)]
         name: String,
         /// Its engine.
-        #[arg(long, value_enum)]
+        #[arg(long, value_enum, verbatim_doc_comment)]
         engine: Engine,
         #[command(flatten)]
         terms: Terms,
     },
     /// Every account, by name.
     ///
-    /// Answers {"accounts": [{…}, …]}, each as `add` answers it.
+    /// Answers `{"accounts": [{…}, …]}`, each as `stablehand account add` answers it.
+    #[command(verbatim_doc_comment)]
     List,
     /// One account, and whether it is logged in.
     ///
-    /// Answers {"account": {…}, "logged_in": true|false, "days_left": n|null,
-    /// "warning": "…"|null}: a bound login is logged in as `account login`
-    /// recorded it (`logged_in_at`), a portable one when sesame holds its
-    /// token (`sesame token stablehand-<name>`); `days_left` counts to
-    /// --expires, and `warning` says from 30 days ahead to make a new token.
+    /// Answers `{"account": {…}, "logged_in": true|false, "days_left": n|null, "warning": "…"|null}`: a bound login is logged in as `stablehand account login` recorded it (`logged_in_at`), a portable one when sesame holds its token (`sesame token stablehand-<name>`); `days_left` counts to `--expires`, and `warning` says from 30 days ahead to make a new token.
+    #[command(verbatim_doc_comment)]
     Show { name: String },
     /// Log an account in by its engine's own login.
     ///
-    /// Portable: runs the engine's token command (below; with --token,
-    /// none), then sesame asks for the token with hidden input, or reads it
-    /// from stdin when stdin is no terminal, and keeps it as the provider
-    /// `stablehand-<name>` (made with `sesame provider add` if missing). The
-    /// token is on no command line, in no log and not in the register. Bound:
-    /// on the account's machine ($STABLEHAND_MACHINE, else `hostname -s`),
-    /// runs the engine's login (below) with the variable it reads for its home
-    /// set to the account's --home, and records when. Answers as `show` does.
-    /// Refuses, writing nothing, a bound login on another machine or with no
-    /// home, --token or --expires on a bound login, and an engine with no
-    /// token command without --token.
-    #[command(after_long_help = engines_help())]
+    /// Portable: runs the engine's token command (below; with `--token`, none), then sesame asks for the token with hidden input, or reads it from stdin when stdin is no terminal, and keeps it as the provider `stablehand-<name>` (made with `sesame provider add` if missing). The token is on no command line, in no log and not in the register. Bound: on the account's machine (`$STABLEHAND_MACHINE`, else `hostname -s`), runs the engine's login (below) with the variable it reads for its home set to the account's `--home`, and records when. Answers as `stablehand account show` does.
+    ///
+    /// Refuses, writing nothing, a bound login on another machine or with no home, `--token` or `--expires` on a bound login, and an engine with no token command without `--token`.
+    ///
+    /// ## Engines
+    ///
+    /// {const:ENGINES}
+    #[command(verbatim_doc_comment)]
     Login {
         name: String,
         /// Paste the token instead of running the engine's token command.
-        #[arg(long)]
+        #[arg(long, verbatim_doc_comment)]
         token: bool,
         /// When the new token expires, YYYY-MM-DD, kept as the account's --expires.
-        #[arg(long)]
+        #[arg(long, verbatim_doc_comment)]
         expires: Option<String>,
     },
     /// Change an account's terms: only those given change.
     ///
-    /// Answers {"account": {…}}; refuses as `add` does, judging the account as it would be.
+    /// Answers `{"account": {…}}`; refuses as `stablehand account add` does, judging the account as it would be.
+    #[command(verbatim_doc_comment)]
     Edit {
         name: String,
         /// Its engine.
-        #[arg(long, value_enum)]
+        #[arg(long, value_enum, verbatim_doc_comment)]
         engine: Option<Engine>,
         #[command(flatten)]
         terms: Terms,
         /// Clear a term: machine (the login becomes portable), sessions (no limit), expires, home. Repeatable.
-        #[arg(long, value_enum)]
+        #[arg(long, value_enum, verbatim_doc_comment)]
         unset: Vec<Field>,
     },
     /// Move this host's `agent-account-*` entries of mytokens into stablehand.
     ///
-    /// Each entry `agent-account-<name>` (`mytokens list`) becomes the account
-    /// <name>: its engine from its HARNESS, bound to its MACHINE if it has one;
-    /// its CLAUDE_CODE_OAUTH_TOKEN, if it has one, goes from `mytokens get`
-    /// straight into sesame, as `account login` keeps a token. An account
-    /// already kept is left as it is. mytokens is only read: nothing in it is
-    /// changed or removed. Answers {"dry_run": …, "accounts": [{"from":
-    /// "agent-account-<name>/<label>", "result": "added"|"would add"|"already
-    /// kept", "token": true|false, "account": {…}}, …]}, no token shown.
-    /// Refuses, importing nothing, an entry whose HARNESS is no engine, one
-    /// with both a token and a MACHINE, and a field mytokens does not answer;
-    /// a token sesame refuses stops it there, and running it again imports the rest.
+    /// Each entry `agent-account-<name>` (`mytokens list`) becomes the account `<name>`: its engine from its HARNESS, bound to its MACHINE if it has one; its CLAUDE_CODE_OAUTH_TOKEN, if it has one, goes from `mytokens get` straight into sesame, as `stablehand account login` keeps a token. An account already kept is left as it is. mytokens is only read: nothing in it is changed or removed.
+    ///
+    /// Answers `{"dry_run": …, "accounts": [{"from": "agent-account-<name>/<label>", "result": "added"|"would add"|"already kept", "token": true|false, "account": {…}}, …]}`, no token shown. Refuses, importing nothing, an entry whose HARNESS is no engine, one with both a token and a MACHINE, and a field mytokens does not answer; a token sesame refuses stops it there, and running it again imports the rest.
+    #[command(verbatim_doc_comment)]
     Import {
         /// Read the accounts from mytokens (the one source today).
-        #[arg(long, required = true)]
+        #[arg(long, required = true, verbatim_doc_comment)]
         from_mytokens: bool,
         /// Say what it would import, reading no token and writing nothing.
-        #[arg(long)]
+        #[arg(long, verbatim_doc_comment)]
         dry_run: bool,
     },
-    /// Remove an account.
+    /// Remove an account and its books.
     ///
-    /// Answers {"name": …, "removed": true}, or false when
-    /// there was none: run twice, the same register.
+    /// Answers `{"name": …, "removed": true}`, or false when there was none: run twice, the same register.
+    #[command(verbatim_doc_comment)]
     Rm { name: String },
 }
 
-/// Each engine's login, as `account login --help` lists it.
+/// Each engine's login, as `stablehand env --help` and `stablehand account login --help` list it.
 fn engines_help() -> String {
     let lines = <Engine as clap::ValueEnum>::value_variants()
         .iter()
@@ -192,35 +262,56 @@ fn engines_help() -> String {
                 .token
                 .map_or("none: --token".into(), |t| format!("`{}`", t.join(" ")));
             format!(
-                "  {}: bound `{}`, {}; token {token}, in {}",
+                "- {}: bound `{}`, {}; token {token}, in {}",
                 e.name(),
                 l.bound.join(" "),
                 l.home_var,
                 l.token_var.unwrap_or("none: bound only")
             )
         });
-    format!("Engines:\n{}", lines.collect::<Vec<_>>().join("\n"))
+    lines.collect::<Vec<_>>().join("\n")
+}
+
+/// The manual: clap's command tree, and the constants it places by name.
+fn manual() -> Help {
+    Help::new(Cli::command())
+        .constant("EXIT_USAGE", EXIT_USAGE)
+        .constant("ENGINES", engines_help())
 }
 
 fn main() -> ExitCode {
-    let cli = match Cli::try_parse() {
-        Ok(cli) => cli,
-        Err(e) if !e.use_stderr() => e.exit(),
-        Err(e) => {
+    let help = manual();
+    let parsed = help.clap().map_err(|e| e.to_string()).map(|command| {
+        command
+            .try_get_matches()
+            .and_then(|m| Cli::from_arg_matches(&m))
+    });
+    let cli = match parsed {
+        Err(broken) => return answer(Err(broken), ExitCode::FAILURE),
+        Ok(Ok(cli)) => cli,
+        Ok(Err(e)) if !e.use_stderr() => e.exit(),
+        Ok(Err(e)) => {
             let msg = e.render().to_string();
-            return answer(Err(msg.trim().to_string()), ExitCode::from(2));
+            return answer(Err(msg.trim().to_string()), ExitCode::from(EXIT_USAGE));
         }
     };
     match cli.cmd {
         Cmd::Env { name, json } => match env(&name, json) {
-            Ok(Err(refusal)) => answer(Err(refusal), ExitCode::from(2)),
+            Ok(Err(refusal)) => answer(Err(refusal), ExitCode::from(EXIT_USAGE)),
             Ok(text) => answer(text, ExitCode::FAILURE),
             Err(e) => answer(Err(e), ExitCode::FAILURE),
         },
+        Cmd::Help { topic } => {
+            let text = match topic {
+                None => help.index(),
+                Some(topic) => help.topic_help(&topic),
+            };
+            let text = text.map_err(|e| e.to_string());
+            answer(text, ExitCode::from(EXIT_USAGE))
+        }
         Cmd::Register(cmd) => answer(run(cmd).map(|v| format!("{v}\n")), ExitCode::FAILURE),
     }
 }
-
 /// Prints the answer, its text as it is, or the fault as {"error": …},
 /// exiting `failure`.
 fn answer(result: Result<String, String>, failure: ExitCode) -> ExitCode {
@@ -330,7 +421,7 @@ fn run(cmd: Register) -> Result<Value, String> {
                     ..Change::default()
                 };
                 let a = account::apply(&kept(&store, &name)?, change).map_err(faults)?;
-                let a = login::login(&a, token, account::utc(now()?))?;
+                let a = login::login(&a, token, time::utc(now()?))?;
                 store.put(&a)?;
                 with_status(&a)
             }
@@ -365,7 +456,7 @@ fn run(cmd: Register) -> Result<Value, String> {
             }
             a.off = Some(Off {
                 by: std::env::var("USER").unwrap_or_else(|_| "unknown".into()),
-                at: account::utc(now()?),
+                at: time::utc(now()?),
                 reason,
             });
             store.put(&a)?;
@@ -378,5 +469,35 @@ fn run(cmd: Register) -> Result<Value, String> {
             }
             Ok(shown(&a))
         }
+        Register::Read { name, now: anyway } => {
+            usage::read(&store, &chosen(&store, name)?, now()?, anyway)
+        }
+        Register::Limit {
+            name,
+            window,
+            resets_at,
+        } => usage::limit(&store, &kept(&store, &name)?, window, resets_at, now()?),
+        Register::Status { name } => usage::status(&store, &chosen(&store, name)?, now()?),
+    }
+}
+
+/// The account `name`, or every account where none is named.
+fn chosen(store: &Store, name: Option<String>) -> Result<Vec<Account>, String> {
+    match name {
+        Some(name) => kept(store, &name).map(|a| vec![a]),
+        None => store.list(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_manual_is_whole() {
+        Cli::command().debug_assert();
+        agent_help::check(&manual()).unwrap();
+        let all = manual().manual().unwrap();
+        assert!(!all.contains("{const:"), "{all}");
     }
 }
