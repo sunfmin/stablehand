@@ -29,6 +29,6 @@ esac
 if [ -n "$FAKE_CURL_BODY" ]; then
     body=$(cat "$FAKE_CURL_BODY")
 else
-    body='{"limits":[{"window":{"duration":300,"timeUnit":"TIME_UNIT_MINUTE"},"detail":{"limit":"100","remaining":"100","resetTime":"2026-11-24T10:34:05.711416Z"}}],"booster_wallet":{"id":"standin","balance":{"amount":"5000000000","unit":"UNIT_CURRENCY_CENTS"},"status":"STATUS_ACTIVE"},"usages":{"limit_5h":{"used_ratio":0.003,"reset_time":"2026-11-24T10:34:05Z"},"limit_month_total":{"used_ratio":0.8269,"reset_time":"2026-11-25T00:00:00Z"},"limit_month_code":{"used_ratio":0.8269,"reset_time":"2026-11-25T00:00:00Z"}}}'
+    body='{"limits":[{"window":{"duration":300,"timeUnit":"TIME_UNIT_MINUTE"},"detail":{"limit":"100","remaining":"100","resetTime":"2099-11-24T10:34:05.711416Z"}}],"booster_wallet":{"id":"standin","balance":{"amount":"5000000000","unit":"UNIT_CURRENCY_CENTS"},"status":"STATUS_ACTIVE"},"usages":{"limit_5h":{"used_ratio":0.003,"reset_time":"2099-11-24T10:34:05Z"},"limit_month_total":{"used_ratio":0.8269,"reset_time":"2099-11-25T00:00:00Z"},"limit_month_code":{"used_ratio":0.8269,"reset_time":"2099-11-25T00:00:00Z"}}}'
 fi
 printf '%s\n200' "$body"

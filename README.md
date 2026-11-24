@@ -1,7 +1,7 @@
 # stablehand
 
 One home for agent engine accounts: how each logs in, where it may run, and
-how much of its usage windows is left; and, from that, which account one
+how much of its usage windows is left; and, from that (`pick`), which account one
 more session may start on now.
 
 stablehand is being built: its commands land one ticket at a time, each
@@ -185,6 +185,36 @@ stablehand status                   # each account's windows and their pace
   line and exit are the answer, so a person's own status line keeps working.
 - It never refuses: an account not kept, or not claude-code's, books
   nothing, and the line says why (with `--then`, stderr does).
+
+## Picking an account
+
+```sh
+stablehand pick --engine claude-code --running claude-felix=1,claude-two=2
+# {"account": "claude-felix"}
+# {"none": true, "until": "2026-11-24T15:00:00Z", "why": [{"account", "reason", "why", "until"}, …]}
+```
+
+- `pick` answers which account one more session of the engine may start on
+  now. It reads no engine: it judges the books as `status` shows them.
+- The candidates are the engine's accounts usable on the machine
+  (`--machine`, else this one): portable, or bound to it; logged in; not off.
+- The rules are Guild's ledger's quota. None is picked on an account a
+  limit holds on, until it lifts; any of whose windows is the stop percent
+  used (`--stop-percent`, 90 unless it says), until that window resets;
+  running its sessions at once; or one of whose windows, at its present
+  rate shared by the sessions running and one more, runs out before it
+  resets (a reading over two hours old, or a window under half used, runs
+  on at no rate).
+- Of the rest, the one with the most left of its most used window; one with
+  no reading in force, or only stale ones, after every one with one; of
+  equals, the first by name.
+- `--running <account>=<n>,…` is the caller's count of the sessions now
+  running on each account (factorium knows its workers); stablehand counts
+  none itself, and counts across machines only as the caller does. A name in
+  it that is no account kept is refused.
+- None answers `until`, the earliest any passed over lifts (null when none
+  says when: off, not logged in, full), and each one's `reason`: `off`,
+  `elsewhere`, `not_logged_in`, `limit`, `stopped`, `full` or `runs_out`.
 
 ## Install
 
