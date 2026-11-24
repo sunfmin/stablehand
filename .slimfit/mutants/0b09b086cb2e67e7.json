@@ -1,0 +1,15 @@
+{
+  "tree": "4581d2a7c8627a2d7d50927b4282e46d870a56d6+d1fba762150c532c",
+  "picker": "codex:01a20e10-0dbf-7b62-a880-2bc67b76fc53:default",
+  "author": "claude-code:24dd790f-ad54-5c19-b7cd-d84df5b2ec84:opus",
+  "picks": {
+    "rust": [
+      {
+        "name": "src/store.rs:105:33: replace && with || in step_line",
+        "why": "The error assertions may still pass when SQL starts on the first line, leaving comment and blank-line skipping untested.",
+        "outcome": "killed",
+        "first_outcome": "killed"
+      }
+    ]
+  }
+}
