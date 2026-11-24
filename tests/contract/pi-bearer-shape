@@ -1,0 +1,25 @@
+#!/bin/sh
+# pi-bearer-shape <fake-pi|pi> auth print-bearer-token --provider openai-codex:
+# runs that pi (the stand-in beside this script, or the real one on PATH) as
+# stablehand's pi reader does (src/readers/chatgpt.rs), and prints what the
+# reader reads of it, never the bearer: its exit; of 0, that stdout is one
+# word; else, that stderr says why. PI_CODING_AGENT_DIR=<empty> runs it in
+# an empty home of its own: not logged in.
+case "$1" in fake-*) program="$(dirname "$0")/$1" ;; *) program=$1 ;; esac
+shift
+d=$(mktemp -d)
+trap 'rm -rf "$d"' EXIT
+if [ "$PI_CODING_AGENT_DIR" = "<empty>" ]; then
+    mkdir "$d/home"
+    export PI_CODING_AGENT_DIR="$d/home"
+fi
+out=$("$program" "$@" 2>"$d/err" </dev/null)
+code=$?
+echo "exit $code"
+if [ "$code" = 0 ]; then
+    words=$(printf '%s' "$out" | wc -w | tr -d ' ')
+    lines=$(printf '%s\n' "$out" | wc -l | tr -d ' ')
+    echo "stdout: $words word, $lines line"
+else
+    [ -s "$d/err" ] && echo "stderr says why" || echo "stderr empty"
+fi

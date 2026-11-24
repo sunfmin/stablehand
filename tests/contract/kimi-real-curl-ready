@@ -1,0 +1,7 @@
+#!/bin/sh
+# Ready for `truefit contract --real kimi`: curl and jq on PATH and a Kimi
+# Code login whose access token has not expired. It lasts 15 minutes and
+# only Kimi Code refreshes it: start a kimi session first.
+creds="${KIMI_CODE_HOME:-$HOME/.kimi-code}/credentials/kimi-code.json"
+command -v curl >/dev/null && command -v jq >/dev/null &&
+    jq -e --argjson now "$(date +%s)" '.access_token and .expires_at > $now + 60' "$creds" >/dev/null 2>&1

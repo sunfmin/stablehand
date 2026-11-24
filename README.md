@@ -151,6 +151,23 @@ stablehand status                   # each account's windows and their pace
 - A credential the engine refused (dsh: HTTP 401 or code 40003; dsh drops
   its grant then) is booked `"outcome": "refused"` and never asked again,
   `--now` or not, until `account login`; `status` says `"refused": true`.
+- codex's and pi's readers read a ChatGPT account's `primary` and
+  `secondary` windows, where it answers them (used %, length, resets at), through the engine's own
+  bound login, on its machine: codex's app server (`codex app-server`,
+  `account/rateLimits/read`, in its `CODEX_HOME`; no turn spent), and for pi
+  `chatgpt.com/backend-api/wham/usage` with the bearer `pi auth
+  print-bearer-token --provider openai-codex` gives (in its
+  `PI_CODING_AGENT_DIR`) and its login's `ChatGPT-Account-Id`, on curl's
+  stdin. A codex and a pi login of one ChatGPT account (one
+  `ChatGPT-Account-Id`) are one account: register it once.
+- kimi's reader asks `api.kimi.com/coding/v1/usages`, as Kimi Code's own
+  `/usage` does, with the account's bearer: a portable login's from sesame
+  (`account login --token`), a bound one's from
+  `<home>/credentials/kimi-code.json` (its `KIMI_CODE_HOME`; `~/.kimi-code`
+  without `--home`). Its windows are `limit_5h` and any other it lists
+  (`limit_7d`, `limit_month_total`, `limit_month_code`). A bound login's
+  token lasts 15 minutes and only a kimi session refreshes it: read long
+  after one, it is refused (HTTP 401), said with that fix.
 - `limit` books a caller's report that a session met the account's limit: the window it names is used up until `--resets-at`, or until the next reading without it; without `--window`, the whole account is.
 - `status` answers each account's windows (each with its `group` where the
   engine groups them), used %, resets at, source (`read` or `limit`),
@@ -160,6 +177,24 @@ stablehand status                   # each account's windows and their pace
   window's. The rules are Guild's ledger's: a reading over two hours old,
   or a window under half used, is never tight on its own.
 - `account rm` removes the account's books with it.
+
+## Claude Code's status line
+
+```json
+"statusLine": {"type": "command", "command": "stablehand statusline --account claude-felix --then ~/.claude/statusline.sh"}
+```
+
+- Set in `~/.claude/settings.json`, Claude Code runs it with its session's
+  JSON on stdin; its `rate_limits` (`five_hour`, `seven_day`:
+  `used_percentage`, `resets_at`) are booked as a reading of `--account`,
+  as `read` books one, when they differ from the books' latest entry.
+  Booking is local: it asks no engine and reaches no network (a few
+  milliseconds a run).
+- It prints one line for the bar, `claude-felix · 5h 24% · 7d 41%`. With
+  `--then <cmd>`, `sh -c <cmd>` gets the same stdin byte for byte, and its
+  line and exit are the answer, so a person's own status line keeps working.
+- It never refuses: an account not kept, or not claude-code's, books
+  nothing, and the line says why (with `--then`, stderr does).
 
 ## Install
 

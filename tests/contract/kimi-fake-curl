@@ -1,0 +1,34 @@
+#!/bin/sh
+# Stand-in for curl as kimi's reader runs it (src/readers/kimi.rs, src/curl.rs):
+#   curl --silent --show-error --max-time N --config - --write-out '\n%{http_code}' <url>
+# with its headers on stdin as curl config. It answers
+# api.kimi.com/coding/v1/usages as the real endpoint does (truefit.toml,
+# standin "kimi"): the body, a newline, the HTTP status.
+#
+# FAKE_CURL_FAULT: unreachable (curl exits 6), unauthorized (401).
+#   FAKE_CURL_BODY: a file whose body a 200 answers instead of the one
+#   below. FAKE_CURL_LOG: a file each call appends to: its arguments on one
+#   line, then its stdin.
+for url; do :; done
+config=$(cat)
+if [ -n "$FAKE_CURL_LOG" ]; then
+    printf '%s\n%s\n' "$(printf '%s' "$*" | tr '\n' ' ')" "$config" >>"$FAKE_CURL_LOG"
+fi
+host=${url#*://}
+host=${host%%/*}
+case "$FAKE_CURL_FAULT" in
+unreachable)
+    echo "curl: (6) Could not resolve host: $host" >&2
+    exit 6
+    ;;
+unauthorized)
+    printf '%s\n401' '{"error":{"message":"The API Key appears to be invalid or may have expired. Please verify your credentials and try again.","type":"invalid_authentication_error"}}'
+    exit 0
+    ;;
+esac
+if [ -n "$FAKE_CURL_BODY" ]; then
+    body=$(cat "$FAKE_CURL_BODY")
+else
+    body='{"limits":[{"window":{"duration":300,"timeUnit":"TIME_UNIT_MINUTE"},"detail":{"limit":"100","remaining":"100","resetTime":"2099-11-24T10:34:05.711416Z"}}],"booster_wallet":{"id":"standin","balance":{"amount":"5000000000","unit":"UNIT_CURRENCY_CENTS"},"status":"STATUS_ACTIVE"},"usages":{"limit_5h":{"used_ratio":0.003,"reset_time":"2099-11-24T10:34:05Z"},"limit_month_total":{"used_ratio":0.8269,"reset_time":"2099-11-25T00:00:00Z"},"limit_month_code":{"used_ratio":0.8269,"reset_time":"2099-11-25T00:00:00Z"}}}'
+fi
+printf '%s\n200' "$body"

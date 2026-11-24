@@ -1,0 +1,6 @@
+{
+  "tree": "d1bf3931c38c083dba5cc045de04677a2426ef67+d1fba762150c532c",
+  "picker": "codex:01a20d13-3336-7fb0-adfc-0f270d380ace:default",
+  "author": "claude-code:d049c806-25f0-5159-9d6c-0dfa151b2e2d:opus",
+  "none": "The tests assert both credential sources and home paths, the returned windows and their percentages and durations, and the error behavior for both 401 branches and an empty response."
+}

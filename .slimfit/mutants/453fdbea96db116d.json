@@ -1,0 +1,15 @@
+{
+  "tree": "24057d48880e2f6dd938600cd2ab864a5c124d71+d1fba762150c532c",
+  "picker": "codex:01a20d10-9f71-7e32-a34c-e82527d021a0:default",
+  "author": "claude-code:60b878e2-f240-5f33-a950-b54de43fa198:opus",
+  "picks": {
+    "rust": [
+      {
+        "name": "src/statusline.rs:60:27: replace || with && in book",
+        "why": "This allows duplicate nonempty readings to be appended, and the test that submits the same reading twice checks the delegated command’s output and exit code without counting ledger entries.",
+        "outcome": "killed",
+        "first_outcome": "killed"
+      }
+    ]
+  }
+}

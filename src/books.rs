@@ -442,6 +442,13 @@ pub fn read_next(status: &Status, now: u64) -> Option<u64> {
         .filter(|next| *next > now)
 }
 
+/// Whether a reading of `windows` says what the books, `entries` oldest
+/// first, do not: unless they end on a reading of these very windows. A
+/// caller that reads often (Claude Code's status line) books only news.
+pub fn is_news(entries: &[Entry], windows: &[Window]) -> bool {
+    !matches!(entries.last(), Some(Entry { what: What::Read(last), .. }) if last == windows)
+}
+
 #[cfg(test)]
 #[path = "books_tests.rs"]
 mod tests;

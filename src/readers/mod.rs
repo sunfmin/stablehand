@@ -7,8 +7,10 @@
 use crate::account::{Account, Engine};
 use crate::books::{What, Window};
 
-mod claude_code;
+mod chatgpt;
+pub mod claude_code;
 mod dsh;
+mod kimi;
 
 /// A reader: what to book of an account now, a reading ([`What::Read`],
 /// [`What::Balance`]) or a try that failed ([`What::Failed`],
@@ -18,6 +20,9 @@ pub type Read = fn(&Account) -> What;
 /// Each engine that has a reader, and its reader.
 const READERS: &[(Engine, Read)] = &[
     (Engine::ClaudeCode, |a| windows(claude_code::read(a))),
+    (Engine::Codex, |a| windows(chatgpt::codex(a))),
+    (Engine::Pi, |a| windows(chatgpt::pi(a))),
+    (Engine::Kimi, |a| windows(kimi::read(a))),
     (Engine::Dsh, dsh::read),
 ];
 

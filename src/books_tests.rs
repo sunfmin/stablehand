@@ -642,3 +642,26 @@ fn a_refused_credential_is_held_until_a_login_after_it() {
     assert_eq!(s.tried_at, Some(NOW - 2 * HOUR));
     assert_eq!(read_next(&s, NOW), None);
 }
+
+#[test]
+fn a_reading_is_news_unless_the_books_end_on_the_same_one() {
+    let windows = vec![
+        window("five_hour", 23.5, Some(NOW + HOUR)),
+        window("seven_day", 41.0, Some(NOW + 3 * 24 * HOUR)),
+    ];
+    let mut more = windows.clone();
+    more[0].used_percent = 24.0;
+    let same = read(NOW - MINUTE, windows.clone());
+    assert!(is_news(&[], &windows));
+    assert!(!is_news(std::slice::from_ref(&same), &windows));
+    assert!(is_news(std::slice::from_ref(&same), &more));
+    // After a failed try or a limit the same reading says what they do not.
+    assert!(is_news(&[same.clone(), failed(NOW)], &windows));
+    assert!(is_news(&[same.clone(), limit(NOW, None, None)], &windows));
+    // Only the end of the books counts.
+    assert!(is_news(
+        &[read(NOW - HOUR, more.clone()), same.clone()],
+        &more
+    ));
+    assert!(!is_news(&[read(NOW - HOUR, more), same], &windows));
+}
