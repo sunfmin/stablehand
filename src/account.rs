@@ -54,11 +54,11 @@ impl Engine {
             Dsh => ("DSH_HOME", &["dsh", "tui"], None, "platform.deepseek.com"),
         };
         let file = match self {
-            ClaudeCode => Some(".credentials.json"),
-            Codex | Pi | Grok => Some("auth.json"),
-            Kimi => Some("credentials/kimi-code.json"),
-            Dsh => Some(".credentials.yaml"),
-            Agy => None,
+            ClaudeCode => ".credentials.json",
+            Codex | Pi | Grok => "auth.json",
+            Kimi => "credentials/kimi-code.json",
+            Dsh => ".credentials.yaml",
+            Agy => ".gemini/antigravity-cli/antigravity-oauth-token",
         };
         Login {
             home_var,
@@ -80,9 +80,9 @@ pub struct Login {
     pub home_var: &'static str,
     /// The command that logs a bound account in, run in its home.
     pub bound: &'static [&'static str],
-    /// The file its login writes in its home, where stablehand knows one: a
-    /// bound home holding it is logged in. agy's is not known.
-    pub file: Option<&'static str>,
+    /// The file its login writes in its home: a bound home holding it is
+    /// logged in.
+    pub file: &'static str,
     /// The command that prints a long-lived token, where the engine has one.
     pub token: Option<&'static [&'static str]>,
     /// The variable a session reads a portable token from, where the engine has one.

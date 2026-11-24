@@ -352,13 +352,13 @@ fn engines_help() -> String {
             let token = l
                 .token
                 .map_or("none: --token".into(), |t| format!("`{}`", t.join(" ")));
-            let file = l.file.map_or("not known".into(), |f| format!("`{f}`"));
             format!(
-                "- {}: bound `{}`, {}; token {token}, in {}; login file {file}",
+                "- {}: bound `{}`, {}; token {token}, in {}; login file `{}`",
                 e.name(),
                 l.bound.join(" "),
                 l.home_var,
-                l.token_var.unwrap_or("none: bound only")
+                l.token_var.unwrap_or("none: bound only"),
+                l.file
             )
         });
     lines.collect::<Vec<_>>().join("\n")

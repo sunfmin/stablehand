@@ -61,8 +61,8 @@ stablehand account show claude-felix   # {"account": {…}, "logged_in": true, "
 - A bound account is logged in too, with no `account login`, when its home
   on this machine holds its engine's login file (claude-code
   `.credentials.json`, codex and pi `auth.json`, kimi
-  `credentials/kimi-code.json`, grok `auth.json`, dsh `.credentials.yaml`;
-  agy's is not known): an engine logged in there before stablehand is
+  `credentials/kimi-code.json`, grok `auth.json`, dsh `.credentials.yaml`,
+  agy `.gemini/antigravity-cli/antigravity-oauth-token` under its `HOME`): an engine logged in there before stablehand is
   adopted as it is, nothing written in the home. `account login` is needed
   only when it holds none.
 - `account show` says whether the account is logged in: a bound one as

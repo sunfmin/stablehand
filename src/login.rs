@@ -103,14 +103,13 @@ pub struct LoginFile {
 /// The engine's login file in `a`'s home, where `a` is bound to this machine
 /// and its home holds one: only looked at, never written.
 pub fn login_file(a: &Account) -> Result<Option<LoginFile>, String> {
-    let (Some(machine), Some(home), Some(file)) = (&a.machine, &a.home, a.engine.login().file)
-    else {
+    let (Some(machine), Some(home)) = (&a.machine, &a.home) else {
         return Ok(None);
     };
     if &this_machine()? != machine {
         return Ok(None);
     }
-    let path = Path::new(home).join(file);
+    let path = Path::new(home).join(a.engine.login().file);
     let Some(written) = std::fs::metadata(&path)
         .ok()
         .filter(std::fs::Metadata::is_file)

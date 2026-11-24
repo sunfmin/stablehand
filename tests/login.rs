@@ -248,7 +248,7 @@ fn a_bound_home_holding_its_engines_login_file_is_logged_in() {
     let r = Register::new("adopted");
     let home = r.path("homes/codex");
     std::fs::create_dir_all(&home).unwrap();
-    for (name, engine) in [("codex", "codex"), ("grok", "grok")] {
+    for (name, engine) in [("codex", "codex"), ("grok", "grok"), ("agy", "agy")] {
         let home = r.path(&format!("homes/{name}"));
         r.ok(&[
             "account",
@@ -297,6 +297,15 @@ fn a_bound_home_holding_its_engines_login_file_is_logged_in() {
     assert_eq!(
         r.ok(&["pick", "--engine", "grok"]),
         json!({"account": "grok"})
+    );
+    // agy's is under its HOME, where the person's own agy login is.
+    let agy = r.path("homes/agy/.gemini/antigravity-cli");
+    assert_eq!(r.ok(&["account", "show", "agy"])["logged_in"], false);
+    std::fs::create_dir_all(&agy).unwrap();
+    std::fs::write(format!("{agy}/antigravity-oauth-token"), "{}").unwrap();
+    assert_eq!(
+        r.ok(&["pick", "--engine", "agy"]),
+        json!({"account": "agy"})
     );
 
     // On another machine the file is not this one's to see.
