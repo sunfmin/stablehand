@@ -266,7 +266,7 @@ fn running(s: &str) -> Result<(String, u32), String> {
 enum AccountCmd {
     /// Add an account.
     ///
-    /// Answers `{"account": {"name", "engine", "login" ("portable" or "bound"), "machine", "sessions", "expires", "home", "off", "token_command"}}`, a field it lacks null. Refuses, writing nothing, a name already kept, an unknown engine (exit {const:EXIT_USAGE}), a date that is no YYYY-MM-DD day, `--expires` or `--token-command` with `--machine` (a bound login is its engine's files, no token) and `--home` without `--machine`.
+    /// Answers `{"account": {"name", "engine", "login" ("portable" or "bound"), "machine", "sessions", "expires", "home", "off", "token_command", "identity" (the hash of the identity `stablehand account scan` read in its login)}}`, a field it lacks null. Refuses, writing nothing, a name already kept, an unknown engine (exit {const:EXIT_USAGE}), a date that is no YYYY-MM-DD day, `--expires` or `--token-command` with `--machine` (a bound login is its engine's files, no token) and `--home` without `--machine`.
     ///
     /// ## Logging in
     ///

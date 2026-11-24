@@ -138,7 +138,10 @@ fn logins(user_home: &Path, paths: &[PathBuf]) -> Vec<Found> {
     };
     let mut all: Vec<Found> = engines
         .iter()
-        .filter_map(|&e| found(e, user_home.join(e.login().default_home)))
+        .filter_map(|&e| match e.login().default_home {
+            "" => found(e, user_home.to_path_buf()),
+            rel => found(e, user_home.join(rel)),
+        })
         .collect();
     for path in paths {
         let mut here: Vec<_> = engines
