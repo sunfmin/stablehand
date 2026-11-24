@@ -1392,6 +1392,15 @@ fn order_set_refuses_what_stablehand_does_not_know_and_writes_nothing() {
     let home = b.agy_home();
     let add = ["account", "add", "agy-mini", "--engine", "agy"];
     b.ok(&[&add[..], &["--machine", "mini", "--home", &home]].concat());
+    // `agy models` runs in the agy account's home, not that of another
+    // engine's account bound here, nor of an agy account bound elsewhere.
+    let elsewhere = ["--machine", "air", "--home", "/nowhere"];
+    b.ok(&[
+        &["account", "add", "agy-air", "--engine", "agy"][..],
+        &elsewhere,
+    ]
+    .concat());
+    b.chatgpt("a-codex", "codex");
     // No order and no --engine: nothing to walk.
     let (code, none) = b.run(&["pick"]);
     assert_eq!((code, &none["code"]), (1, &json!("no_order")), "{none}");
