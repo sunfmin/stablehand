@@ -55,18 +55,14 @@ pub fn read(account: &Account, read_by: Option<ReadBy>) -> Result<Vec<Window>, S
             USAGE,
             &[format!("Authorization: Bearer {bearer}"), BETA.to_string()],
         )?;
-        if !refuses_scope(status, &body) {
-            return windows(status, &body);
+        let answer: serde_json::Value = serde_json::from_str(&body).unwrap_or_default();
+        // A `claude setup-token` token is refused its scope.
+        let scope = answer["error"]["details"]["error_code"] == "oauth_scope_insufficient";
+        if !(status == 403 && scope) {
+            return windows(status, &answer);
         }
     }
     question(account, &bearer)
-}
-
-/// Whether the usage endpoint's answer refuses the token its scope: a
-/// `claude setup-token` token's.
-fn refuses_scope(status: u16, body: &str) -> bool {
-    let answer: serde_json::Value = serde_json::from_str(body).unwrap_or_default();
-    status == 403 && answer["error"]["details"]["error_code"] == "oauth_scope_insufficient"
 }
 
 /// The windows the [`QUESTION`] answers, asked with `bearer` in
@@ -112,16 +108,17 @@ fn question(account: &Account, bearer: &str) -> Result<Vec<Window>, String> {
 /// `utilization` from 0 to 1 and a `resetsAt` (seconds since the Unix
 /// epoch); or why it gave none, with the fix.
 fn stream(code: Option<i32>, stdout: &str, account: &Account) -> Result<Vec<Window>, String> {
-    let records: Vec<serde_json::Value> = stdout
-        .lines()
-        .filter_map(|l| serde_json::from_str(l).ok())
-        .collect();
-    let event = records
-        .iter()
-        .rev()
-        .find(|r| r["type"] == "rate_limit_event");
-    let found: Vec<Window> = event
-        .and_then(|e| e["rate_limit_info"]["unifiedWindows"].as_object())
+    // The latest record of `kind`, the stream read from its end.
+    let last = |kind: &str| {
+        stdout
+            .lines()
+            .rev()
+            .filter_map(|l| serde_json::from_str::<serde_json::Value>(l).ok())
+            .find(|r| r["type"] == kind)
+    };
+    let event = last("rate_limit_event").unwrap_or_default();
+    let found: Vec<Window> = event["rate_limit_info"]["unifiedWindows"]
+        .as_object()
         .into_iter()
         .flatten()
         .filter_map(|(name, w)| {
@@ -140,11 +137,15 @@ fn stream(code: Option<i32>, stdout: &str, account: &Account) -> Result<Vec<Wind
         return Ok(found);
     }
     let exit = code.map_or("was killed".into(), |c| format!("exited {c}"));
-    let result = records.iter().rev().find(|r| r["type"] == "result");
+    let result = last("result");
     let said = result
+        .as_ref()
         .and_then(|r| r["result"].as_str())
         .unwrap_or("no result said");
-    let fix = if result.is_some_and(|r| r["api_error_status"] == 401) {
+    let fix = if result
+        .as_ref()
+        .is_some_and(|r| r["api_error_status"] == 401)
+    {
         format!(
             "the token was refused or has expired: {}",
             login::login_line(account)
@@ -220,10 +221,9 @@ fn minutes(name: &str) -> Option<u64> {
     }
 }
 
-/// The windows of the endpoint's answer, `status` and `body`, or why it
+/// The windows of the endpoint's answer, `status` and its JSON `answer`, or why it
 /// gave none, with the fix.
-fn windows(status: u16, body: &str) -> Result<Vec<Window>, String> {
-    let answer: serde_json::Value = serde_json::from_str(body).unwrap_or_default();
+fn windows(status: u16, answer: &serde_json::Value) -> Result<Vec<Window>, String> {
     if status != 200 {
         let error = &answer["error"];
         let said = error["message"].as_str().unwrap_or("no error message");
@@ -268,7 +268,7 @@ mod tests {
         let body = r#"{"five_hour":{"utilization":22.0,"resets_at":"2026-11-24T10:30:00.029137+00:00","limit_dollars":null},
             "seven_day":{"utilization":52,"resets_at":null},"seven_day_opus":null,
             "extra_usage":{"is_enabled":true,"utilization":40.0,"monthly_limit":5000},"limits":[{"percent":22}]}"#;
-        let got = windows(200, body).unwrap();
+        let got = windows(200, &serde_json::from_str(body).unwrap()).unwrap();
         let shown: Vec<_> = got
             .iter()
             .map(|w| (w.name.as_str(), w.used_percent, w.resets_at, w.minutes))
@@ -284,24 +284,20 @@ mod tests {
     }
 
     #[test]
-    fn a_refusal_names_its_fix_and_a_setup_token_s_is_known_by_its_scope() {
-        let scope = r#"{"type":"error","error":{"type":"permission_error","message":"OAuth token does not meet scope requirement user:profile","details":{"error_code":"oauth_scope_insufficient"}}}"#;
-        assert!(refuses_scope(403, scope));
-        assert!(!refuses_scope(401, scope));
-        let other = r#"{"type":"error","error":{"type":"permission_error","message":"no"}}"#;
-        assert!(!refuses_scope(403, other));
+    fn a_refusal_names_its_fix() {
+        let json = |s: &str| serde_json::from_str(s).unwrap_or_default();
         let bad = r#"{"type":"error","error":{"type":"authentication_error","message":"Invalid bearer token"}}"#;
-        let fault = windows(401, bad).unwrap_err();
+        let fault = windows(401, &json(bad)).unwrap_err();
         assert!(
             fault.contains("Invalid bearer token") && fault.contains("log in again"),
             "{fault}"
         );
-        let fault = windows(529, "overloaded").unwrap_err();
+        let fault = windows(529, &json("overloaded")).unwrap_err();
         assert!(
             fault.contains("HTTP 529: no error message: try again later"),
             "{fault}"
         );
-        let fault = windows(200, r#"{"spend":{}}"#).unwrap_err();
+        let fault = windows(200, &json(r#"{"spend":{}}"#)).unwrap_err();
         assert!(fault.contains("answered no window"), "{fault}");
     }
 

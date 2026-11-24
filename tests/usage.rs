@@ -161,31 +161,17 @@ impl Books {
         reads[0].clone()
     }
 
-    /// The question's answer from now on (fake-claude): the recorded
-    /// stream, its five_hour and seven_day `five` and `seven` used (0 to
-    /// 1), resetting in 3 hours and 3 days; when five_hour resets.
+    /// The question's answer from now on (fake-claude): a stream of its
+    /// rate_limit_event alone, five_hour and seven_day `five` and `seven`
+    /// used (0 to 1), resetting in 3 hours and 3 days; when five_hour resets.
     fn question_answers(&self, five: f64, seven: f64) -> String {
-        let recorded = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("tests/contract/recorded/claude-code-question.jsonl");
         let (five_at, seven_at) = (now() + 3 * 3600, now() + 3 * 86_400);
-        let stream: Vec<String> = std::fs::read_to_string(recorded)
-            .unwrap()
-            .lines()
-            .map(|line| {
-                let mut record: Value = serde_json::from_str(line).unwrap();
-                if record["type"] == "rate_limit_event" {
-                    let info = &mut record["rate_limit_info"];
-                    info["resetsAt"] = json!(five_at);
-                    info["unifiedWindows"] = json!({
-                        "five_hour": { "utilization": five, "resetsAt": five_at, "status": "allowed" },
-                        "seven_day": { "utilization": seven, "resetsAt": seven_at, "status": "allowed" },
-                    });
-                }
-                record.to_string()
-            })
-            .collect();
+        let event = json!({ "type": "rate_limit_event", "rate_limit_info": { "unifiedWindows": {
+            "five_hour": { "utilization": five, "resetsAt": five_at },
+            "seven_day": { "utilization": seven, "resetsAt": seven_at },
+        }}});
         let file = self.root.join("stream.jsonl");
-        std::fs::write(&file, stream.join("\n") + "\n").unwrap();
+        std::fs::write(&file, format!("{event}\n")).unwrap();
         self.set("FAKE_CLAUDE_BODY", &file.display().to_string());
         rfc3339(five_at)
     }
