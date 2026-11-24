@@ -141,6 +141,16 @@ stablehand status                   # each account's windows and their pace
 - Its windows are `five_hour`, `seven_day` and any other the endpoint
   lists. A `claude setup-token` token is refused a usage query (HTTP 403):
   such an account is known by `limit` alone.
+- dsh's reader asks DeepSeek Platform
+  (`platform.deepseek.com/api/v0/users/get_user_summary`) with the grant
+  dsh keeps, `<home>/.credentials.yaml` (its `DSH_HOME`; `~/.dsh` without
+  `--home`), or a portable login's from sesame, on curl's stdin with dsh's
+  `x-client-*` headers. A DeepSeek account is pay-as-you-go: its reading is
+  a **balance** per wallet (`normal`, `bonus`), no window, and `status`
+  shows it under `balances`.
+- A credential the engine refused (dsh: HTTP 401 or code 40003; dsh drops
+  its grant then) is booked `"outcome": "refused"` and never asked again,
+  `--now` or not, until `account login`; `status` says `"refused": true`.
 - codex's and pi's readers read a ChatGPT account's `primary` and
   `secondary` windows, where it answers them (used %, length, resets at), through the engine's own
   bound login, on its machine: codex's app server (`codex app-server`,

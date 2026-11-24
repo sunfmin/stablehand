@@ -146,13 +146,17 @@ enum Register {
     /// An account already on stays as it is. Answers `{"account": {…}}`.
     #[command(next_help_heading = REGISTER, verbatim_doc_comment)]
     On { name: String },
-    /// Read an account's usage windows from its engine, and book the reading.
+    /// Read an account's usage windows, or its balance, from its engine, and book the reading.
     ///
-    /// Without a name, every account. An account is read at most once an hour: one read or tried in the last hour waits, unless `--now`. A reader's failure is booked as a failed try and said; the account's last windows are kept, marked stale. A failed read still exits 0.
+    /// Without a name, every account. An account is read at most once an hour: one read or tried in the last hour waits, unless `--now`. A reader's failure is booked as a failed try and said; the account's last windows and balances are kept, marked stale. A credential the engine refused (dsh: HTTP 401 or code 40003) is never asked again, `--now` or not, until `stablehand account login`. A failed or refused read still exits 0.
     ///
     /// ## What it answers
     ///
-    /// `{"reads": [{"account", "outcome", "windows", …}]}`, `outcome` one of `read`, `failed` (with `error`, the reason and its fix), `waits` (with `next_at`) or `no_reader` (its engine has no reader yet); each window as `stablehand status` shows it.
+    /// `{"reads": [{"account", "outcome", "windows", "balances", …}]}`, `outcome` one of `read`, `failed` (with `error`, the reason and its fix), `refused` (with `error`: the engine refused its credential, now or before, and nothing is asked until `stablehand account login`), `waits` (with `next_at`) or `no_reader` (its engine has no reader yet); each window and balance as `stablehand status` shows it.
+    ///
+    /// ## Engines
+    ///
+    /// claude-code is read for its windows. dsh, pay-as-you-go, is read for its balance and has no window: `GET platform.deepseek.com/api/v0/users/get_user_summary` with the grant dsh keeps (`<home>/.credentials.yaml`, its `DSH_HOME`; `~/.dsh` without `--home`), or a portable login's from sesame.
     ///
     /// ## What trips you up
     ///
@@ -191,7 +195,7 @@ enum Register {
     ///
     /// ## What it answers
     ///
-    /// `{"accounts": [{"name", "engine", "off", "pace", "windows", "limit", "read_at", "tried_at", "failed", "read_next"}]}`. Each window is `{"name", "group" (null where the engine groups none), "used_percent" (null once it has reset since it was read), "resets_at", "source" ("read" or "limit"), "at" (when that was booked), "stale" (a later try failed, or it has reset since), "pace"}`.
+    /// `{"accounts": [{"name", "engine", "off", "pace", "windows", "balances", "limit", "read_at", "tried_at", "failed", "refused", "read_next"}]}`. `refused` is true when the last try's credential was refused and the account has not logged in since: it is read again only after `stablehand account login`, whatever `read_next` says. Each balance (a pay-as-you-go account's, dsh's; such an account has no window) is `{"wallet" ("normal" or "bonus"), "currency", "amount", "at", "stale" (a later try failed)}`. Each window is `{"name", "group" (null where the engine groups none), "used_percent" (null once it has reset since it was read), "resets_at", "source" ("read" or "limit"), "at" (when that was booked), "stale" (a later try failed, or it has reset since), "pace"}`.
     ///
     /// ## Pace
     ///
@@ -504,8 +508,12 @@ fn run(cmd: Register) -> Result<Value, Refused> {
                     ..Change::default()
                 };
                 let a = account::apply(&kept(&store, &name)?, change).map_err(faults)?;
-                let a = login::login(&a, token, time::utc(now()?))?;
+                let at = now()?;
+                let a = login::login(&a, token, time::utc(at))?;
                 store.put(&a)?;
+                // A credential its engine refused is asked again from now.
+                let what = books::What::LoggedIn;
+                store.book(&a.name, &books::Entry { at, what })?;
                 with_status(&a)
             }
             AccountCmd::Edit {

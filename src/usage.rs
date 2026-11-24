@@ -24,19 +24,24 @@ pub fn read(
         let before = books::status(&store.entries(&a.name)?, now);
         let (outcome, said) = match (readers::of(a.engine), books::read_next(&before, now)) {
             (None, _) => ("no_reader", None),
+            // A refused credential is not asked again, `--now` or not.
+            (Some(_), _) if before.refused => {
+                ("refused", before.failed.clone().map(|why| ("error", why)))
+            }
             (Some(_), Some(next)) if !now_anyway => ("waits", Some(("next_at", utc(next)))),
             (Some(reader), _) => {
-                let (what, outcome) = match reader(a) {
-                    Ok(windows) => (What::Read(windows), ("read", None)),
-                    Err(why) => (What::Failed(why.clone()), ("failed", Some(("error", why)))),
+                let what = reader(a);
+                let outcome = match &what {
+                    What::Failed(why) => ("failed", Some(("error", why.clone()))),
+                    What::Refused(why) => ("refused", Some(("error", why.clone()))),
+                    _ => ("read", None),
                 };
                 store.book(&a.name, &Entry { at: now, what })?;
                 outcome
             }
         };
         let after = books::status(&store.entries(&a.name)?, now);
-        let mut shown =
-            json!({ "account": a.name, "outcome": outcome, "windows": windows(&after) });
+        let mut shown = json!({ "account": a.name, "outcome": outcome, "windows": windows(&after), "balances": balances(&after) });
         if let Some((key, value)) = said {
             shown[key] = json!(value);
         }
@@ -99,6 +104,7 @@ pub fn status(store: &Store, accounts: &[Account], now: u64) -> Result<Value, St
             "off": a.off.is_some(),
             "pace": s.pace,
             "windows": windows(&s),
+            "balances": balances(&s),
             "limit": s.limit.as_ref().map(|l| json!({
                 "at": utc(l.at),
                 "window": l.window,
@@ -107,6 +113,7 @@ pub fn status(store: &Store, accounts: &[Account], now: u64) -> Result<Value, St
             "read_at": s.read_at.map(utc),
             "tried_at": s.tried_at.map(utc),
             "failed": s.failed,
+            "refused": s.refused,
             "read_next": books::read_next(&s, now).map(utc),
         }));
     }
@@ -126,6 +133,21 @@ fn windows(s: &Status) -> Vec<Value> {
                 "at": utc(w.at),
                 "stale": w.stale,
                 "pace": w.pace,
+            })
+        })
+        .collect()
+}
+
+fn balances(s: &Status) -> Vec<Value> {
+    s.balances
+        .iter()
+        .map(|b| {
+            json!({
+                "wallet": b.balance.wallet,
+                "currency": b.balance.currency,
+                "amount": b.balance.amount,
+                "at": utc(b.at),
+                "stale": b.stale,
             })
         })
         .collect()

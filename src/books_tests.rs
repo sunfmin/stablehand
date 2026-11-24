@@ -539,6 +539,110 @@ fn a_limit_takes_no_reset_from_a_reading_whose_reset_is_now() {
     assert_eq!((w.source, w.resets_at), (Source::Limit, None));
 }
 
+fn wallets(at: u64, normal: f64) -> Entry {
+    Entry {
+        at,
+        what: What::Balance(vec![
+            Balance {
+                wallet: "normal".into(),
+                currency: "CNY".into(),
+                amount: normal,
+            },
+            Balance {
+                wallet: "bonus".into(),
+                currency: "CNY".into(),
+                amount: 0.0,
+            },
+        ]),
+    }
+}
+
+fn refused(at: u64) -> Entry {
+    Entry {
+        at,
+        what: What::Refused("code 40003".into()),
+    }
+}
+
+#[test]
+fn a_balance_reading_is_its_latest_wallets_with_no_window() {
+    let s = status(
+        &[wallets(NOW - 2 * HOUR, 99.0), wallets(NOW - HOUR, 94.67)],
+        NOW,
+    );
+    let shown: Vec<_> = s
+        .balances
+        .iter()
+        .map(|b| {
+            (
+                b.balance.wallet.as_str(),
+                b.balance.currency.as_str(),
+                b.balance.amount,
+                b.at,
+                b.stale,
+            )
+        })
+        .collect();
+    assert_eq!(
+        shown,
+        [
+            ("normal", "CNY", 94.67, NOW - HOUR, false),
+            ("bonus", "CNY", 0.0, NOW - HOUR, false),
+        ]
+    );
+    assert!(s.windows.is_empty());
+    assert_eq!(
+        (s.read_at, s.tried_at),
+        (Some(NOW - HOUR), Some(NOW - HOUR))
+    );
+    assert_eq!(s.pace, Pace::Steady);
+    // It is read again after the hour, as a window reading is.
+    assert_eq!(read_next(&s, NOW), Some(NOW + 1));
+    assert_eq!(read_next(&s, NOW + 2), None);
+}
+
+#[test]
+fn a_failed_try_keeps_the_last_balance_and_marks_it_stale() {
+    let s = status(&[wallets(NOW - 2 * HOUR, 94.67), failed(NOW - HOUR)], NOW);
+    assert_eq!(
+        (s.balances[0].balance.amount, s.balances[0].stale),
+        (94.67, true)
+    );
+    assert_eq!(s.failed.as_deref(), Some("HTTP 401"));
+    assert!(!s.refused);
+}
+
+#[test]
+fn a_refused_credential_is_held_until_a_login_after_it() {
+    let s = status(
+        &[wallets(NOW - 3 * HOUR, 94.67), refused(NOW - 2 * HOUR)],
+        NOW,
+    );
+    assert!(s.refused);
+    assert_eq!(s.failed.as_deref(), Some("code 40003"));
+    assert_eq!(
+        (s.balances[0].balance.amount, s.balances[0].stale),
+        (94.67, true)
+    );
+    assert_eq!(s.tried_at, Some(NOW - 2 * HOUR));
+    let login = Entry {
+        at: NOW - HOUR,
+        what: What::LoggedIn,
+    };
+    let s = status(
+        &[
+            wallets(NOW - 3 * HOUR, 94.67),
+            refused(NOW - 2 * HOUR),
+            login,
+        ],
+        NOW,
+    );
+    assert!(!s.refused);
+    // A login is no try: the refusal still says why the last one failed.
+    assert_eq!(s.tried_at, Some(NOW - 2 * HOUR));
+    assert_eq!(read_next(&s, NOW), None);
+}
+
 #[test]
 fn a_reading_is_news_unless_the_books_end_on_the_same_one() {
     let windows = vec![

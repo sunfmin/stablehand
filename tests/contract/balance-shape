@@ -1,0 +1,29 @@
+#!/bin/sh
+# balance-shape <fake-curl-dsh|real-curl-dsh> <args>...: runs that curl,
+# beside this script (the stand-in or the real one), as stablehand's dsh
+# reader does, its headers on stdin, and prints what the reader reads of the
+# answer (src/readers/dsh.rs, src/curl.rs), and no more: curl's exit, the
+# HTTP status, the answer's code, biz_code and whether it says a message,
+# and the wallets' shape; never a balance or a grant.
+program="$(dirname "$0")/$1"
+shift
+if [ ! -x "$program" ]; then
+    echo "balance-shape: no $program" >&2
+    exit 2
+fi
+out=$("$program" "$@" 2>/dev/null)
+code=$?
+echo "exit $code"
+[ "$code" = 0 ] || exit 0
+status=$(printf '%s' "$out" | tail -n 1)
+body=$(printf '%s' "$out" | sed '$d')
+echo "status $status"
+printf '%s' "$body" | jq -r '
+    def wallets: if type == "array" and length > 0
+        then all(.[]; (.currency | type) == "string" and (.balance | type == "string" and test("^-?[0-9]*\\.?[0-9]+$")))
+        else type end;
+    "code \(.code)",
+    "msg \(.msg | type)",
+    "biz_code \(.data.biz_code)",
+    "normal_wallets: \(.data.biz_data.normal_wallets | wallets)",
+    "bonus_wallets: \(.data.biz_data.bonus_wallets | if type == "array" then (length == 0 or wallets) else type end)"'

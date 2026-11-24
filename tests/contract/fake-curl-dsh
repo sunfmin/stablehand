@@ -1,0 +1,41 @@
+#!/bin/sh
+# Stand-in for curl as stablehand's dsh reader runs it (src/curl.rs,
+# src/readers/dsh.rs):
+#   curl --silent --show-error --max-time N --config - --write-out '\n%{http_code}' <url>
+# with its headers on stdin as curl config. It answers
+# platform.deepseek.com/api/v0/users/get_user_summary as the real endpoint
+# does (truefit.toml, standin "dsh"): the body, a newline, the HTTP status.
+# A request with no x-dsh-auth-token, or an empty one, is answered code 40002.
+#
+# FAKE_CURL_FAULT: unreachable (curl exits 6), refused (code 40003, as the
+#   endpoint answers a grant it does not know).
+#   FAKE_CURL_BODY: a file whose body a 200 answers instead of the one below.
+#   FAKE_CURL_LOG: a file each call appends to: its arguments on one line,
+#   then its stdin.
+for url; do :; done
+config=$(cat)
+if [ -n "$FAKE_CURL_LOG" ]; then
+    printf '%s\n%s\n' "$(printf '%s' "$*" | tr '\n' ' ')" "$config" >>"$FAKE_CURL_LOG"
+fi
+host=${url#*://}
+host=${host%%/*}
+case "$FAKE_CURL_FAULT" in
+unreachable)
+    echo "curl: (6) Could not resolve host: $host" >&2
+    exit 6
+    ;;
+refused)
+    printf '%s\n200' '{"code":40003,"msg":"Authorization Failed (invalid token)","data":null}'
+    exit 0
+    ;;
+esac
+if ! printf '%s\n' "$config" | grep -q '^header = "x-dsh-auth-token: [^"]'; then
+    printf '%s\n200' '{"code":40002,"msg":"Missing Token","data":null}'
+    exit 0
+fi
+if [ -n "$FAKE_CURL_BODY" ]; then
+    body=$(cat "$FAKE_CURL_BODY")
+else
+    body='{"code":0,"msg":"","data":{"biz_code":0,"biz_msg":"","biz_data":{"normal_wallets":[{"currency":"CNY","balance":"94.6700242600000000","token_estimation":"31556674"}],"bonus_wallets":[{"currency":"CNY","balance":"0","token_estimation":"0"}],"total_costs":[{"currency":"CNY","amount":"5.3299757400000000"}]}}}'
+fi
+printf '%s\n200' "$body"

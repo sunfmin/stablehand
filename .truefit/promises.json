@@ -29,6 +29,11 @@
     "sentence": "A login is the engine's own (docs/adr/0001): stablehand runs the engine's command, never a vendor's OAuth client.",
     "source": "README.md:47"
   },
+  "d9ec30f93c7c": {
+    "mark": "promise",
+    "sentence": "A credential the engine refused (dsh: HTTP 401 or code 40003; dsh drops its grant then) is booked `\"outcome\": \"refused\"` and never asked again, `--now` or not, until `account login`; `status` says `\"refused\": true`.",
+    "source": "README.md:151"
+  },
   "daaeaf1fba2c": {
     "mark": "promise",
     "sentence": "mytokens is only read: nothing in it is changed or removed.",

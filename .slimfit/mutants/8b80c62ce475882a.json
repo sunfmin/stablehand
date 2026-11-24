@@ -1,0 +1,6 @@
+{
+  "tree": "64962fb54998bab6ca5a90a15e81beb47d6bdb40+d1fba762150c532c",
+  "picker": "codex:01a20d1a-960c-76f1-8e2c-b06bdd097555:default",
+  "author": "claude-code:f9dd2f99-874c-5807-8594-19637b1d501d:opus",
+  "none": "The buildable mutants change behavior already asserted by the tests, including the grant parser’s same-indent boundary and the reader’s HTTP and API error paths."
+}
