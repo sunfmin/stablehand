@@ -80,7 +80,6 @@ fn a_portable_token_reaches_sesame_on_stdin_and_no_argv() {
 fn a_refused_login_keeps_nothing() {
     let r = Register::new("refused");
     r.ok(&["account", "add", "kimi-1", "--engine", "kimi"]);
-    r.ok(&["account", "add", "kimi-2", "--engine", "kimi"]);
     r.ok(&[
         "account",
         "add",
@@ -149,6 +148,11 @@ fn a_refused_login_keeps_nothing() {
     let cases: &[Case] = &[
         (&["kimi-1"], none, "stablehand account login kimi-1 --token"),
         (
+            &["kimi-1", "--token"],
+            &[("FAKE_SESAME_FAULT", "add-refused")],
+            "`sesame provider add stablehand-kimi-1` failed",
+        ),
+        (
             &["kimi-1", "--token", "--expires", "2027-01-31"],
             &[("FAKE_SESAME_FAULT", "token-refused")],
             "sesame kept no token",
@@ -158,11 +162,6 @@ fn a_refused_login_keeps_nothing() {
         (&["boxed"], &[("STABLEHAND_MACHINE", "")], &here),
         (&["kimi-b"], none, "install kimi, or put it on PATH"),
         (&["grok-b"], none, "/dev/null/h"),
-        (
-            &["kimi-2", "--token"],
-            &[("FAKE_SESAME_FAULT", "add-refused")],
-            "`sesame provider add stablehand-kimi-2` failed",
-        ),
         (
             &["kimi-1", "--token"],
             &[("PATH", "/usr/bin:/bin")],

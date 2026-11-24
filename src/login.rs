@@ -28,53 +28,51 @@ fn this_machine() -> Result<String, String> {
     Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
 }
 
-/// What a child prints goes to stablehand's stderr: its stdout is the answer's alone.
-fn to_stderr() -> Result<Stdio, String> {
-    let fd = std::io::stderr().as_fd().try_clone_to_owned();
-    fd.map(Stdio::from).map_err(|e| format!("stderr: {e}"))
-}
-
-/// Runs `argv` as the person's own: their terminal, or no stdin without one.
-fn run(argv: &[&str], env: Option<(&str, &str)>) -> Result<(), String> {
+/// Runs `argv`, reading `stdin`, with `env` set. `shown`: what it prints
+/// goes to stablehand's stderr (its stdout is the answer's alone); else nowhere.
+fn call(
+    argv: &[&str],
+    env: Option<(&str, &str)>,
+    stdin: Stdio,
+    shown: bool,
+) -> Result<bool, String> {
     let mut cmd = Command::new(argv[0]);
-    cmd.args(&argv[1..]).stdout(to_stderr()?);
-    if !std::io::stdin().is_terminal() {
-        cmd.stdin(Stdio::null());
-    }
-    if let Some((k, v)) = env {
-        cmd.env(k, v);
-    }
-    let line = argv.join(" ");
-    let status = cmd.status().map_err(|e| missing(argv[0], &line, e))?;
-    if status.success() {
-        Ok(())
+    cmd.args(&argv[1..]).stdin(stdin).envs(env);
+    if shown {
+        let fd = std::io::stderr().as_fd().try_clone_to_owned();
+        cmd.stdout(fd.map_err(|e| format!("stderr: {e}"))?);
     } else {
-        Err(format!(
-            "`{line}` failed ({status}), as it said above: nothing was kept; run the login again"
-        ))
+        cmd.stdout(Stdio::null()).stderr(Stdio::null());
     }
-}
-
-fn missing(program: &str, line: &str, e: std::io::Error) -> String {
-    let fix = if program == "sesame" {
-        "install it: `brew install sunfmin/tap/sesame`".to_string()
-    } else {
-        format!("install {program}, or put it on PATH")
-    };
-    format!("`{line}` could not start: {e}: {fix}")
-}
-
-/// One sesame call, on stablehand's stdin (the token's way in for `login`);
-/// `quiet`, what it says is not shown.
-fn sesame(args: &[&str], quiet: bool) -> Result<bool, String> {
-    let mut cmd = Command::new("sesame");
-    cmd.args(args).stdout(to_stderr()?);
-    if quiet {
-        cmd.stderr(Stdio::null());
-    }
-    let line = format!("sesame {}", args.join(" "));
-    let status = cmd.status().map_err(|e| missing("sesame", &line, e))?;
+    let status = cmd.status().map_err(|e| {
+        let fix = match argv[0] {
+            "sesame" => "install it: `brew install sunfmin/tap/sesame`".to_string(),
+            program => format!("install {program}, or put it on PATH"),
+        };
+        format!("`{}` could not start: {e}: {fix}", argv.join(" "))
+    })?;
     Ok(status.success())
+}
+
+/// Runs the engine's `argv` as the person's own: on their terminal, or with
+/// no stdin without one, so it cannot read a token meant for sesame.
+fn engine(argv: &[&str], env: Option<(&str, &str)>) -> Result<(), String> {
+    let stdin = if std::io::stdin().is_terminal() {
+        Stdio::inherit()
+    } else {
+        Stdio::null()
+    };
+    if call(argv, env, stdin, true)? {
+        return Ok(());
+    }
+    Err(format!(
+        "`{}` failed, as it said above: nothing was kept; run the login again",
+        argv.join(" ")
+    ))
+}
+
+fn sesame(args: &[&str], stdin: Stdio, shown: bool) -> Result<bool, String> {
+    call(&[&["sesame"], args].concat(), None, stdin, shown)
 }
 
 /// Whether `a` is logged in: a bound login as the register recorded it, a
@@ -83,14 +81,7 @@ pub fn logged_in(a: &Account) -> Result<bool, String> {
     if a.machine.is_some() {
         return Ok(a.logged_in_at.is_some());
     }
-    let p = provider(a);
-    let out = Command::new("sesame")
-        .args(["token", &p, "--json"])
-        .stdin(Stdio::null())
-        .stderr(Stdio::null())
-        .output()
-        .map_err(|e| missing("sesame", &format!("sesame token {p} --json"), e))?;
-    Ok(out.status.success())
+    sesame(&["token", &provider(a), "--json"], Stdio::null(), false)
 }
 
 /// Logs `a` in by its engine's own login: a portable token into sesame
@@ -107,7 +98,7 @@ pub fn login(a: &Account, token: bool, now: String) -> Result<Account, String> {
                     a.engine.name()
                 ));
             };
-            run(argv, None)?;
+            engine(argv, None)?;
         }
         return keep_token(a, login.usage_host).map(|()| a.clone());
     };
@@ -127,11 +118,8 @@ pub fn login(a: &Account, token: bool, now: String) -> Result<Account, String> {
             "account `{name}` has no home to log in to: `stablehand account edit {name} --home <dir>`"
         ));
     };
-    std::fs::DirBuilder::new()
-        .recursive(true)
-        .create(home)
-        .map_err(|e| format!("{home}: {e}"))?;
-    run(login.bound, Some((login.home_var, home)))?;
+    std::fs::create_dir_all(home).map_err(|e| format!("{home}: {e}"))?;
+    engine(login.bound, Some((login.home_var, home)))?;
     Ok(Account {
         logged_in_at: Some(now),
         ..a.clone()
@@ -142,7 +130,7 @@ pub fn login(a: &Account, token: bool, now: String) -> Result<Account, String> {
 /// asks for it on the terminal with hidden input, or reads stablehand's stdin.
 fn keep_token(a: &Account, host: &str) -> Result<(), String> {
     let p = provider(a);
-    if !sesame(&["provider", "show", &p], true)? {
+    if !sesame(&["provider", "show", &p], Stdio::null(), false)? {
         let url = format!("https://{host}");
         let about = format!(
             "stablehand account {}: a pasted {} token, no OAuth login",
@@ -164,7 +152,7 @@ fn keep_token(a: &Account, host: &str) -> Result<(), String> {
             "--host",
             host,
         ];
-        if !sesame(&args, false)? {
+        if !sesame(&args, Stdio::null(), true)? {
             return Err(format!(
                 "`sesame provider add {p}` failed: see `sesame provider show {p}`, then run the login again"
             ));
@@ -175,7 +163,7 @@ fn keep_token(a: &Account, host: &str) -> Result<(), String> {
     } else {
         "--token-stdin"
     };
-    if sesame(&["login", &p, how], false)? {
+    if sesame(&["login", &p, how], Stdio::inherit(), true)? {
         Ok(())
     } else {
         Err(format!(
