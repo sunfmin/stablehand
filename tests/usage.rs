@@ -1007,11 +1007,11 @@ impl Books {
         std::fs::write(login.join("antigravity-oauth-token"), "stand-in").unwrap();
         let bucket = |id: &str, window: &str, left: f64, reset: String| json!({ "id": id, "window": window, "remaining_fraction": left, "reset_time": reset });
         let body = json!({ "status": "SUCCESS", "num_turns": 0, "command": { "name": "usage", "data": { "groups": [
-            { "name": "Gemini Models", "buckets": [
+            { "name": "Gemini Models", "description": "Models within this group: Gemini 4 Neon, Orchestrator (Neon)", "buckets": [
                 bucket("gemini-weekly", "weekly", 0.75, rfc3339(now() + 4 * 86_400)),
                 bucket("gemini-5h", "5h", 0.0, rfc3339(now() + 2 * 3600)),
             ]},
-            { "name": "Claude and GPT models", "buckets": [
+            { "name": "Claude and GPT models", "description": "Models within this group: Claude Opus 5.5, GPT-OSS 120B", "buckets": [
                 bucket("3p-5h", "5h", 1.0, "1970-01-01T00:00:00Z".into()),
             ]},
         ]}}});
@@ -1045,7 +1045,10 @@ fn an_agy_account_is_read_in_its_home_a_window_per_model_group() {
     let read = b.read(&["agy-mini"]);
     assert_eq!(read["outcome"], "read", "{read}");
     let log = std::fs::read_to_string(b.root.join("agy.log")).unwrap();
-    assert_eq!(log, format!("-p /usage --output-format json HOME={home}\n"));
+    assert_eq!(
+        log,
+        format!("-p /usage --output-format json HOME={home}\nmodels HOME={home}\n")
+    );
     let gemini = window(&read["windows"], "gemini-5h");
     assert_eq!(
         (&gemini["group"], &gemini["used_percent"], &gemini["pace"]),
@@ -1087,13 +1090,93 @@ fn an_agy_account_is_read_in_its_home_a_window_per_model_group() {
         (&json!(100.0), &json!(true))
     );
     assert_eq!(b.read(&["agy-mini"])["outcome"], "waits");
+    // A failed `/usage` asks for no model list.
     assert_eq!(
         std::fs::read_to_string(b.root.join("agy.log"))
             .unwrap()
             .lines()
             .count(),
-        2
+        3
     );
+}
+
+/// `pick --engine <engine>`'s answer with `args` after it.
+fn pick_of(b: &Books, engine: &str, args: &[&str]) -> Value {
+    b.ok(&[&["pick", "--engine", engine], args].concat())
+}
+
+#[test]
+fn pick_of_a_model_judges_an_agy_account_by_its_group_s_windows() {
+    let b = Books::new("agy-model");
+    let home = b.agy_home();
+    let add = ["account", "add", "agy-mini", "--engine", "agy"];
+    b.ok(&[&add[..], &["--machine", "mini", "--home", &home]].concat());
+    b.read(&["agy-mini"]);
+    // status shows each group's models, by the ids `agy models` gives.
+    let status = b.status("agy-mini");
+    assert_eq!(
+        (
+            &window(&status["windows"], "gemini-5h")["models"],
+            &window(&status["windows"], "3p-5h")["models"],
+        ),
+        (
+            &json!([
+                "gemini-4-neon-high",
+                "gemini-4-neon-low",
+                "gemini-pro-orchestrator-neon"
+            ]),
+            &json!(["claude-opus-5-5-high", "gpt-oss-120b-medium"])
+        )
+    );
+    // The Gemini group used up: a Claude session may start on it, a Gemini
+    // one not, until its 5h window resets.
+    assert_eq!(
+        pick_of(&b, "agy", &["--model", "claude-opus-5-5-high"]),
+        json!({"account": "agy-mini", "model": "claude-opus-5-5-high", "model_in_no_group": []})
+    );
+    let gemini = pick_of(&b, "agy", &["--model", "gemini-4-neon-high"]);
+    assert_eq!(
+        (reasons(&gemini), &gemini["model_in_no_group"]),
+        (vec![("agy-mini".into(), "stopped".into())], &json!([]))
+    );
+    assert!(
+        gemini["why"][0]["why"]
+            .as_str()
+            .unwrap()
+            .contains("gemini-5h"),
+        "{gemini}"
+    );
+    // A model no group holds: judged by every window, and said.
+    let unknown = pick_of(&b, "agy", &["--model", "gpt-9"]);
+    assert_eq!(
+        (reasons(&unknown), &unknown["model_in_no_group"]),
+        (
+            vec![("agy-mini".into(), "stopped".into())],
+            &json!(["agy-mini"])
+        )
+    );
+    // Without --model, as before: the account is judged whole, no model said.
+    let whole = pick_of(&b, "agy", &[]);
+    assert_eq!(reasons(&whole), [("agy-mini".into(), "stopped".into())]);
+    assert!(whole.get("model").is_none(), "{whole}");
+    // An empty --model is refused.
+    let (code, empty) = b.run(&["pick", "--engine", "agy", "--model", ""]);
+    assert_eq!(code, 2, "{empty}");
+}
+
+#[test]
+fn pick_of_a_model_leaves_an_engine_with_no_groups_as_it_was() {
+    let b = Books::new("model-claude");
+    b.portable("claude-felix");
+    b.read(&["claude-felix"]);
+    let args = ["--model", "claude-opus-5-5", "--stop-percent", "50"];
+    let with = pick_of(&b, "claude-code", &args);
+    let without = pick_of(&b, "claude-code", &args[2..]);
+    assert_eq!(
+        (&with["why"], &with["model_in_no_group"]),
+        (&without["why"], &json!([]))
+    );
+    assert_eq!(reasons(&with), [("claude-felix".into(), "stopped".into())]);
 }
 
 #[test]

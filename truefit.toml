@@ -58,8 +58,10 @@ header = "anthropic-beta: oauth-2025-04-20"
 """
 
 # agy's reader (src/readers/agy.rs) runs `agy -p /usage --output-format json`
-# in the account's home. Both sides answer through agy-shape, which keeps only
-# what the reader reads: the exit, the status, the error, each bucket's shape.
+# in the account's home, then `agy models` there. Both sides answer through
+# agy-shape, which keeps only what the reader reads: the exit, the status,
+# the error, each group's description's and bucket's shape; of `models`,
+# whether its lines are ids and names.
 # The real side is this user's own agy login; signed out, a new empty home
 # (agy waits 60s for a browser sign-in first).
 [[standin]]
@@ -80,6 +82,16 @@ args = ["-p", "/usage", "--output-format", "json"]
 name = "a-home-signed-out"
 fault = "signed-out"
 args = ["-p", "/usage", "--output-format", "json"]
+env = { AGY_SHAPE_HOME = "signed-out" }
+
+[[standin.case]]
+name = "a-login-s-models"
+args = ["models"]
+
+[[standin.case]]
+name = "a-home-signed-out-lists-no-model"
+fault = "signed-out"
+args = ["models"]
 env = { AGY_SHAPE_HOME = "signed-out" }
 # kimi's reader (src/readers/kimi.rs) asks api.kimi.com/coding/v1/usages
 # through curl (src/curl.rs), the bearer on curl's stdin. Both sides answer

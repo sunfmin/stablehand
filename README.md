@@ -167,7 +167,10 @@ stablehand status                   # each account's windows and their pace
   home (`HOME` set to `--home`; the user's own without it), on its machine
   only: no model turn, no conversation made. Its windows are each model
   group's buckets (`gemini-5h`, `gemini-weekly`, …), the group its `group`;
-  a window reset in 1970 is one not yet used. A portable agy account is
+  a window reset in 1970 is one not yet used. Each window's `models` are
+  its group's, by the ids `agy models` (run after it, in the same home)
+  gives: a model named in the group's description, with any variant
+  (`Claude Opus 5.5` holds `claude-opus-5-5-high`). A portable agy account is
   refused: bind it. A home not signed in fails after agy has waited 60s for
   a browser sign-in; an API-key login (exit 2) has no account quota.
 - dsh's reader asks DeepSeek Platform
@@ -210,7 +213,8 @@ stablehand status                   # each account's windows and their pace
   `weekly` window with nothing used.
 - `limit` books a caller's report that a session met the account's limit: the window it names is used up until `--resets-at`, or until the next reading without it; without `--window`, the whole account is.
 - `status` answers each account's windows (each with its `group` where the
-  engine groups them), used %, resets at, source (`read` or `limit`),
+  engine groups them, and the `models` whose use it counts where the engine
+  names them), used %, resets at, source (`read` or `limit`),
   `stale`, and pace: `tight` (at its recent rate it runs out before it
   resets), `spare` (it resets within a quarter of its length with 20% or
   more left), `used_up`, or `steady`. The account's pace is its worst
@@ -240,6 +244,7 @@ stablehand status                   # each account's windows and their pace
 
 ```sh
 stablehand pick --engine claude-code --running claude-felix=1,claude-two=2
+stablehand pick --engine agy --model claude-opus-5-5-high
 # {"account": "claude-felix"}
 # {"none": true, "until": "2026-11-24T15:00:00Z", "why": [{"account", "reason", "why", "until"}, …]}
 ```
@@ -262,6 +267,13 @@ stablehand pick --engine claude-code --running claude-felix=1,claude-two=2
   running on each account (factorium knows its workers); stablehand counts
   none itself, and counts across machines only as the caller does. A name in
   it that is no account kept is refused.
+- `--model <id>` (agy's `claude-opus-5-5-high`, as `agy models` lists
+  it): an account whose windows are grouped by model is judged only by the
+  windows of the group holding it, and those in no group, so one agy
+  account is two pools: its Gemini group used up, a Claude session may
+  still start on it. One no group of which holds the model is judged by
+  every window, and named in the answer's `model_in_no_group`; an engine
+  that groups no window is judged as without `--model`.
 - None answers `until`, the earliest any passed over lifts (null when none
   says when: off, not logged in, full), and each one's `reason`: `off`,
   `elsewhere`, `not_logged_in`, `limit`, `stopped`, `full` or `runs_out`.

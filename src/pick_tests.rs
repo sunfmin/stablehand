@@ -17,6 +17,7 @@ fn window(name: &str, used: f64, resets_at: u64) -> Window {
     Window {
         name: name.into(),
         group: None,
+        models: Vec::new(),
         used_percent: used,
         resets_at: Some(resets_at),
         minutes: Some(minutes),
@@ -72,7 +73,7 @@ fn passed_over(entries: &[Entry], running: u32, now: u64) -> Option<(Reason, Opt
     let mut a = acct("solo", entries, now);
     a.sessions = None;
     a.running = running;
-    match pick(&[a], STOP_PERCENT, now) {
+    match pick(&[a], STOP_PERCENT, None, now) {
         Pick::Account(_) => None,
         Pick::None { why, until } => {
             assert_eq!(until, why[0].until);
@@ -85,7 +86,7 @@ fn why_of(entries: &[Entry], running: u32) -> String {
     let mut a = acct("solo", entries, NOW);
     a.running = running;
     a.sessions = None;
-    match pick(&[a], STOP_PERCENT, NOW) {
+    match pick(&[a], STOP_PERCENT, None, NOW) {
         Pick::None { why, .. } => why[0].why.clone(),
         picked => panic!("picked: {picked:?}"),
     }
@@ -212,6 +213,7 @@ fn an_account_ninety_percent_used_of_a_window_takes_no_new_session_until_it_rese
         pick(
             &[a, acct("claude-b", &five_hour(40.0, 100), NOW)],
             STOP_PERCENT,
+            None,
             NOW
         ),
         Pick::Account("claude-b".into())
@@ -219,6 +221,7 @@ fn an_account_ninety_percent_used_of_a_window_takes_no_new_session_until_it_rese
     let Pick::None { until, why } = pick(
         &[acct("claude-a", &five_hour(91.0, 100), NOW)],
         STOP_PERCENT,
+        None,
         NOW,
     ) else {
         panic!("picked a stopped account");
@@ -235,7 +238,7 @@ fn an_account_ninety_percent_used_of_a_window_takes_no_new_session_until_it_rese
         "{}",
         why[0].why
     );
-    assert_eq!(left_percent(&b.status), Some(60.0));
+    assert_eq!(left_percent(&spent(&b.status, None)), Some(60.0));
 
     // Once its window resets the reading no longer holds: it takes sessions.
     let later = NOW + 101 * MINUTE;
@@ -246,12 +249,12 @@ fn an_account_ninety_percent_used_of_a_window_takes_no_new_session_until_it_rese
 fn the_stop_is_a_setting() {
     assert_eq!(STOP_PERCENT, 90);
     assert_eq!(
-        pick(&[acct("claude-a", &steady(91.0), NOW)], 95, NOW),
+        pick(&[acct("claude-a", &steady(91.0), NOW)], 95, None, NOW),
         Pick::Account("claude-a".into())
     );
     // At the stop exactly, stopped.
     assert!(matches!(
-        pick(&[acct("claude-a", &steady(95.0), NOW)], 95, NOW),
+        pick(&[acct("claude-a", &steady(95.0), NOW)], 95, None, NOW),
         Pick::None { .. }
     ));
 }
@@ -276,13 +279,13 @@ fn an_account_whose_sessions_at_once_are_running_takes_none_more() {
     let mut pair = acct("pair", &[], NOW);
     pair.running = 1;
     assert_eq!(
-        pick(&[solo, pair], STOP_PERCENT, NOW),
+        pick(&[solo, pair], STOP_PERCENT, None, NOW),
         Pick::Account("pair".into())
     );
 
     let mut pair = acct("pair", &[], NOW);
     pair.running = 2;
-    let Pick::None { until, why } = pick(&[pair], STOP_PERCENT, NOW) else {
+    let Pick::None { until, why } = pick(&[pair], STOP_PERCENT, None, NOW) else {
         panic!("picked a full account");
     };
     assert_eq!((until, why[0].reason), (None, Reason::Full));
@@ -296,7 +299,7 @@ fn an_account_whose_sessions_at_once_are_running_takes_none_more() {
     free.sessions = None;
     free.running = 40;
     assert_eq!(
-        pick(&[free], STOP_PERCENT, NOW),
+        pick(&[free], STOP_PERCENT, None, NOW),
         Pick::Account("free".into())
     );
 }
@@ -307,7 +310,7 @@ fn an_account_whose_sessions_at_once_are_running_takes_none_more() {
 fn a_barred_account_is_passed_over_whatever_its_books_say() {
     let mut off = acct("claude-a", &five_hour(10.0, 100), NOW);
     off.barred = Some((Reason::Off, "switched off: card declined".into()));
-    let Pick::None { until, why } = pick(&[off], STOP_PERCENT, NOW) else {
+    let Pick::None { until, why } = pick(&[off], STOP_PERCENT, None, NOW) else {
         panic!("picked an account off");
     };
     assert_eq!(until, None);
@@ -328,7 +331,7 @@ fn of_those_that_may_take_one_the_most_left_is_picked_and_no_reading_last() {
         acct("little", &steady(80.0), NOW),
     ];
     assert_eq!(
-        pick(&accounts, STOP_PERCENT, NOW),
+        pick(&accounts, STOP_PERCENT, None, NOW),
         Pick::Account("most".into())
     );
     // Its most used window decides how much is left.
@@ -344,7 +347,7 @@ fn of_those_that_may_take_one_the_most_left_is_picked_and_no_reading_last() {
         acct("half", &steady(45.0), NOW),
     ];
     assert_eq!(
-        pick(&accounts, STOP_PERCENT, NOW),
+        pick(&accounts, STOP_PERCENT, None, NOW),
         Pick::Account("half".into())
     );
     // An account never read comes after every one read, however little is left.
@@ -353,13 +356,13 @@ fn of_those_that_may_take_one_the_most_left_is_picked_and_no_reading_last() {
         acct("little", &steady(80.0), NOW),
     ];
     assert_eq!(
-        pick(&accounts, STOP_PERCENT, NOW),
+        pick(&accounts, STOP_PERCENT, None, NOW),
         Pick::Account("little".into())
     );
     // Of equals, the first given.
     let accounts = [acct("a", &[], NOW), acct("b", &[], NOW)];
     assert_eq!(
-        pick(&accounts, STOP_PERCENT, NOW),
+        pick(&accounts, STOP_PERCENT, None, NOW),
         Pick::Account("a".into())
     );
 }
@@ -376,7 +379,7 @@ fn an_account_read_only_stale_comes_after_every_one_read_fresh() {
         acct("little", &steady(80.0), NOW),
     ];
     assert_eq!(
-        pick(&accounts, STOP_PERCENT, NOW),
+        pick(&accounts, STOP_PERCENT, None, NOW),
         Pick::Account("little".into())
     );
 }
@@ -391,7 +394,7 @@ fn none_waits_until_the_earliest_any_lifts() {
         full,
         acct("limited", &[limit(NOW - MINUTE, None, Some(soon))], NOW),
     ];
-    let Pick::None { until, why } = pick(&accounts, STOP_PERCENT, NOW) else {
+    let Pick::None { until, why } = pick(&accounts, STOP_PERCENT, None, NOW) else {
         panic!("picked");
     };
     assert_eq!(until, Some(soon));
@@ -405,7 +408,7 @@ fn none_waits_until_the_earliest_any_lifts() {
         ]
     );
     assert_eq!(
-        pick(&[], STOP_PERCENT, NOW),
+        pick(&[], STOP_PERCENT, None, NOW),
         Pick::None {
             until: None,
             why: vec![]
@@ -468,4 +471,127 @@ fn a_window_flat_across_its_readings_runs_out_of_nothing_however_early_its_use_c
         said(1_794_830_770, &[("seven_day", 34.0, WEEK_RESETS)]),
     ];
     assert_eq!(passed_over(&book, 0, 1_794_830_770 + 10 * MINUTE), None);
+}
+
+// A session of a model, of an account whose windows are grouped (agy's).
+
+/// agy's books, read a minute ago: its Gemini group's 5h window `gemini`
+/// percent used, its Claude-and-GPT group's `third` percent; each resetting
+/// in three hours; and a window in no group, `other` percent used.
+fn agy(gemini: f64, third: f64, other: Option<f64>) -> Status {
+    let w = |name: &str, group: &str, models: &[&str], used| Window {
+        name: name.into(),
+        group: Some(group.into()),
+        models: models.iter().map(|m| m.to_string()).collect(),
+        used_percent: used,
+        resets_at: Some(NOW + 180 * MINUTE),
+        minutes: Some(300),
+    };
+    let mut windows = vec![
+        w(
+            "gemini-5h",
+            "Gemini Models",
+            &["gemini-4-neon-high"],
+            gemini,
+        ),
+        w(
+            "3p-5h",
+            "Claude and GPT models",
+            &["claude-opus-5-5-high"],
+            third,
+        ),
+    ];
+    if let Some(used) = other {
+        windows.push(Window {
+            group: None,
+            models: Vec::new(),
+            ..window("five_hour", used, NOW + 180 * MINUTE)
+        });
+    }
+    status(
+        &[Entry {
+            at: NOW - MINUTE,
+            what: What::Read(windows),
+        }],
+        NOW,
+    )
+}
+
+fn agy_pick(s: Status, model: Option<&str>) -> Result<String, (Reason, String)> {
+    let a = Candidate {
+        name: "agy",
+        barred: None,
+        sessions: None,
+        running: 0,
+        status: s,
+    };
+    match pick(&[a], STOP_PERCENT, model, NOW) {
+        Pick::Account(name) => Ok(name),
+        Pick::None { why, .. } => Err((why[0].reason, why[0].why.clone())),
+    }
+}
+
+#[test]
+fn a_model_is_judged_by_its_group_s_windows_and_those_in_no_group() {
+    // The Gemini group used up: a Claude session may start, a Gemini one not.
+    assert_eq!(
+        agy_pick(agy(100.0, 0.0, None), Some("claude-opus-5-5-high")),
+        Ok("agy".into())
+    );
+    let (reason, why) = agy_pick(agy(100.0, 0.0, None), Some("gemini-4-neon-high")).unwrap_err();
+    assert_eq!(reason, Reason::Stopped);
+    assert!(why.contains("gemini-5h is 100% used"), "{why}");
+    // Without a model, or of one no group holds, every window decides.
+    for model in [None, Some("gpt-9")] {
+        assert_eq!(
+            agy_pick(agy(100.0, 0.0, None), model).unwrap_err().0,
+            Reason::Stopped
+        );
+    }
+    let s = agy(100.0, 0.0, None);
+    assert!(in_no_group(&s, "gpt-9") && !in_no_group(&s, "claude-opus-5-5-high"));
+    // A window in no group decides for every model.
+    let (_, why) = agy_pick(agy(0.0, 0.0, Some(95.0)), Some("claude-opus-5-5-high")).unwrap_err();
+    assert!(why.contains("five_hour is 95% used"), "{why}");
+    // Of the group's windows, its most used decides how much is left.
+    let left = |s: &Status, m| left_percent(&spent(s, Some(m)));
+    let s = agy(80.0, 30.0, None);
+    assert_eq!(
+        (
+            left(&s, "claude-opus-5-5-high"),
+            left(&s, "gemini-4-neon-high")
+        ),
+        (Some(70.0), Some(20.0))
+    );
+}
+
+#[test]
+fn a_model_s_windows_carry_a_limit_on_them_and_not_one_on_another_group() {
+    let limited = |window: Option<&str>| {
+        let mut s = agy(0.0, 0.0, None);
+        s.limit = Some(books::Held {
+            at: NOW,
+            window: window.map(Into::into),
+            resets_at: None,
+        });
+        s
+    };
+    let claude = Some("claude-opus-5-5-high");
+    assert_eq!(
+        agy_pick(limited(Some("gemini-5h")), claude),
+        Ok("agy".into())
+    );
+    for window in [Some("3p-5h"), None] {
+        assert_eq!(
+            agy_pick(limited(window), claude).unwrap_err().0,
+            Reason::Limit
+        );
+    }
+}
+
+#[test]
+fn ungrouped_windows_know_no_model_and_every_one_decides() {
+    let s = status(&five_hour(95.0, 100), NOW);
+    assert!(!in_no_group(&s, "claude-opus-5-5"));
+    assert_eq!(spent(&s, Some("claude-opus-5-5")).len(), 1);
 }

@@ -166,7 +166,7 @@ enum Register {
     ///
     /// A claude-code account whose login is a `claude setup-token` token is refused a usage query: its read fails, and its windows come from `stablehand limit` alone.
     ///
-    /// An agy account is read by running agy in its home, on its machine only: a portable one is refused (bind it), and a home not signed in fails only after agy has waited 60s for a browser sign-in.
+    /// An agy account is read by running agy in its home, on its machine only: a portable one is refused (bind it), and a home not signed in fails only after agy has waited 60s for a browser sign-in. After its quota, `agy models` names each group's models; where it fails, the windows are booked with none, and `pick --model` judges the account by every window.
     /// A codex or pi account is read through its engine's own login, bound: on its machine, in its home. A portable one, or one bound to another machine, fails with the fix.
     #[command(next_help_heading = SESSIONS, verbatim_doc_comment)]
     Read {
@@ -200,7 +200,7 @@ enum Register {
     ///
     /// ## What it answers
     ///
-    /// `{"accounts": [{"name", "engine", "off", "pace", "windows", "balances", "limit", "read_at", "tried_at", "failed", "refused", "read_next"}]}`. `refused` is true when the last try's credential was refused and the account has not logged in since: it is read again only after it logs in again (its home's login file written since, or `stablehand account edit --token-command`), whatever `read_next` says. Each balance (a pay-as-you-go account's, dsh's; such an account has no window) is `{"wallet" ("normal" or "bonus"), "currency", "amount", "at", "stale" (a later try failed)}`. Each window is `{"name", "group" (null where the engine groups none), "used_percent" (null once it has reset since it was read), "resets_at", "source" ("read" or "limit"), "at" (when that was booked), "stale" (a later try failed, or it has reset since), "pace"}`.
+    /// `{"accounts": [{"name", "engine", "off", "pace", "windows", "balances", "limit", "read_at", "tried_at", "failed", "refused", "read_next"}]}`. `refused` is true when the last try's credential was refused and the account has not logged in since: it is read again only after it logs in again (its home's login file written since, or `stablehand account edit --token-command`), whatever `read_next` says. Each balance (a pay-as-you-go account's, dsh's; such an account has no window) is `{"wallet" ("normal" or "bonus"), "currency", "amount", "at", "stale" (a later try failed)}`. Each window is `{"name", "group" (null where the engine groups none), "models" (the ids of the models whose use it counts, its group's: agy's; empty where the engine names none), "used_percent" (null once it has reset since it was read), "resets_at", "source" ("read" or "limit"), "at" (when that was booked), "stale" (a later try failed, or it has reset since), "pace"}`.
     ///
     /// ## Pace
     ///
@@ -226,9 +226,13 @@ enum Register {
     ///
     /// Of the rest, the one with the most left of its most used window; one with no reading in force, or only stale ones, after every one with one; of equals, the first by name.
     ///
+    /// ## A session's model
+    ///
+    /// With `--model <id>`, an account whose windows are grouped by model (agy: `Gemini Models`, `Claude and GPT models`) is judged only by the windows of the group holding that model (its windows' `models` in `stablehand status`), and those in no group: every rule above, a limit on a window of another group left out. One no group of which holds the model is judged by every window, as without `--model`, and named in the answer's `model_in_no_group`. An engine that groups no window is judged as without it.
+    ///
     /// ## What it answers
     ///
-    /// `{"account": "<name>"}`, or `{"none": true, "until": <the earliest time any lifts, or null>, "why": [{"account", "reason", "why", "until"}]}`, `reason` one of `off`, `elsewhere`, `not_logged_in`, `limit`, `stopped`, `full`, `runs_out`. An engine with no account here answers none with an empty `why`. It refuses a `--running` name that is no account kept.
+    /// `{"account": "<name>"}`, or `{"none": true, "until": <the earliest time any lifts, or null>, "why": [{"account", "reason", "why", "until"}]}`, `reason` one of `off`, `elsewhere`, `not_logged_in`, `limit`, `stopped`, `full`, `runs_out`. With `--model`, either answer also says `"model"` and `"model_in_no_group"`, the accounts judged by every window. An engine with no account here answers none with an empty `why`. It refuses a `--running` name that is no account kept.
     ///
     /// ## What trips you up
     ///
@@ -238,6 +242,9 @@ enum Register {
         /// The engine the session runs in.
         #[arg(long, value_enum, verbatim_doc_comment)]
         engine: Engine,
+        /// The model the session runs, by the id its engine starts it with (`agy models`: `claude-opus-5-5-high`): only the windows of the group holding it decide.
+        #[arg(long, value_parser = clap::builder::NonEmptyStringValueParser::new(), verbatim_doc_comment)]
+        model: Option<String>,
         /// The sessions now running per account, `<account>=<n>`, comma-separated or repeated.
         #[arg(long, value_delimiter = ',', value_parser = running, verbatim_doc_comment)]
         running: Vec<(String, u32)>,
@@ -562,6 +569,7 @@ fn run(cmd: Register) -> Result<Value, Refused> {
         Register::Status { name } => Ok(usage::status(&store, &chosen(&store, name)?, now()?)?),
         Register::Pick {
             engine,
+            model,
             running,
             machine,
             stop_percent,
@@ -577,15 +585,13 @@ fn run(cmd: Register) -> Result<Value, Refused> {
                 Some(m) => m,
                 None => login::this_machine()?,
             };
-            Ok(usage::pick(
-                &store,
-                &all,
+            let session = usage::Session {
                 engine,
-                &running,
-                &machine,
-                stop_percent,
-                now()?,
-            )?)
+                model: model.as_deref(),
+                running: &running,
+                machine: &machine,
+            };
+            Ok(usage::pick(&store, &all, &session, stop_percent, now()?)?)
         }
     }
 }

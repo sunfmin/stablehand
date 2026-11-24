@@ -63,6 +63,7 @@ pub fn statusline(stdin: &[u8]) -> Vec<Window> {
             Some(Window {
                 name: name.clone(),
                 group: None,
+                models: Vec::new(),
                 used_percent: w["used_percentage"].as_f64()?,
                 resets_at: w["resets_at"].as_u64(),
                 minutes: minutes(name),
@@ -109,6 +110,7 @@ fn windows(status: u16, body: &str, name: &str) -> Result<Vec<Window>, String> {
             Some(Window {
                 name: key.clone(),
                 group: None,
+                models: Vec::new(),
                 used_percent: w["utilization"].as_f64()?,
                 resets_at: w["resets_at"].as_str().and_then(time::parse),
                 minutes: minutes(key),

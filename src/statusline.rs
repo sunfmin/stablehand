@@ -88,6 +88,7 @@ mod tests {
         let w = |name: &str, used| Window {
             name: name.into(),
             group: None,
+            models: Vec::new(),
             used_percent: used,
             resets_at: None,
             minutes: None,

@@ -139,6 +139,7 @@ fn windows(s: &Status) -> Vec<Value> {
             json!({
                 "name": w.name,
                 "group": w.group,
+                "models": w.models,
                 "used_percent": w.used_percent,
                 "resets_at": w.resets_at.map(utc),
                 "source": w.source,
@@ -165,21 +166,34 @@ fn balances(s: &Status) -> Vec<Value> {
         .collect()
 }
 
-/// Which of `accounts` of `engine` one more session may start on now on
-/// `machine`: each is barred off, bound to another machine, or not logged
-/// in, then judged by its books with `running` sessions on it
-/// ([`pick::pick`]).
+/// The session one more pick is for, as its caller says it.
+pub struct Session<'a> {
+    /// The engine it runs in.
+    pub engine: Engine,
+    /// The model it runs, where the caller names it (agy's
+    /// `claude-opus-5-5-high`): only the windows it spends decide.
+    pub model: Option<&'a str>,
+    /// The sessions now running per account.
+    pub running: &'a [(String, u32)],
+    /// The machine it starts on.
+    pub machine: &'a str,
+}
+
+/// Which of `accounts` of the session's engine it may start on now on its
+/// machine: each is barred off, bound to another machine, or not logged
+/// in, then judged by its books with the sessions running on it
+/// ([`pick::pick`]). Of a model, it answers the accounts judged by every
+/// window, no group of theirs holding it ([`pick::in_no_group`]).
 pub fn pick(
     store: &Store,
     accounts: &[Account],
-    engine: Engine,
-    running: &[(String, u32)],
-    machine: &str,
+    session: &Session,
     stop_percent: u8,
     now: u64,
 ) -> Result<Value, String> {
+    let machine = session.machine;
     let mut candidates = Vec::new();
-    for a in accounts.iter().filter(|a| a.engine == engine) {
+    for a in accounts.iter().filter(|a| a.engine == session.engine) {
         let barred = match (&a.off, &a.machine) {
             (Some(off), _) => Some((Reason::Off, format!("switched off: {}", off.reason))),
             (None, Some(bound)) if bound != machine => Some((
@@ -196,7 +210,8 @@ pub fn pick(
             name: &a.name,
             barred,
             sessions: a.sessions,
-            running: running
+            running: session
+                .running
                 .iter()
                 .filter(|(n, _)| n == &a.name)
                 .map(|(_, c)| c)
@@ -204,7 +219,7 @@ pub fn pick(
             status: books::status(&book_of(store, a)?, now),
         });
     }
-    Ok(match pick::pick(&candidates, stop_percent, now) {
+    let mut answer = match pick::pick(&candidates, stop_percent, session.model, now) {
         Pick::Account(name) => json!({ "account": name }),
         Pick::None { until, why } => {
             let why: Vec<Value> = why
@@ -220,5 +235,15 @@ pub fn pick(
                 .collect();
             json!({ "none": true, "until": until.map(utc), "why": why })
         }
-    })
+    };
+    if let Some(model) = session.model {
+        let whole: Vec<&str> = candidates
+            .iter()
+            .filter(|c| pick::in_no_group(&c.status, model))
+            .map(|c| c.name)
+            .collect();
+        answer["model"] = json!(model);
+        answer["model_in_no_group"] = json!(whole);
+    }
+    Ok(answer)
 }
