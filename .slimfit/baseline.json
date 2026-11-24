@@ -1,29 +1,32 @@
 {
   "suites": {
     "rust": {
-      "prod_lines": 1825,
-      "test_lines": 974,
-      "tests": 50,
+      "prod_lines": 1062,
+      "test_lines": 1066,
+      "tests": 21,
       "failures": 0,
       "test_seconds": 0.004,
-      "covered_lines": 1071,
+      "covered_lines": 690,
       "uncovered_lines": 3
     }
   },
-  "loosened": [
+  "loosened": [],
+  "kept": [],
+  "kept_spans": [
     {
       "suite": "rust",
-      "metric": "survived_mutants",
-      "from": 0.0,
-      "to": 1.0,
-      "reason": "stablehand#5: at_reset's floor (span / 10 -> %) changes no pace: a window under 50% used runs at no rate, and one at 50% or more opened under a tenth of its length ago is at 10x its use or more at reset, tight with the floor or without"
+      "file": "src/login.rs",
+      "start": 108,
+      "end": 110,
+      "function": "token (closure)",
+      "hash": "9931ba066b98e6c0",
+      "reason": "fires only when a real sesame answers token --json without access_token, a change of sesame's own; the stand-in answers as the real does (truefit contract, case provider-made-once-then-token-kept), so a test could only run it against a stand-in made wrong on purpose"
     }
   ],
-  "kept": [],
   "measured": {
     "rust": {
-      "uncovered_lines": 248,
-      "test_seconds": 0.673
+      "uncovered_lines": 25,
+      "test_seconds": 1.356
     }
   }
 }

@@ -44,6 +44,13 @@ impl Books {
             std::os::unix::fs::symlink(contract.join(format!("fake-{tool}")), bin.join(tool))
                 .unwrap();
         }
+        // The sesame stand-in's store: claude-felix logged in, as `account login` leaves it.
+        let sesame = root.join("sesame/fake");
+        for kept in ["providers", "tokens"] {
+            std::fs::create_dir_all(sesame.join(kept)).unwrap();
+        }
+        std::fs::write(sesame.join("providers/stablehand-claude-felix"), "").unwrap();
+        std::fs::write(sesame.join("tokens/stablehand-claude-felix"), SESAME_TOKEN).unwrap();
         let home = root.join("home");
         std::fs::create_dir_all(home.join(".claude")).unwrap();
         std::fs::write(
@@ -59,8 +66,10 @@ impl Books {
                 root.join("config").display().to_string(),
             ),
             ("FAKE_CURL_LOG", root.join("curl.log").display().to_string()),
-            ("SESAME_PROVIDERS", r#"{"claude-felix": {}}"#.to_string()),
-            ("SESAME_TOKEN_CLAUDE_FELIX", SESAME_TOKEN.to_string()),
+            (
+                "SESAME_CONFIG_DIR",
+                root.join("sesame").display().to_string(),
+            ),
         ];
         let books = Books {
             env: RefCell::new(env.into_iter().map(|(k, v)| (k.to_string(), v)).collect()),
@@ -258,7 +267,8 @@ fn a_reader_s_failure_is_booked_and_said_and_the_last_windows_kept_stale() {
     let read = b.read(&["claude-mini", "--now"]);
     let error = read["error"].as_str().unwrap();
     assert!(
-        error.contains(".credentials.json") && error.contains("log in with Claude Code"),
+        error.contains(".credentials.json")
+            && error.contains("stablehand account login claude-mini"),
         "{error}"
     );
 }
@@ -315,12 +325,13 @@ fn a_portable_login_is_read_with_sesame_s_token_and_a_setup_token_gets_a_limit()
     // The window the limit does not name stays as read.
     assert_eq!(window(&status["windows"], "seven_day")["source"], "read");
 
-    // A provider sesame does not know is a failed try naming sesame's fix.
-    b.set("SESAME_PROVIDERS", "{}");
+    // A token sesame does not keep is a failed try naming the login.
+    std::fs::remove_file(b.root.join("sesame/fake/tokens/stablehand-claude-felix")).unwrap();
     let read = b.read(&["claude-felix", "--now"]);
     let error = read["error"].as_str().unwrap();
     assert!(
-        error.contains("unknown provider") && error.contains("sesame login claude-felix --token"),
+        error.contains("sesame keeps no token")
+            && error.contains("stablehand account login claude-felix"),
         "{error}"
     );
 }

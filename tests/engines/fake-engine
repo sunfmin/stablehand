@@ -1,0 +1,15 @@
+#!/bin/sh
+# A stand-in of an engine's login command (claude, codex, …), linked under the
+# engine's name: appends its argv and the home variable it was given to
+# $FAKE_ARGV_LOG, reads a line of stdin as an interactive login may, prints to
+# stdout as a login does, and exits 3 when FAKE_ENGINE_FAULT=fail.
+home=
+for v in CLAUDE_CONFIG_DIR CODEX_HOME KIMI_CODE_HOME GROK_HOME PI_CODING_AGENT_DIR DSH_HOME; do
+    eval "x=\${$v:-}"
+    [ -n "$x" ] && home="$home $v=$x"
+done
+echo "$(basename "$0") $*${home}" >>"${FAKE_ARGV_LOG:?}"
+IFS= read -r _ || true
+echo "Login successful."
+[ "$FAKE_ENGINE_FAULT" = fail ] && exit 3
+exit 0

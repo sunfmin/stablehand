@@ -1,0 +1,10 @@
+{
+  "tree": "8e1b3b7e54224e9b60c60531e001e787204cb143+d1fba762150c532c",
+  "lines": 434,
+  "serves": "stablehand#4",
+  "considered": "reusing login::keep_token for the token (done: it now takes the token's stdin, keep_token_from pipes mytokens into it); account::new for every check of an imported account; the register's insert for already-kept",
+  "reviewer": "codex:01a20ccf-5f00-7c83-bbfe-5ac81b9fba9d:default",
+  "author": "claude-code:d4bfa17a-6887-5529-95cc-12aaac8c34a9:opus",
+  "cut": "src/import.rs: have entries yield borrowed IDs, names and field lists, split the field list in has, and delete the owned strings, reconstructed IDs and intermediate entry vector. Build Change and Terms directly in account::new. Put the token write and store.insert in the added match arm so one branch controls both the write and its reported result.",
+  "answer": "Made all three: Entry borrows id, service, label and the fields string, has splits it, entries is an iterator, id() is gone; Change and Terms built inline; the token write and insert live in the added arm. src/import.rs 14 lines shorter."
+}

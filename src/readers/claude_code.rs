@@ -6,7 +6,7 @@
 //! known by `stablehand limit` alone.
 use crate::account::Account;
 use crate::books::Window;
-use crate::{curl, sesame, time};
+use crate::{curl, login, time};
 use std::path::PathBuf;
 
 const USAGE: &str = "https://api.anthropic.com/api/oauth/usage";
@@ -21,23 +21,24 @@ pub fn read(account: &Account) -> Result<Vec<Window>, String> {
     windows(status, &body, &account.name)
 }
 
-/// The account's access token: a portable login's from sesame, a bound
-/// one's from the login in its home (`$HOME` where it names none).
+/// The account's access token: a portable login's from sesame (as
+/// `stablehand account login` keeps it), a bound one's from the login in its
+/// home, Claude Code's `CLAUDE_CONFIG_DIR` (`~/.claude` where it names none).
 fn bearer(account: &Account) -> Result<String, String> {
+    let name = &account.name;
     if account.machine.is_none() {
-        return sesame::token(&account.name);
+        return login::token(account)?.ok_or_else(|| {
+            format!("sesame keeps no token for `{name}`: log it in with `stablehand account login {name}`")
+        });
     }
-    let home = account
-        .home
-        .clone()
-        .or_else(|| std::env::var("HOME").ok())
-        .unwrap_or_default();
-    let file = PathBuf::from(home)
-        .join(".claude")
-        .join(".credentials.json");
+    let home = match &account.home {
+        Some(home) => PathBuf::from(home),
+        None => PathBuf::from(std::env::var("HOME").unwrap_or_default()).join(".claude"),
+    };
+    let file = home.join(".credentials.json");
     let fix = |why: String| {
         format!(
-            "{}: {why}: log in with Claude Code in that home on {} (`claude`, then `/login`)",
+            "{}: {why}: log it in on {} with `stablehand account login {name}`",
             file.display(),
             account.machine.as_deref().unwrap_or_default()
         )

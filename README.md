@@ -35,6 +35,89 @@ stablehand on claude-felix
 - `account rm` of an account not kept answers `"removed": false`, so running it twice leaves the same register.
 - The register is one SQLite file, `$STABLEHAND_CONFIG_DIR/stablehand.db` (default `~/.config/stablehand`); the file is 0600, the directory 0700. It keeps no token: a portable login's token is sesame's.
 
+## Logging in
+
+```sh
+stablehand account login claude-felix --expires 2027-11-24   # claude setup-token, then the token into sesame
+stablehand account login kimi-1 --token < token.txt         # a token you have, pasted or piped
+stablehand account login chatgpt                             # on mini: codex login, CODEX_HOME=/Users/agent/chatgpt
+stablehand account show claude-felix   # {"account": {…}, "logged_in": true, "days_left": 365, "warning": null}
+```
+
+- A login is the engine's own (docs/adr/0001): stablehand runs the engine's
+  command, never a vendor's OAuth client.
+- **Portable**: `account login` runs the engine's token command (claude-code:
+  `claude setup-token`; with `--token`, none), then sesame asks for the token
+  with hidden input, or reads it from stdin when stdin is no terminal, and
+  keeps it as the provider `stablehand-<name>`, made with `sesame provider add`
+  the first time, its host the engine's usage host. The token is on no
+  child's command line, in no log and not in the register; sesame gets it on stdin.
+- **Bound**: on the account's machine (`$STABLEHAND_MACHINE`, else
+  `hostname -s`), `account login` runs the engine's login with the variable
+  it reads for its home set to `--home` (`CLAUDE_CONFIG_DIR`, `CODEX_HOME`,
+  `KIMI_CODE_HOME`, `GROK_HOME`, `HOME` for agy, `PI_CODING_AGENT_DIR`,
+  `DSH_HOME`), and records when, as `logged_in_at`. Changing the account's
+  engine, machine or home forgets it. It is refused on another machine.
+- `account show` says whether the account is logged in: a bound one as
+  recorded, a portable one when sesame holds its token. For a token with
+  `--expires` it counts `days_left`, and from 30 days ahead its `warning`
+  says to make a new one.
+- A refused login exits 1 and writes nothing to the register: an engine with
+  no token command without `--token`, `--token` or `--expires` on a bound
+  login, a bound one with no `--home`, a token sesame refuses, an engine's
+  login that fails.
+
+## Importing from mytokens
+
+```sh
+stablehand account import --from-mytokens --dry-run   # what it would add, no token shown
+stablehand account import --from-mytokens
+```
+
+- Each `agent-account-<name>` entry of this host's mytokens (`mytokens list`)
+  becomes the account `<name>`: its engine from `HARNESS`, bound to `MACHINE`
+  where the entry has one, else portable, with its `CLAUDE_CODE_OAUTH_TOKEN`
+  kept in sesame as `account login` keeps one. The token goes from
+  `mytokens get` to sesame's stdin, on no command line and in no answer.
+- An account already kept is left as it is, answered `"already kept"`, so
+  running it again adds nothing. mytokens is only read: nothing in it is changed or removed.
+- `--dry-run` answers `"would add"` for each, reading no token and writing nothing.
+- It refuses, importing nothing, an entry whose `HARNESS` is no engine, one
+  with both a token and a `MACHINE`, and a field mytokens does not answer. A
+  token sesame refuses stops it there: the accounts before it are added, and
+  running it again adds the rest.
+
+## A session's environment
+
+```sh
+stablehand env claude-felix          # export CLAUDE_CODE_OAUTH_TOKEN='sk-ant-…'
+stablehand env chatgpt               # on mini: export CODEX_HOME='/Users/agent/chatgpt'
+stablehand env chatgpt --json        # {"name": "chatgpt", "login": "bound", "env": {"CODEX_HOME": "…"}}
+```
+
+- `env` says what a session on an account starts with, so its caller starts
+  the engine without knowing how the account logs in. **Portable**: the
+  engine's token variable (claude-code: `CLAUDE_CODE_OAUTH_TOKEN`), its value
+  the token sesame keeps (`sesame token stablehand-<name> --json`). **Bound**:
+  the engine's home variable set to the account's home, on its machine only.
+- It prints one `export NAME='value'` line each, the value one shell word
+  whatever it holds, or with `--json` one object. The value is written to
+  stdout alone: no file is left behind, and no child is given it on its
+  command line.
+- It refuses, exit 2 with `{"error": "…"}` naming the fix, an account that is
+  off, not logged in, or bound to another machine; also one bound with no
+  home, and a portable one of an engine with no token variable (any but
+  claude-code: bind it). Exit 1 is an account not kept, or sesame that could
+  not be asked.
+- factorium can hand it to a session unchanged (factorium SPEC §1.7; its test
+  "an account secret stays off the command line"): `env`'s stdout is the very
+  text factorium writes to a secrets file (`export NAME='value'` lines,
+  `factorium_harness::secrets_file`). factorium writes that stdout as it is
+  into a new 0600 file under its secrets directory, in place of the text it
+  makes from mytokens' fields, and the session's start line reads and removes
+  it as now (`. <file> && rm -f <file> && …`); a non-zero exit is a session
+  not started, its `error` the reason.
+
 ## The books: read, limit, status
 
 ```sh
@@ -51,8 +134,9 @@ stablehand status                   # each account's windows and their pace
 - A reader's failure is booked as a failed try and said (`"outcome": "failed"`, with its `"error"` and fix), and still exits 0; the account's last windows are kept, marked `"stale": true`.
 - An engine with no reader yet answers `"outcome": "no_reader"` and books nothing.
 - claude-code's reader asks `api.anthropic.com/api/oauth/usage` with the
-  account's bearer: a portable login's from sesame (`sesame token <name>`),
-  a bound one's from `<home>/.claude/.credentials.json`.
+  account's bearer: a portable login's from sesame, as `account login`
+  keeps it, a bound one's from `<home>/.credentials.json` (its
+  `CLAUDE_CONFIG_DIR`; `~/.claude` without `--home`).
 - The bearer goes to curl on its stdin, never on a command line.
 - Its windows are `five_hour`, `seven_day` and any other the endpoint
   lists. A `claude setup-token` token is refused a usage query (HTTP 403):

@@ -1,0 +1,27 @@
+{
+  "tree": "d01a6ac1e0681c8b5cb70981f0156c91e462aa5f+d1fba762150c532c",
+  "picker": "codex:01a20ccf-0c75-7c11-9430-106a2aa41185:default",
+  "author": "claude-code:943c786f-6133-573a-ba7d-d76d1f4647ed:opus",
+  "picks": {
+    "rust": [
+      {
+        "name": "src/account.rs:334:22: replace < with <= in status",
+        "why": "An account whose term ends today would be marked expired, which requires a test at exactly zero days remaining.",
+        "outcome": "killed",
+        "first_outcome": "killed"
+      },
+      {
+        "name": "src/account.rs:281:38: replace || with && in day_of",
+        "why": "A date with exactly one incorrect separator could pass validation even if tests reject malformed dates with several defects.",
+        "outcome": "killed",
+        "first_outcome": "killed"
+      },
+      {
+        "name": "src/main.rs:304:21: delete field terms from struct Change expression in run",
+        "why": "An edit could silently discard new terms unless a test reads back the stored terms after changing them.",
+        "outcome": "killed",
+        "first_outcome": "killed"
+      }
+    ]
+  }
+}

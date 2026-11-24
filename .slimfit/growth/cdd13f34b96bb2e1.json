@@ -1,0 +1,10 @@
+{
+  "tree": "d01a6ac1e0681c8b5cb70981f0156c91e462aa5f+d1fba762150c532c",
+  "lines": 382,
+  "serves": "stablehand#3",
+  "considered": "reusing account::status for the logged-in check (it answers a Status, not the refusal env needs); keeping a pure Session decision in account.rs beside the effect in login.rs; a Vec of variables against the one variable each kind has; factorium's own quoting (a crate of factorium's, not linked here)",
+  "reviewer": "codex:01a20ccd-a87d-7393-88a9-dac72ce0f91a:default",
+  "author": "claude-code:943c786f-6133-573a-ba7d-d76d1f4647ed:opus",
+  "cut": "In src/account.rs and src/login.rs, remove the intermediate Session enum and resolve the token or home directly in login::env, keeping the same validation order and exit codes. In src/login.rs and src/main.rs, return the single variable/value pair directly, use its name as the JSON key, and format the shell export with the existing quote escaping, removing the Vec, map collection, and src/account.rs export loop.",
+  "answer": "made both cuts: Session and account::session gone, login::env decides and reads as login::login does, in the same order and exit codes; env answers one (variable, value), main formats the export line and the JSON from it; account::exports gone"
+}

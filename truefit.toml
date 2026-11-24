@@ -57,26 +57,6 @@ header = "Authorization: Bearer <login>"
 header = "anthropic-beta: oauth-2025-04-20"
 """
 
-# A portable login's token (src/sesame.rs): `sesame token <account> --json`.
-[[standin]]
-name = "sesame"
-run = ["tests/contract/fake-sesame"]
-real = ["sesame"]
-version = ["sesame", "--version"]
-no_faults = { why = "stablehand only tells a token from a failure, and books the failure as a failed try; nothing has taken effect before it", sha256 = "ec9e60c1bf13515c7c57c3d5e33bf3efcd6f0958e23f1bf02fc775d6d5edfd9b" }
-
-[[standin.case]]
-name = "a-token-handed"
-args = ["token", "claude-felix", "--json"]
-env = { SESAME_TOKEN_CLAUDE_FELIX = "sk-ant-oat01-standin", SESAME_PROVIDERS = '{"claude-felix": {"auth_url": {"value": "https://claude.ai/oauth/authorize"}, "token_url": {"value": "https://console.anthropic.com/v1/oauth/token"}, "api_base": {"value": "https://api.anthropic.com"}, "hosts": {"value": ["api.anthropic.com"]}}}' }
-
-[[standin.case]]
-name = "an-unknown-provider"
-args = ["token", "stablehand-contract-none", "--json"]
-env = { SESAME_PROVIDERS = "{}" }
-
-# stablehand's promises (`truefit promise`): each sentence of README.md that a
-# run could break, with the tests that keep it named in the comment above it.
 [promises]
 sources = ["README.md"]
 
@@ -132,3 +112,145 @@ name = "guild-pace-rules"
 says = '''The rules are Guild's ledger's: a reading over two hours old, or a window under half used, is never tight on its own.'''
 source = "README.md:66"
 check = ["test"]
+
+# tests/import.rs imports_each_entry_its_token_into_sesame_and_keeps_what_is_kept
+[[promise]]
+name = "import-only-reads-mytokens"
+says = '''mytokens is only read: nothing in it is changed or removed.'''
+source = "README.md:83"
+check = ["test"]
+
+# sesame keeps a portable account's token (`account login`, `account show`):
+# the calls stablehand makes, each case a run of calls in a store of its own
+# (tests/contract/sesame-steps). stablehand reads their exit codes; of
+# `token --json`, its answer too.
+
+# tests/login.rs a_portable_token_reaches_sesame_on_stdin_and_no_argv
+[[promise]]
+name = "token-on-no-argv"
+says = '''The token is on no
+  child's command line, in no log and not in the register; sesame gets it on stdin.'''
+source = "README.md:53"
+check = ["test"]
+
+# tests/login.rs a_refused_login_keeps_nothing
+[[promise]]
+name = "a-refused-login-writes-nothing"
+says = '''A refused login exits 1 and writes nothing to the register'''
+source = "README.md:65"
+check = ["test"]
+
+# account::tests::status_counts_the_days_left_and_warns_30_ahead
+[[promise]]
+name = "warns-30-days-ahead"
+says = '''from 30 days ahead its `warning`
+  says to make a new one.'''
+source = "README.md:63"
+check = ["test"]
+
+# tests/env.rs a_portable_account_starts_with_its_token_from_sesame, a_bound_account_starts_in_its_home_on_its_machine
+[[promise]]
+name = "env-portable-token-bound-home"
+says = '''**Portable**: the
+  engine's token variable (claude-code: `CLAUDE_CODE_OAUTH_TOKEN`), its value
+  the token sesame keeps (`sesame token stablehand-<name> --json`). **Bound**:
+  the engine's home variable set to the account's home, on its machine only.'''
+source = "README.md:79"
+check = ["test"]
+
+# tests/env.rs a_portable_account_starts_with_its_token_from_sesame
+[[promise]]
+name = "env-value-on-stdout-alone"
+says = '''The value is written to
+  stdout alone: no file is left behind, and no child is given it on its
+  command line.'''
+source = "README.md:84"
+check = ["test"]
+
+# tests/env.rs an_account_no_session_may_start_on_is_refused_with_its_fix
+[[promise]]
+name = "env-refuses-exit-2"
+says = '''It refuses, exit 2 with `{"error": "…"}` naming the fix, an account that is
+  off, not logged in, or bound to another machine'''
+source = "README.md:87"
+check = ["test"]
+
+[[standin]]
+name = "sesame"
+run = ["tests/contract/sesame-steps", "tests/contract/fake-sesame"]
+real = ["tests/contract/sesame-steps", "sesame"]
+needs = "sesame on PATH (brew install sunfmin/tap/sesame); it writes only the case's own store"
+ready = ["sesame", "--version"]
+version = ["sesame", "--version"]
+faults = ["token-refused", "add-refused"]
+fault_env = "FAKE_SESAME_FAULT"
+
+[[standin.case]]
+name = "provider-made-once-then-token-kept"
+stdin = '''
+? provider show stablehand-a
+? provider add stablehand-a --about x --auth-url https://api.anthropic.com --token-url https://api.anthropic.com --api-base https://api.anthropic.com --host api.anthropic.com
+? provider add stablehand-a --auth-url https://api.anthropic.com --token-url https://api.anthropic.com --api-base https://api.anthropic.com --host api.anthropic.com
+? provider show stablehand-a
+<sk-ant-oat01-stand-in| login stablehand-a --token-stdin
+token stablehand-a --json
+<sk-ant-oat01-renewed| login stablehand-a --token-stdin
+token stablehand-a --json
+'''
+
+[[standin.case]]
+name = "no-token-not-logged-in"
+stdin = '''
+token stablehand-nobody --json
+? provider add stablehand-a --auth-url https://chatgpt.com --token-url https://chatgpt.com --api-base https://chatgpt.com --host chatgpt.com
+token stablehand-a --json
+? login stablehand-nobody --token-stdin
+'''
+
+[[standin.case]]
+name = "token-refused-keeps-nothing"
+fault = "token-refused"
+stdin = '''
+? provider add stablehand-a --auth-url https://api.anthropic.com --token-url https://api.anthropic.com --api-base https://api.anthropic.com --host api.anthropic.com
+<two words| login stablehand-a --token-stdin
+token stablehand-a --json
+'''
+
+[[standin.case]]
+name = "provider-refused-made-nothing"
+fault = "add-refused"
+stdin = '''
+? provider add stablehand-a --auth-url https://api.anthropic.com --token-url https://api.anthropic.com --api-base https://api.anthropic.com --host 'bad host'
+? provider show stablehand-a
+'''
+
+# mytokens holds the agent-account-* entries `account import --from-mytokens`
+# moves into stablehand: `list`, then `get` of each entry's fields
+# (tests/contract/mytokens-steps). It only reads, and prints no value: a real
+# run reads this host's own entries, so it needs at least one portable entry
+# with a token and one bound to a machine.
+[[standin]]
+name = "mytokens"
+run = ["tests/contract/mytokens-steps", "tests/contract/fake-mytokens"]
+real = ["tests/contract/mytokens-steps", "mytokens"]
+needs = "mytokens on PATH holding agent-account-* entries: one with CLAUDE_CODE_OAUTH_TOKEN, one with MACHINE"
+ready = ["mytokens", "list"]
+version = ["sh", "-c", "mytokens list >/dev/null && echo mytokens"]
+faults = ["get-fails"]
+fault_env = "FAKE_MYTOKENS_FAULT"
+
+[[standin.case]]
+name = "entries-and-their-fields"
+stdin = '''
+list
+get HARNESS
+get MACHINE
+get CLAUDE_CODE_OAUTH_TOKEN
+'''
+
+[[standin.case]]
+name = "a-field-not-read"
+fault = "get-fails"
+stdin = '''
+get STABLEHAND_NO_SUCH_FIELD
+'''
