@@ -50,6 +50,13 @@ fn a_portable_token_is_its_command_s_first_line_and_written_nowhere() {
         held[0].ends_with("mytokens/agent-account-claude-felix/default/CLAUDE_CODE_OAUTH_TOKEN")
     );
 
+    // A token far from its expiry counts its days and is not warned of.
+    r.ok(&["account", "edit", "claude-felix", "--expires", "2099-01-31"]);
+    let show = r.ok(&["account", "show", "claude-felix"]);
+    assert!(show["days_left"].as_i64().unwrap() > 26_000, "{show}");
+    assert!(show["days_left"].as_i64().unwrap() < 30_000, "{show}");
+    assert_eq!(show["warning"], json!(null));
+
     // From 30 days ahead, and past it, show warns, naming where to renew.
     r.ok(&["account", "edit", "claude-felix", "--expires", "2000-01-01"]);
     let show = r.ok(&["account", "show", "claude-felix"]);

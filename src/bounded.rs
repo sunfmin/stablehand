@@ -78,11 +78,40 @@ mod tests {
         // A child left holding stdout after its parent exits is past it too.
         assert_eq!(run(sh("sleep 30 & echo x"), limit).unwrap(), Ran::RanPast);
         assert!(started.elapsed() < Duration::from_secs(5));
+        // Stopped means gone: it, and what it started, are killed.
+        let dir = std::env::temp_dir().join(format!("stablehand-bounded-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let (own, started_by) = (dir.join("own"), dir.join("child"));
+        let script = format!(
+            "echo $$ > {}; sleep 30 & echo $! > {}; wait",
+            own.display(),
+            started_by.display()
+        );
+        assert_eq!(run(sh(&script), limit).unwrap(), Ran::RanPast);
+        for pid in [&own, &started_by] {
+            let pid = std::fs::read_to_string(pid).unwrap();
+            assert!(gone(pid.trim()), "{pid} outlived the bound");
+        }
         let ten = Duration::from_secs(10);
         assert_eq!(
             run(sh("echo hi; exit 3"), ten).unwrap(),
             Ran::Exited(Some(3), b"hi\n".to_vec())
         );
         assert!(run(Command::new("/no/such/program"), ten).is_err());
+    }
+
+    /// Whether no process `pid` is left, within a second of asking.
+    fn gone(pid: &str) -> bool {
+        (0..100).any(|_| {
+            let alive = Command::new("kill")
+                .args(["-0", pid])
+                .stderr(Stdio::null())
+                .status();
+            let dead = !alive.unwrap().success();
+            if !dead {
+                std::thread::sleep(Duration::from_millis(10));
+            }
+            dead
+        })
     }
 }

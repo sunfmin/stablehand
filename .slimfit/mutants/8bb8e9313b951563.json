@@ -1,0 +1,35 @@
+{
+  "tree": "213f4e524009f4ef3653073d81477518b7def820+7fe44351a946ff65",
+  "picker": "codex:01a20d7e-5d5f-7de3-88a1-1e277b7d1e39:default",
+  "author": "claude-code:007386d6-5b7e-5f68-8d52-2593369e1dd8:opus",
+  "picks": {
+    "rust": [
+      {
+        "name": "src/bounded.rs:54:5: replace stop with ()",
+        "why": "The timeout tests assert that the call returns promptly, so the mutation may survive even if the child and its descendants keep running.",
+        "outcome": "killed",
+        "first_outcome": "survived"
+      },
+      {
+        "name": "src/main.rs:452:25: replace / with * in with_status",
+        "why": "The removed login test checked that a future expiry had a positive day count and no warning, while the replacement only checks an already expired token.",
+        "outcome": "killed",
+        "first_outcome": "survived"
+      }
+    ]
+  },
+  "removed_tests": {
+    "rust": [
+      "src/readers/agy.rs:200: a_program_past_its_time_limit_is_killed",
+      "tests/credential.rs:29: a_portable_account_starts_with_its_token_from_sesame",
+      "tests/dsh.rs:246: a_portable_login_is_read_with_sesame_s_token_and_a_bound_one_without_its_grant_fails",
+      "tests/import.rs:26: imports_each_entry_its_token_into_sesame_and_keeps_what_is_kept",
+      "tests/import.rs:170: a_token_sesame_refuses_imports_that_account_on_the_next_run",
+      "tests/kimi.rs:172: a_portable_kimi_login_is_read_with_sesame_s_token",
+      "tests/login.rs:11: a_portable_token_reaches_sesame_on_stdin_and_no_argv",
+      "tests/login.rs:80: a_refused_login_keeps_nothing",
+      "tests/login.rs:193: a_bound_login_runs_the_engine_in_its_home_and_is_recorded",
+      "tests/usage.rs:288: a_portable_login_is_read_with_sesame_s_token_and_a_setup_token_gets_a_limit"
+    ]
+  }
+}
