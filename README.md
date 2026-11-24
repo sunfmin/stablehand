@@ -170,3 +170,16 @@ issue (`docs/agents/issue-tracker.md`).
 ```sh
 ./gate.sh   # fmt, clippy, slimfit check, the release dry run, truefit contract
 ```
+
+### How help is written
+
+`stablehand --help` (the index), `stablehand <command> --help`,
+`stablehand help <topic>` and `stablehand help all` (the whole manual) are
+one manual, assembled by [agent-help](https://github.com/sunfmin/agent-cli)
+from Markdown doc comments on the thing each fact belongs to: the root and
+each command's on clap's types in `src/main.rs`; the refusal codes on the
+`Code` enum in `src/refusal.rs`, each variant's doc its line in the manual
+and its name the `code` a refusal prints; the engines' logins generated
+from the one list of engines (`Engine`). No help is written anywhere else,
+and no `long_about` or `after_help` by hand. The test `the_manual_is_whole`
+runs `agent_help::check` and clap's `debug_assert` on it.
