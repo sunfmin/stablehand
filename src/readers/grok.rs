@@ -31,17 +31,23 @@ pub fn read(account: &Account) -> Result<Vec<Window>, String> {
     let login_again =
         format!("log it in again on {machine} with `stablehand account login {name}`");
     let now = crate::now()?;
-    let mut login = Login::of(&home).map_err(|why| format!("{why}: {login_again}"))?;
-    if login.expires_at <= now + 60 {
-        refresh(account, &home);
-        login = Login::of(&home).map_err(|why| format!("{why}: {login_again}"))?;
-        if login.expires_at <= now + 60 {
-            return Err(format!(
-                "the grok login in {} has expired and `grok models` did not refresh it: {login_again}",
-                home.display()
-            ));
+    // A login expiring within the minute is as good as expired.
+    let load = || {
+        let login = Login::of(&home).map_err(|why| format!("{why}: {login_again}"))?;
+        Ok::<_, String>((login.expires_at > now + 60).then_some(login))
+    };
+    let login = match load()? {
+        Some(login) => login,
+        None => {
+            refresh(account, &home);
+            load()?.ok_or_else(|| {
+                format!(
+                    "the grok login in {} has expired and `grok models` did not refresh it: {login_again}",
+                    home.display()
+                )
+            })?
         }
-    }
+    };
     let mut headers = vec![format!("Authorization: Bearer {}", login.key)];
     headers.extend(client_version(&home).map(|v| format!("x-grok-client-version: {v}")));
     let (status, body) = curl::get(BILLING, &headers)?;
@@ -64,8 +70,7 @@ impl Login {
             .as_object()
             .into_iter()
             .flatten()
-            .find(|(k, _)| k.starts_with(ISSUER))
-            .map(|(_, v)| v)
+            .find_map(|(k, v)| k.starts_with(ISSUER).then_some(v))
             .ok_or_else(|| at(format!("no {ISSUER}<id> login in it")))?;
         let key = entry["key"].as_str().map(str::to_string);
         let expires_at = entry["expires_at"].as_str().and_then(time::parse);

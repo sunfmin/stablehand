@@ -1,6 +1,0 @@
-#!/bin/sh
-# Ready for `truefit contract --real grok`: curl and jq on PATH, and a grok
-# login in ~/.grok/auth.json not expired (run grok once to refresh it).
-command -v curl >/dev/null && command -v jq >/dev/null &&
-    jq -e '[to_entries[] | select(.key | startswith("https://auth.x.ai::"))][0].value
-        | (.expires_at | sub("\\.[0-9]+"; "") | fromdateiso8601) > now' "$HOME/.grok/auth.json" >/dev/null 2>&1

@@ -1,6 +1,16 @@
 #!/bin/sh
 # The real curl, its stdin's stand-in bearer `<grok-login>` swapped for this
 # user's grok login (~/.grok/auth.json's https://auth.x.ai::<id> entry),
-# never printed.
-login=$(jq -r '[to_entries[] | select(.key | startswith("https://auth.x.ai::"))][0].value.key // empty' "$HOME/.grok/auth.json" 2>/dev/null)
-cat | sed "s|<grok-login>|$login|" | curl "$@"
+# never printed. With --ready: whether `truefit contract --real grok` can
+# run, curl and jq on PATH and that login not expired.
+login() {
+    jq -r "[to_entries[] | select(.key | startswith(\"https://auth.x.ai::\"))][0].value | $1 // empty" \
+        "$HOME/.grok/auth.json" 2>/dev/null
+}
+if [ "$1" = --ready ]; then
+    command -v curl >/dev/null && command -v jq >/dev/null || exit 1
+    [ "$(login '(.expires_at | sub("\\.[0-9]+"; "") | fromdateiso8601) > now')" = true ]
+    exit
+fi
+key=$(login .key)
+sed "s|<grok-login>|$key|" | curl "$@"
