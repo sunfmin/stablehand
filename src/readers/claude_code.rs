@@ -58,11 +58,10 @@ fn bearer(account: &Account) -> Result<String, String> {
 /// epoch). None where it gives none, as before a session's first answer.
 pub fn statusline(stdin: &[u8]) -> Vec<Window> {
     let given: serde_json::Value = serde_json::from_slice(stdin).unwrap_or_default();
-    let Some(limits) = given["rate_limits"].as_object() else {
-        return Vec::new();
-    };
-    limits
-        .iter()
+    given["rate_limits"]
+        .as_object()
+        .into_iter()
+        .flatten()
         .filter_map(|(name, w)| {
             Some(Window {
                 name: name.clone(),

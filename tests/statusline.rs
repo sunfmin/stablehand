@@ -6,10 +6,8 @@ mod support;
 use serde_json::{Value, json};
 use support::Register;
 
-fn sample(name: &str) -> String {
-    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/statusline");
-    std::fs::read_to_string(dir.join(name)).unwrap()
-}
+const RATE_LIMITS: &str = include_str!("statusline/rate-limits.json");
+const NO_RATE_LIMITS: &str = include_str!("statusline/no-rate-limits.json");
 
 fn window<'a>(account: &'a Value, name: &str) -> &'a Value {
     let windows = account["windows"].as_array().unwrap();
@@ -29,7 +27,7 @@ fn the_status_line_books_its_rate_limits_and_prints_one_line() {
     r.ok(&["account", "add", "claude-felix", "--engine", "claude-code"]);
     let args = ["statusline", "--account", "claude-felix"];
 
-    let (code, line) = r.raw(&args, &[], &sample("rate-limits.json"));
+    let (code, line) = r.raw(&args, &[], RATE_LIMITS);
     assert_eq!(
         (code, line.as_str()),
         (0, "claude-felix · 5h 24% · 7d 41%\n")
@@ -49,14 +47,14 @@ fn the_status_line_books_its_rate_limits_and_prints_one_line() {
 
     // A session that has had no answer yet gives no rate_limits: the line
     // is the account's name, and the books keep what they had.
-    let (code, line) = r.raw(&args, &[], &sample("no-rate-limits.json"));
+    let (code, line) = r.raw(&args, &[], NO_RATE_LIMITS);
     assert_eq!((code, line.as_str()), (0, "claude-felix\n"));
     assert_eq!(status(&r, "claude-felix"), s);
 
     // A reading lifts a limit booked without a reset, as `read` does.
     r.ok(&["limit", "claude-felix"]);
     assert_eq!(status(&r, "claude-felix")["pace"], "used_up");
-    r.raw(&args, &[], &sample("rate-limits.json"));
+    r.raw(&args, &[], RATE_LIMITS);
     assert_eq!(status(&r, "claude-felix")["limit"], Value::Null);
 }
 
@@ -64,14 +62,14 @@ fn the_status_line_books_its_rate_limits_and_prints_one_line() {
 fn then_hands_the_same_stdin_to_the_person_s_own_line() {
     let r = Register::new("statusline-then");
     r.ok(&["account", "add", "claude-felix", "--engine", "claude-code"]);
-    let stdin = sample("rate-limits.json");
+    let stdin = RATE_LIMITS;
     let (code, line) = r.raw(
         &["statusline", "--account", "claude-felix", "--then", "cat"],
         &[],
-        &stdin,
+        stdin,
     );
     // Byte for byte: no newline added, the UTF-8 as it came.
-    assert_eq!((code, line.as_str()), (0, stdin.as_str()));
+    assert_eq!((code, line.as_str()), (0, stdin));
     assert_eq!(
         window(&status(&r, "claude-felix"), "five_hour")["used_percent"],
         23.5
@@ -87,7 +85,7 @@ fn then_hands_the_same_stdin_to_the_person_s_own_line() {
             "echo mine; exit 3",
         ],
         &[],
-        &stdin,
+        stdin,
     );
     assert_eq!((code, line.as_str()), (3, "mine\n"));
 }
@@ -96,9 +94,9 @@ fn then_hands_the_same_stdin_to_the_person_s_own_line() {
 fn an_account_it_cannot_book_still_gets_a_line() {
     let r = Register::new("statusline-faults");
     r.ok(&["account", "add", "chatgpt", "--engine", "codex"]);
-    let stdin = sample("rate-limits.json");
+    let stdin = RATE_LIMITS;
 
-    let (code, line) = r.raw(&["statusline", "--account", "nobody"], &[], &stdin);
+    let (code, line) = r.raw(&["statusline", "--account", "nobody"], &[], stdin);
     assert_eq!(code, 0);
     assert!(
         line.starts_with("stablehand: no account `nobody`"),
@@ -106,7 +104,7 @@ fn an_account_it_cannot_book_still_gets_a_line() {
     );
     assert_eq!(line.lines().count(), 1, "{line}");
 
-    let (code, line) = r.raw(&["statusline", "--account", "chatgpt"], &[], &stdin);
+    let (code, line) = r.raw(&["statusline", "--account", "chatgpt"], &[], stdin);
     assert_eq!(code, 0);
     assert!(line.contains("codex"), "{line}");
     assert_eq!(status(&r, "chatgpt")["windows"], json!([]));
@@ -115,7 +113,7 @@ fn an_account_it_cannot_book_still_gets_a_line() {
     let (code, line) = r.raw(
         &["statusline", "--account", "nobody", "--then", "echo mine"],
         &[],
-        &stdin,
+        stdin,
     );
     assert_eq!((code, line.as_str()), (0, "mine\n"));
 }
