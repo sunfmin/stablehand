@@ -6,8 +6,7 @@
 //! reader reports either as a refused credential, not asked again until
 //! `stablehand account login`.
 use crate::account::Account;
-use crate::books::Balance;
-use crate::readers::Fault;
+use crate::books::{Balance, What};
 use crate::{curl, login};
 use std::path::PathBuf;
 
@@ -28,12 +27,16 @@ const CLIENT: &[&str] = &[
 /// The record of dsh's credential store that holds its Platform grant.
 const GRANT_RECORD: &str = "deepseek-account-platform/default:";
 
-pub fn read(account: &Account) -> Result<Vec<Balance>, Fault> {
-    let grant = grant(account).map_err(Fault::Failed)?;
-    let mut headers = vec![format!("x-dsh-auth-token: {grant}")];
-    headers.extend(CLIENT.iter().map(|h| h.to_string()));
-    let (status, body) = curl::get(SUMMARY, &headers).map_err(Fault::Failed)?;
-    balances(status, &body, &account.name)
+pub fn read(account: &Account) -> What {
+    let asked = grant(account).and_then(|grant| {
+        let mut headers = vec![format!("x-dsh-auth-token: {grant}")];
+        headers.extend(CLIENT.iter().map(|h| h.to_string()));
+        curl::get(SUMMARY, &headers)
+    });
+    match asked {
+        Ok((status, body)) => balances(status, &body, &account.name),
+        Err(why) => What::Failed(why),
+    }
 }
 
 /// The account's grant: a portable login's from sesame (as `stablehand
@@ -78,29 +81,27 @@ fn grant_in(text: &str) -> Option<String> {
 }
 
 /// The balances of the endpoint's answer, `status` and `body`, or why it
-/// gave none, with the fix.
-fn balances(status: u16, body: &str, name: &str) -> Result<Vec<Balance>, Fault> {
+/// gave none, with the fix: refused where it refused the grant.
+fn balances(status: u16, body: &str, name: &str) -> What {
     let answer: serde_json::Value = serde_json::from_str(body).unwrap_or_default();
     let said = answer["msg"].as_str().unwrap_or("no message");
     if status == 401 || answer["code"] == 40003 {
-        return Err(Fault::Refused(format!(
+        return What::Refused(format!(
             "{SUMMARY} refused the login (HTTP {status}, code {}: {said}); dsh drops it too: log in again with `stablehand account login {name}`",
             answer["code"]
-        )));
+        ));
     }
     let later = "try again later (`stablehand read --now`)";
     if status != 200 {
-        return Err(Fault::Failed(format!(
-            "{SUMMARY} answered HTTP {status}: {said}: {later}"
-        )));
+        return What::Failed(format!("{SUMMARY} answered HTTP {status}: {said}: {later}"));
     }
     let data = &answer["data"];
     if answer["code"] != 0 || data["biz_code"] != 0 {
         let biz = data["biz_msg"].as_str().unwrap_or("");
-        return Err(Fault::Failed(format!(
+        return What::Failed(format!(
             "{SUMMARY} answered code {} ({said}), biz_code {} ({biz}): {later}",
             answer["code"], data["biz_code"]
-        )));
+        ));
     }
     let found: Vec<Balance> = [("normal", "normal_wallets"), ("bonus", "bonus_wallets")]
         .into_iter()
@@ -119,11 +120,11 @@ fn balances(status: u16, body: &str, name: &str) -> Result<Vec<Balance>, Fault> 
         })
         .collect();
     if found.is_empty() {
-        return Err(Fault::Failed(format!(
+        return What::Failed(format!(
             "{SUMMARY} answered no wallet: its answer has changed; run `truefit contract --real dsh` in stablehand's repo"
-        )));
+        ));
     }
-    Ok(found)
+    What::Balance(found)
 }
 
 #[cfg(test)]
@@ -148,7 +149,9 @@ mod tests {
             "normal_wallets":[{"currency":"CNY","balance":"94.6700242600000000","token_estimation":"1"}],
             "bonus_wallets":[{"currency":"CNY","balance":"0","token_estimation":"0"},{"currency":"USD","balance":"x"}],
             "total_costs":[{"currency":"CNY","amount":"5.33"}]}}}"#;
-        let got = balances(200, body, "d").unwrap();
+        let What::Balance(got) = balances(200, body, "d") else {
+            panic!("a 200 with wallets is a balance")
+        };
         let shown: Vec<_> = got
             .iter()
             .map(|b| (b.wallet.as_str(), b.currency.as_str(), b.amount))
@@ -162,15 +165,15 @@ mod tests {
     #[test]
     fn a_refused_login_is_refused_and_other_faults_fail() {
         let refused = r#"{"code":40003,"msg":"Authorization Failed (invalid token)","data":null}"#;
-        let Err(Fault::Refused(why)) = balances(200, refused, "deepseek") else {
+        let What::Refused(why) = balances(200, refused, "deepseek") else {
             panic!("40003 is a refusal")
         };
         assert!(
             why.contains("invalid token") && why.contains("stablehand account login deepseek"),
             "{why}"
         );
-        assert!(matches!(balances(401, "", "d"), Err(Fault::Refused(_))));
-        let Err(Fault::Failed(why)) = balances(502, "bad gateway", "d") else {
+        assert!(matches!(balances(401, "", "d"), What::Refused(_)));
+        let What::Failed(why) = balances(502, "bad gateway", "d") else {
             panic!("a 502 fails")
         };
         assert!(
@@ -178,17 +181,17 @@ mod tests {
             "{why}"
         );
         let missing = r#"{"code":40002,"msg":"Missing Token","data":null}"#;
-        let Err(Fault::Failed(why)) = balances(200, missing, "d") else {
+        let What::Failed(why) = balances(200, missing, "d") else {
             panic!("40002 fails")
         };
         assert!(why.contains("code 40002 (Missing Token)"), "{why}");
         let biz = r#"{"code":0,"msg":"","data":{"biz_code":7,"biz_msg":"busy","biz_data":null}}"#;
-        let Err(Fault::Failed(why)) = balances(200, biz, "d") else {
+        let What::Failed(why) = balances(200, biz, "d") else {
             panic!("a biz_code fails")
         };
         assert!(why.contains("biz_code 7 (busy)"), "{why}");
         let empty = r#"{"code":0,"msg":"","data":{"biz_code":0,"biz_data":{"normal_wallets":[]}}}"#;
-        let Err(Fault::Failed(why)) = balances(200, empty, "d") else {
+        let What::Failed(why) = balances(200, empty, "d") else {
             panic!("no wallet fails")
         };
         assert!(why.contains("answered no wallet"), "{why}");

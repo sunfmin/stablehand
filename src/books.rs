@@ -120,9 +120,7 @@ pub struct WindowStatus {
 /// One wallet of an account, as last read.
 #[derive(Debug, Clone, PartialEq)]
 pub struct BalanceStatus {
-    pub wallet: String,
-    pub currency: String,
-    pub amount: f64,
+    pub balance: Balance,
     /// When the reading it comes from was booked.
     pub at: u64,
     /// A later try to read failed: what is left now is not known.
@@ -212,9 +210,7 @@ pub fn status(entries: &[Entry], now: u64) -> Status {
             balances
                 .iter()
                 .map(|b| BalanceStatus {
-                    wallet: b.wallet.clone(),
-                    currency: b.currency.clone(),
-                    amount: b.amount,
+                    balance: b.clone(),
                     at,
                     stale: failed.is_some(),
                 })

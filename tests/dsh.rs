@@ -60,8 +60,20 @@ impl Dsh {
         Dsh { root, env }
     }
 
-    fn home(&self) -> String {
-        self.root.join("dsh-home").display().to_string()
+    /// `deepseek`, bound to this machine, its home the one holding dsh's grant.
+    fn bound(&self) {
+        let home = self.root.join("dsh-home").display().to_string();
+        self.ok(&[
+            "account",
+            "add",
+            "deepseek",
+            "--engine",
+            "dsh",
+            "--machine",
+            "mini",
+            "--home",
+            &home,
+        ]);
     }
 
     fn set(&mut self, key: &str, value: &str) {
@@ -95,10 +107,7 @@ impl Dsh {
     }
 
     fn asks(&self) -> usize {
-        std::fs::read_to_string(self.root.join("curl.log"))
-            .unwrap_or_default()
-            .matches("get_user_summary")
-            .count()
+        self.log().matches("get_user_summary").count()
     }
 
     fn log(&self) -> String {
@@ -133,18 +142,7 @@ fn cny(normal: f64, stale: bool) -> Vec<(String, String, f64, bool)> {
 #[test]
 fn read_books_a_bound_login_s_balance_and_status_shows_it() {
     let d = Dsh::new("bound");
-    let home = d.home();
-    d.ok(&[
-        "account",
-        "add",
-        "deepseek",
-        "--engine",
-        "dsh",
-        "--machine",
-        "mini",
-        "--home",
-        &home,
-    ]);
+    d.bound();
     let read = d.read(&["deepseek"]);
     assert_eq!(
         (&read["outcome"], &read["windows"]),
@@ -193,18 +191,7 @@ fn read_books_a_bound_login_s_balance_and_status_shows_it() {
 #[test]
 fn a_refused_grant_is_not_asked_again_until_a_login() {
     let mut d = Dsh::new("refused");
-    let home = d.home();
-    d.ok(&[
-        "account",
-        "add",
-        "deepseek",
-        "--engine",
-        "dsh",
-        "--machine",
-        "mini",
-        "--home",
-        &home,
-    ]);
+    d.bound();
     d.read(&["deepseek"]);
 
     // Unreachable: a failed try, the balance kept stale.

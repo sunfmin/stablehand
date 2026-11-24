@@ -575,9 +575,9 @@ fn a_balance_reading_is_its_latest_wallets_with_no_window() {
         .iter()
         .map(|b| {
             (
-                b.wallet.as_str(),
-                b.currency.as_str(),
-                b.amount,
+                b.balance.wallet.as_str(),
+                b.balance.currency.as_str(),
+                b.balance.amount,
                 b.at,
                 b.stale,
             )
@@ -604,7 +604,10 @@ fn a_balance_reading_is_its_latest_wallets_with_no_window() {
 #[test]
 fn a_failed_try_keeps_the_last_balance_and_marks_it_stale() {
     let s = status(&[wallets(NOW - 2 * HOUR, 94.67), failed(NOW - HOUR)], NOW);
-    assert_eq!((s.balances[0].amount, s.balances[0].stale), (94.67, true));
+    assert_eq!(
+        (s.balances[0].balance.amount, s.balances[0].stale),
+        (94.67, true)
+    );
     assert_eq!(s.failed.as_deref(), Some("HTTP 401"));
     assert!(!s.refused);
 }
@@ -617,7 +620,10 @@ fn a_refused_credential_is_held_until_a_login_after_it() {
     );
     assert!(s.refused);
     assert_eq!(s.failed.as_deref(), Some("code 40003"));
-    assert_eq!((s.balances[0].amount, s.balances[0].stale), (94.67, true));
+    assert_eq!(
+        (s.balances[0].balance.amount, s.balances[0].stale),
+        (94.67, true)
+    );
     assert_eq!(s.tried_at, Some(NOW - 2 * HOUR));
     let login = Entry {
         at: NOW - HOUR,

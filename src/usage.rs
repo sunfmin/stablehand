@@ -27,7 +27,7 @@ pub fn read(
             }
             (Some(_), Some(next)) if !now_anyway => ("waits", Some(("next_at", utc(next)))),
             (Some(reader), _) => {
-                let what = reader.read(a);
+                let what = reader(a);
                 let outcome = match &what {
                     What::Failed(why) => ("failed", Some(("error", why.clone()))),
                     What::Refused(why) => ("refused", Some(("error", why.clone()))),
@@ -140,9 +140,9 @@ fn balances(s: &Status) -> Vec<Value> {
         .iter()
         .map(|b| {
             json!({
-                "wallet": b.wallet,
-                "currency": b.currency,
-                "amount": b.amount,
+                "wallet": b.balance.wallet,
+                "currency": b.balance.currency,
+                "amount": b.balance.amount,
                 "at": utc(b.at),
                 "stale": b.stale,
             })
