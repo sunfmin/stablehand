@@ -1,0 +1,10 @@
+{
+  "tree": "901e17b9b96217112d5978c0326c8d64cdeebfd0+d1fba762150c532c",
+  "lines": 191,
+  "serves": "stablehand#22",
+  "considered": "agy's bounded-run helper (moved into bounded::answer, now shared by agy and the question); a new What variant for a question reading (rejected: every match over What::Read would grow); afkconvoy's parser (another repo, not a dependency here)",
+  "reviewer": "codex:01a20d90-e301-70f3-a8b4-61f63778af90:default",
+  "author": "claude-code:39a98dd1-ce95-5d8a-864a-aa3744883f73:opus",
+  "cut": "In src/readers/claude_code.rs, parse the usage response once and share it between the scope check and window extraction, then scan JSONL backward for the latest rate-limit event and look for the latest result only on failure, eliminating the records vector. In tests/usage.rs, have question_answers write just the rate-limit event with dynamic timestamps and utilization, reusing the recorded full stream in the existing parser and contract tests.",
+  "answer": "Made all three: refuses_scope is gone and windows takes the parsed answer; stream reads its records from the end through one closure, the result only on failure, no vector; question_answers writes the rate_limit_event alone (the recorded stream stays for the unit test and the contract). What growth is left is the question itself, its help and README, and tests of each arm."
+}
