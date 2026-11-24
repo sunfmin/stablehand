@@ -1,21 +1,29 @@
 {
   "suites": {
     "rust": {
-      "prod_lines": 5003,
-      "test_lines": 4182,
-      "tests": 137,
+      "prod_lines": 5426,
+      "test_lines": 4589,
+      "tests": 145,
       "failures": 0,
       "test_seconds": 0.004,
-      "covered_lines": 3638,
+      "covered_lines": 3922,
       "uncovered_lines": 3
     }
   },
-  "loosened": [],
+  "loosened": [
+    {
+      "suite": "rust",
+      "metric": "survived_mutants",
+      "from": 0.0,
+      "to": 2.0,
+      "reason": "stablehand#25: both survivors change nothing a test can observe: SA_SIGINFO and SA_RESTART are distinct bits (| and ^ equal), and hold_signals only closes the microseconds between spawn and the child's pid being stored, a window no test can hit deterministically"
+    }
+  ],
   "kept": [],
   "measured": {
     "rust": {
-      "uncovered_lines": 137,
-      "test_seconds": 7.48
+      "uncovered_lines": 160,
+      "test_seconds": 9.114
     }
   }
 }

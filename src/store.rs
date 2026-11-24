@@ -47,6 +47,10 @@ const MIGRATIONS: &[&str] = &[
     "CREATE TABLE engine_order (id INTEGER PRIMARY KEY CHECK (id = 1), ranks TEXT NOT NULL);",
     // No sessions-at-once term: the pace counts the sessions running (stablehand#26).
     "ALTER TABLE accounts DROP COLUMN sessions;",
+    // The sessions `stablehand run` started and waits for, by the pid of
+    // the engine it started: a row outlives a run killed before it ended,
+    // and is dropped once that pid is found dead.
+    "CREATE TABLE sessions (pid INTEGER PRIMARY KEY, account TEXT NOT NULL, started INTEGER NOT NULL);",
 ];
 
 /// How long a process waits for another's write.
@@ -285,6 +289,38 @@ impl Store {
             .prepare("SELECT at, what FROM books WHERE account = ?1 ORDER BY at, rowid")
             .map_err(|e| self.err(e))?;
         stmt.query_map([account], entry_of)
+            .and_then(|rows| rows.collect())
+            .map_err(|e| self.err(e))
+    }
+}
+
+impl Store {
+    /// Keeps the session `run` started on `account`, its engine's `pid`.
+    pub fn start_session(&self, account: &str, pid: u32, at: u64) -> Result<(), String> {
+        self.conn
+            .execute(
+                "REPLACE INTO sessions (pid, account, started) VALUES (?1, ?2, ?3)",
+                params![pid, account, at as i64],
+            )
+            .map(|_| ())
+            .map_err(|e| self.err(e))
+    }
+
+    /// Drops the session of `pid`.
+    pub fn end_session(&self, pid: u32) -> Result<(), String> {
+        self.conn
+            .execute("DELETE FROM sessions WHERE pid = ?1", [pid])
+            .map(|_| ())
+            .map_err(|e| self.err(e))
+    }
+
+    /// Each session kept, `(pid, account)`.
+    pub fn sessions(&self) -> Result<Vec<(u32, String)>, String> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT pid, account FROM sessions ORDER BY pid")
+            .map_err(|e| self.err(e))?;
+        stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))
             .and_then(|rows| rows.collect())
             .map_err(|e| self.err(e))
     }

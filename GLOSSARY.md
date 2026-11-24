@@ -48,4 +48,7 @@
 - **Pick**: the answer to "what may one more session start on now": the
   first engine, model and account of the order whose account takes it,
   or none with until when and why. The session itself is the caller's.
+- **Session**: one run of an engine on an account. The caller's, but one
+  started by `stablehand run` is kept in the register while it runs, and
+  counted by a pick.
 - **Off**: an account the person switched off; nothing is picked on it.

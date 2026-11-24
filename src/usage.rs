@@ -298,3 +298,60 @@ fn judged(
         None => (status, false),
     })
 }
+
+/// What a pick is asked: the engines and model it is narrowed to, the
+/// sessions the caller counts running, its machine and stop percent.
+pub struct Ask {
+    pub engines: Vec<crate::account::Engine>,
+    pub model: Option<String>,
+    pub running: Vec<(String, u32)>,
+    /// None: this machine.
+    pub machine: Option<String>,
+    pub stop_percent: u8,
+}
+
+/// The pick among `accounts` ([`pick`]) of the order's walk narrowed as
+/// `ask` says, the sessions `run` keeps counted beside the caller's
+/// (one whose engine's pid is dead is dropped first). Refused
+/// (`no_order`) a walk with nothing in it.
+pub fn pick_now(store: &Store, accounts: &[Account], ask: Ask, now: u64) -> Result<Value, Refused> {
+    let machine = match ask.machine {
+        Some(m) => m,
+        None => login::this_machine()?,
+    };
+    let walk = crate::order::walk(&store.order()?, &ask.engines, ask.model.as_deref());
+    if walk.is_empty() {
+        return Err(Refused::new(
+            Code::NoOrder,
+            format!(
+                "nothing to walk: {}; set the order, `stablehand order set claude-code@opus codex`, or name `--engine <engine>`",
+                ask.model.map_or(
+                    "no order is kept and no --engine named".into(),
+                    |m| format!(
+                        "no engine of the order lists model `{m}` and no --engine is named"
+                    )
+                )
+            ),
+        ));
+    }
+    let mut running = ask.running;
+    for (pid, account) in store.sessions()? {
+        if crate::run::alive(pid) {
+            running.push((account, 1));
+        } else {
+            store.end_session(pid)?;
+        }
+    }
+    let session = Session {
+        running: &running,
+        machine: &machine,
+    };
+    Ok(pick(
+        store,
+        accounts,
+        &walk,
+        &session,
+        ask.stop_percent,
+        now,
+    )?)
+}
