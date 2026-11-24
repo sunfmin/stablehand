@@ -1,0 +1,33 @@
+{
+  "tree": "bd9dfa179e618fe07272df3531f321d5ac417f1d+d1fba762150c532c",
+  "picker": "codex:01a20d07-8f51-7970-8b46-5ff4c967951e:default",
+  "author": "claude-code:7d98c6d2-381a-5435-b3fd-697f7edf16d7:opus",
+  "picks": {
+    "rust": [
+      {
+        "name": "src/login.rs:155:14: replace != with == in env",
+        "why": "The off-account test returns before the machine check, so it leaves the host decision for logged-in bound accounts untested.",
+        "outcome": "killed",
+        "first_outcome": "killed"
+      },
+      {
+        "name": "src/login.rs:190:14: replace != with == in login",
+        "why": "The shown login refusal uses a portable account, so it never exercises the bound-account machine check.",
+        "outcome": "killed",
+        "first_outcome": "killed"
+      },
+      {
+        "name": "src/usage.rs:59:25: replace match guard at <= now with true in limit",
+        "why": "The past-reset case still passes when every parsed timestamp is refused, leaving acceptance of a future reset untested.",
+        "outcome": "killed",
+        "first_outcome": "survived"
+      },
+      {
+        "name": "src/import.rs:126:8: delete ! in import",
+        "why": "The refusal test omits import, leaving the guard that blocks all writes when any entry is invalid untested by the new cases.",
+        "outcome": "killed",
+        "first_outcome": "killed"
+      }
+    ]
+  }
+}
