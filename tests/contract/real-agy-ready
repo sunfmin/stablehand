@@ -1,0 +1,5 @@
+#!/bin/sh
+# Ready for `truefit contract --real agy`: agy and jq on PATH, and this
+# user's HOME signed in to agy with a Google account.
+command -v agy >/dev/null && command -v jq >/dev/null &&
+    [ -f "$HOME/.gemini/antigravity-cli/antigravity-oauth-token" ]

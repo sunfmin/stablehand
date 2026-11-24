@@ -15,7 +15,7 @@ pub fn provider(a: &Account) -> String {
 
 /// This machine's name, as `--machine` names it: `$STABLEHAND_MACHINE` (not
 /// empty), else `hostname -s`.
-fn this_machine() -> Result<String, String> {
+pub fn this_machine() -> Result<String, String> {
     if let Some(m) = std::env::var("STABLEHAND_MACHINE")
         .ok()
         .filter(|m| !m.is_empty())

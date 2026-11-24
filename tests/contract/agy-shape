@@ -1,0 +1,27 @@
+#!/bin/sh
+# agy-shape <fake-agy|agy> <args>...: runs that agy (the stand-in beside this
+# script, or the real one on PATH) as stablehand's reader does, its stdin
+# empty, in this user's HOME, or with AGY_SHAPE_HOME=signed-out in a new
+# empty one; and prints what the reader reads of its answer
+# (src/readers/agy.rs), and no more: the exit, the status, the error, and of
+# a success the turns taken and each bucket's shape and window.
+program=$1
+shift
+[ -x "$(dirname "$0")/$program" ] && program="$(dirname "$0")/$program"
+if [ "$AGY_SHAPE_HOME" = signed-out ]; then
+    HOME=$(mktemp -d)
+    export HOME
+fi
+out=$("$program" "$@" </dev/null 2>/dev/null)
+echo "exit $?"
+[ "$AGY_SHAPE_HOME" = signed-out ] && rm -rf "$HOME"
+printf '%s' "$out" | jq -r '
+    def kind: if test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:]{8}Z$") then "time" else "not a time" end;
+    "status \(.status)",
+    "error \(.error // "none")",
+    if .status == "SUCCESS" then
+        "turns \(.num_turns)",
+        "groups \(.command.data.groups | length > 0)",
+        (.command.data.groups[] | "group name \(.name | type)",
+            (.buckets[] | "bucket id \(.id | type), window \(.window), remaining_fraction \(.remaining_fraction | type), reset_time \(.reset_time | kind)"))
+    else empty end'

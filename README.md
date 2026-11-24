@@ -141,6 +141,13 @@ stablehand status                   # each account's windows and their pace
 - Its windows are `five_hour`, `seven_day` and any other the endpoint
   lists. A `claude setup-token` token is refused a usage query (HTTP 403):
   such an account is known by `limit` alone.
+- agy's reader runs `agy -p /usage --output-format json` in the account's
+  home (`HOME` set to `--home`; the user's own without it), on its machine
+  only: no model turn, no conversation made. Its windows are each model
+  group's buckets (`gemini-5h`, `gemini-weekly`, …), the group its `group`;
+  a window reset in 1970 is one not yet used. A portable agy account is
+  refused: bind it. A home not signed in fails after agy has waited 60s for
+  a browser sign-in; an API-key login (exit 2) has no account quota.
 - `limit` books a caller's report that a session met the account's limit: the window it names is used up until `--resets-at`, or until the next reading without it; without `--window`, the whole account is.
 - `status` answers each account's windows (each with its `group` where the
   engine groups them), used %, resets at, source (`read` or `limit`),

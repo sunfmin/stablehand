@@ -132,6 +132,8 @@ enum Register {
     /// ## What trips you up
     ///
     /// A claude-code account whose login is a `claude setup-token` token is refused a usage query: its read fails, and its windows come from `stablehand limit` alone.
+    ///
+    /// An agy account is read by running agy in its home, on its machine only: a portable one is refused (bind it), and a home not signed in fails only after agy has waited 60s for a browser sign-in.
     #[command(next_help_heading = SESSIONS, verbatim_doc_comment)]
     Read {
         /// The account to read; without it, every account.
