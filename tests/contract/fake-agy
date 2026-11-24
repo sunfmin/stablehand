@@ -11,6 +11,7 @@
 # FAKE_AGY_FAULT: signed-out (as a home with no login). FAKE_AGY_BODY: a file
 #   whose answer a signed-in home gets instead of the `/usage` one below.
 #   FAKE_AGY_LOG: a file each call appends its arguments and HOME to.
+#   FAKE_AGY_MODELS=fails: `models` fails, signed in or not.
 if [ -n "$FAKE_AGY_LOG" ]; then
     echo "$* HOME=$HOME" >>"$FAKE_AGY_LOG"
 fi
@@ -20,7 +21,7 @@ if [ "$FAKE_AGY_FAULT" = signed-out ] || [ ! -f "$HOME/.gemini/antigravity-cli/a
 fi
 if [ "$1" = models ]; then
     echo "Fetching available models..." >&2
-    if [ -z "$signed_in" ]; then
+    if [ -z "$signed_in" ] || [ "$FAKE_AGY_MODELS" = fails ]; then
         echo "Error: Please sign in to view available models. Launch the CLI without arguments to sign in." >&2
         exit 1
     fi

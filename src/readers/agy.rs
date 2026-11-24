@@ -229,11 +229,6 @@ mod tests {
         );
     }
 
-    /// A catalog a failed answer must not ask for.
-    fn unasked() -> Vec<(String, String)> {
-        panic!("`agy models` asked of an answer with no window")
-    }
-
     #[test]
     fn each_window_books_its_group_s_model_ids_by_their_names() {
         let body = r#"{"status":"SUCCESS","command":{"data":{"groups":[
@@ -280,23 +275,23 @@ mod tests {
     #[test]
     fn a_failure_names_its_fix() {
         let out = r#"{"status":"ERROR","error":"authentication failed or timed out"}"#;
-        let fault = windows(Some(1), out, "`HOME=/h agy` on mini", unasked).unwrap_err();
+        let fault = windows(Some(1), out, "`HOME=/h agy` on mini", Vec::new).unwrap_err();
         assert!(
             fault.contains("exited 1: authentication failed or timed out")
                 && fault.contains("log it in with `HOME=/h agy` on mini"),
             "{fault}"
         );
-        let fault = windows(Some(2), "", "a", unasked).unwrap_err();
+        let fault = windows(Some(2), "", "a", Vec::new).unwrap_err();
         assert!(
             fault.contains("exited 2: no error said: an API-key login has no account quota"),
             "{fault}"
         );
-        let fault = windows(None, "", "a", unasked).unwrap_err();
+        let fault = windows(None, "", "a", Vec::new).unwrap_err();
         assert!(fault.contains("was killed"), "{fault}");
         let odd = r#"{"status":"SUCCESS","command":{"data":{"groups":[]}}}"#;
-        let fault = windows(Some(0), odd, "a", unasked).unwrap_err();
+        let fault = windows(Some(0), odd, "a", Vec::new).unwrap_err();
         assert!(fault.contains("answered no window"), "{fault}");
-        let fault = windows(Some(0), r#"{"status":"ERROR"}"#, "a", unasked).unwrap_err();
+        let fault = windows(Some(0), r#"{"status":"ERROR"}"#, "a", Vec::new).unwrap_err();
         assert!(fault.contains("try again later"), "{fault}");
     }
 }

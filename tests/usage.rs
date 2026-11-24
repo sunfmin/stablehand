@@ -1159,6 +1159,22 @@ fn pick_of_a_model_judges_an_agy_account_by_its_group_s_windows() {
     let whole = pick_of(&b, "agy", &[]);
     assert_eq!(reasons(&whole), [("agy-mini".into(), "stopped".into())]);
     assert!(whole.get("model").is_none(), "{whole}");
+    // `agy models` failing, the windows book no model: every model is in
+    // no group, and the account is judged whole.
+    b.set("FAKE_AGY_MODELS", "fails");
+    b.read(&["agy-mini", "--now"]);
+    assert_eq!(
+        window(&b.status("agy-mini")["windows"], "3p-5h").get("models"),
+        Some(&json!([]))
+    );
+    let blind = pick_of(&b, "agy", &["--model", "claude-opus-5-5-high"]);
+    assert_eq!(
+        (reasons(&blind), &blind["model_in_no_group"]),
+        (
+            vec![("agy-mini".into(), "stopped".into())],
+            &json!(["agy-mini"])
+        )
+    );
     // An empty --model is refused.
     let (code, empty) = b.run(&["pick", "--engine", "agy", "--model", ""]);
     assert_eq!(code, 2, "{empty}");
