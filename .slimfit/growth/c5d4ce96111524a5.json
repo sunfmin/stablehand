@@ -1,0 +1,10 @@
+{
+  "tree": "34203740acd46c6f2578edabbd1cdb8300a2d25d+d1fba762150c532c",
+  "lines": 70,
+  "serves": "stablehand#17",
+  "considered": "reusing account::apply for the home (cut: set in place); the readers' own login-file literals (left as they are: rewiring them re-hashed spans already uncovered, out of scope)",
+  "reviewer": "codex:01a20d5e-58c0-7ac3-8d54-d48b0a884331:default",
+  "author": "claude-code:a47f6a03-523c-513a-b125-3599b98d5bfc:opus",
+  "cut": "src/account.rs: put the credential path in the existing Engine::login match and delete the second match. src/import.rs: share the existing store.put call between Add and GiveHome after any token setup succeeds, and keep the dry-run and result strings in the outcome match.",
+  "answer": "import.rs: done, Add and GiveHome share one store.put after the token step, the dry-run and result strings stay in the outcome match. account.rs: not done: a fifth column in the login tuple makes rustfmt lay out every arm on its own lines, measured in the first commit at +38 net in src/account.rs (6 of them a helper since removed) against +11 with the separate match"
+}
