@@ -1,0 +1,10 @@
+{
+  "tree": "a215c74c3e1dee7ac0185b176c842be26e4f7712+d1fba762150c532c",
+  "lines": 110,
+  "serves": "stablehand#11",
+  "considered": "Reusing readers::claude_code (its minutes(), now its statusline parser) and books::Window/Entry/What as read books them; main's kept() and now(); tests/support's Register instead of a test harness of its own. Weighed deleting --then's spawn-error message and the stdin read error, and deleted both.",
+  "reviewer": "codex:01a20d12-6a02-78c0-9c26-29bf1ee01a80:default",
+  "author": "claude-code:60b878e2-f240-5f33-a950-b54de43fa198:opus",
+  "cut": "In src/readers/claude_code.rs, iterate over `as_object().into_iter().flatten()` to handle absent rate limits with the existing iterator pipeline. In tests/statusline.rs, use `include_str!` constants for the two JSON fixtures and delete the runtime path and file-loading helper while preserving the byte-for-byte stdin assertion.",
+  "answer": "Made both: rate_limits goes through as_object().into_iter().flatten(); the samples are include_str! constants and sample() is gone; the byte-for-byte assertion still compares --then cat's stdout with the sample."
+}

@@ -151,6 +151,24 @@ stablehand status                   # each account's windows and their pace
   or a window under half used, is never tight on its own.
 - `account rm` removes the account's books with it.
 
+## Claude Code's status line
+
+```json
+"statusLine": {"type": "command", "command": "stablehand statusline --account claude-felix --then ~/.claude/statusline.sh"}
+```
+
+- Set in `~/.claude/settings.json`, Claude Code runs it with its session's
+  JSON on stdin; its `rate_limits` (`five_hour`, `seven_day`:
+  `used_percentage`, `resets_at`) are booked as a reading of `--account`,
+  as `read` books one, when they differ from the books' latest entry.
+  Booking is local: it asks no engine and reaches no network (a few
+  milliseconds a run).
+- It prints one line for the bar, `claude-felix · 5h 24% · 7d 41%`. With
+  `--then <cmd>`, `sh -c <cmd>` gets the same stdin byte for byte, and its
+  line and exit are the answer, so a person's own status line keeps working.
+- It never refuses: an account not kept, or not claude-code's, books
+  nothing, and the line says why (with `--then`, stderr does).
+
 ## Install
 
 ```sh
