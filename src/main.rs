@@ -5,6 +5,7 @@ mod books;
 mod curl;
 mod import;
 mod login;
+mod pick;
 mod readers;
 mod refusal;
 mod store;
@@ -33,7 +34,7 @@ const LEARN: &str = "Learn";
 
 /// One home for agent engine accounts (Claude Code, Codex, pi, Kimi Code, agy, Grok, dsh): how each logs in, where it may run, and how much of its usage windows is left.
 ///
-/// `stablehand env <name>` gives a session on an account its engine's variables; `stablehand read` asks an account's engine for its windows and books the reading, `stablehand limit` books a session's report that it met the account's limit, and `stablehand status` says what the books say now, each window's pace with it.
+/// `stablehand env <name>` gives a session on an account its engine's variables; `stablehand read` asks an account's engine for its windows and books the reading, `stablehand limit` books a session's report that it met the account's limit, `stablehand status` says what the books say now, each window's pace with it, and `stablehand pick --engine <engine>` which account one more session may start on.
 ///
 /// Start with `stablehand account list`. Run `stablehand <command> --help` before a command's first run.
 ///
@@ -175,6 +176,55 @@ enum Register {
         #[arg(verbatim_doc_comment)]
         name: Option<String>,
     },
+    /// Which account of an engine one more session may start on now.
+    ///
+    /// Reads no engine: it judges the books as `stablehand status` shows them (run `stablehand read` first for fresh windows). The candidates are the engine's accounts usable on this machine (portable, or bound to it), logged in, and not off.
+    ///
+    /// ## The rules
+    ///
+    /// Guild's ledger's, carried over. None is picked on an account
+    ///
+    /// - a caller's limit holds on (`stablehand limit`), until it lifts;
+    /// - any of whose windows is `--stop-percent` used, until that window resets: the rest is the margin of the sessions already running;
+    /// - running its sessions at once (`account add --sessions`), counted by `--running`;
+    /// - one of whose windows, at its present rate shared by the sessions running and one more, runs out before it resets. A reading over two hours old, or a window under half used, runs on at no rate.
+    ///
+    /// Of the rest, the one with the most left of its most used window; one with no reading in force, or only stale ones, after every one with one; of equals, the first by name.
+    ///
+    /// ## What it answers
+    ///
+    /// `{"account": "<name>"}`, or `{"none": true, "until": <the earliest time any lifts, or null>, "why": [{"account", "reason", "why", "until"}]}`, `reason` one of `off`, `elsewhere`, `not_logged_in`, `limit`, `stopped`, `full`, `runs_out`. An engine with no account here answers none with an empty `why`. It refuses a `--running` name that is no account kept.
+    ///
+    /// ## What trips you up
+    ///
+    /// `--running` is the caller's count, on this machine or wherever it knows: stablehand counts no session itself. An account left out of it has none running.
+    #[command(next_help_heading = SESSIONS, verbatim_doc_comment)]
+    Pick {
+        /// The engine the session runs in.
+        #[arg(long, value_enum, verbatim_doc_comment)]
+        engine: Engine,
+        /// The sessions now running per account, `<account>=<n>`, comma-separated or repeated.
+        #[arg(long, value_delimiter = ',', value_parser = running, verbatim_doc_comment)]
+        running: Vec<(String, u32)>,
+        /// The machine the session starts on; without it, this one (`$STABLEHAND_MACHINE`, else `hostname -s`).
+        #[arg(long, verbatim_doc_comment)]
+        machine: Option<String>,
+        /// How much of any window, in percent, takes an account out of the pick until it resets.
+        #[arg(long, default_value_t = pick::STOP_PERCENT, value_parser = clap::value_parser!(u8).range(1..=100), verbatim_doc_comment)]
+        stop_percent: u8,
+    },
+}
+
+/// One `--running` count, `<account>=<n>`.
+fn running(s: &str) -> Result<(String, u32), String> {
+    let bad = || format!("`{s}` is no count: give it as <account>=<n>, claude-felix=2");
+    let (name, n) = s.split_once('=').ok_or_else(bad)?;
+    let n = n.trim().parse().map_err(|_| bad())?;
+    let name = name.trim();
+    if name.is_empty() {
+        return Err(bad());
+    }
+    Ok((name.to_string(), n))
 }
 
 #[derive(Subcommand)]
@@ -485,6 +535,33 @@ fn run(cmd: Register) -> Result<Value, Refused> {
             resets_at,
         } => usage::limit(&store, &kept(&store, &name)?, window, resets_at, now()?),
         Register::Status { name } => Ok(usage::status(&store, &chosen(&store, name)?, now()?)?),
+        Register::Pick {
+            engine,
+            running,
+            machine,
+            stop_percent,
+        } => {
+            let all = store.list()?;
+            if let Some((name, _)) = running
+                .iter()
+                .find(|(n, _)| !all.iter().any(|a| &a.name == n))
+            {
+                kept(&store, name)?;
+            }
+            let machine = match machine {
+                Some(m) => m,
+                None => login::this_machine()?,
+            };
+            let of: Vec<Account> = all.into_iter().filter(|a| a.engine == engine).collect();
+            Ok(usage::pick(
+                &store,
+                &of,
+                &running,
+                &machine,
+                stop_percent,
+                now()?,
+            )?)
+        }
     }
 }
 
