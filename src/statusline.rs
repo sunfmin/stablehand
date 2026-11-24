@@ -91,6 +91,7 @@ mod tests {
             used_percent: used,
             resets_at: None,
             minutes: None,
+            read_by: None,
         };
         let windows = [
             w("five_hour", 23.5),

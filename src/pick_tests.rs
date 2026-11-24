@@ -20,6 +20,7 @@ fn window(name: &str, used: f64, resets_at: u64) -> Window {
         used_percent: used,
         resets_at: Some(resets_at),
         minutes: Some(minutes),
+        read_by: None,
     }
 }
 

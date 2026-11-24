@@ -1,0 +1,34 @@
+#!/bin/sh
+# question-shape <fake-claude|real-claude> <args>...: runs that claude, beside
+# this script, as claude-code's reader asks a setup-token its windows
+# (src/readers/claude_code.rs, `question`): in a new empty config dir
+# (CLAUDE_CONFIG_DIR, and its working directory), stdin empty, the token in
+# CLAUDE_CODE_OAUTH_TOKEN. It prints what the reader reads of the stream, and
+# no more: the exit; of its last rate_limit_event, each unified window's
+# shape; of its result, whether it is an error, its API status, and whether
+# it says a message. The standin's one fault variable, FAKE_CURL_FAULT, is
+# fake-claude's FAKE_CLAUDE_FAULT.
+program="$(dirname "$0")/$1"
+shift
+if [ ! -x "$program" ]; then
+    echo "question-shape: no $program" >&2
+    exit 2
+fi
+export FAKE_CLAUDE_FAULT="${FAKE_CURL_FAULT:-}"
+dir=$(mktemp -d)
+CLAUDE_CONFIG_DIR=$dir
+export CLAUDE_CONFIG_DIR
+out=$(cd "$dir" && env -u ANTHROPIC_API_KEY "$program" "$@" </dev/null 2>/dev/null)
+code=$?
+rm -rf "$dir"
+echo "exit $code"
+printf '%s\n' "$out" | jq -rs '
+    def window: "utilization \(.utilization | type), resetsAt \(.resetsAt | type)";
+    ([.[] | select(.type == "rate_limit_event")] | last | .rate_limit_info.unifiedWindows) as $w |
+    ([.[] | select(.type == "result")] | last) as $r |
+    if $w == null then "rate_limit_event none" else
+        "five_hour: \($w.five_hour | window)",
+        "seven_day: \($w.seven_day | window)",
+        "every window: \([$w[] | window] | all(. == "utilization number, resetsAt number"))"
+    end,
+    "result is_error \($r.is_error), api_error_status \($r.api_error_status), says \($r.result | type)"'

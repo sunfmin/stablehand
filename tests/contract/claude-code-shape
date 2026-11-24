@@ -1,0 +1,13 @@
+#!/bin/sh
+# claude-code-shape <fake|real> <args>...: claude-code's reader asks two
+# ways (src/readers/claude_code.rs), and this runs the one its arguments are:
+# `-p …` is the question a setup-token is asked, run through question-shape
+# on <fake|real>-claude; any other is the usage endpoint, through
+# usage-shape on <fake|real>-curl.
+here=$(dirname "$0")
+side=$1
+shift
+if [ "$1" = -p ]; then
+    exec "$here/question-shape" "$side-claude" "$@"
+fi
+exec "$here/usage-shape" "$side-curl" "$@"

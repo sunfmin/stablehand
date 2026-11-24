@@ -25,6 +25,22 @@ pub struct Window {
     pub resets_at: Option<u64>,
     /// How long it is, in minutes, where the reader knows.
     pub minutes: Option<u64>,
+    /// How its reader asked for it, where it asks one of two ways
+    /// (claude-code); none where it has one way, and of a status line.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub read_by: Option<ReadBy>,
+}
+
+/// How claude-code's reader asked for a reading: its account's usage
+/// (`/api/oauth/usage`, no turn), or, for a token that usage refuses (a
+/// `claude setup-token` one), the question that spends one turn on the
+/// smallest model. An account read by the question is asked it again, not
+/// its usage.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ReadBy {
+    Usage,
+    Question,
 }
 
 /// One wallet's balance of a pay-as-you-go account (dsh) as its reader
@@ -148,6 +164,8 @@ pub struct Status {
     pub limit: Option<Held>,
     /// When it was last read, and last tried, whatever came of it.
     pub read_at: Option<u64>,
+    /// How its latest reading of windows was asked, where its reader says.
+    pub read_by: Option<ReadBy>,
     pub tried_at: Option<u64>,
     /// Why the last try failed, where it came after the last reading.
     pub failed: Option<String>,
@@ -257,6 +275,7 @@ pub fn status(entries: &[Entry], now: u64) -> Status {
         pace,
         limit,
         read_at: reading.map(|(_, at, _)| at).max(wallets.map(|(at, _)| at)),
+        read_by: reading.and_then(|(_, _, read)| read.iter().find_map(|w| w.read_by)),
         tried_at: tried.map(|e| e.at),
         failed,
         refused,

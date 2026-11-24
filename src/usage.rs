@@ -2,7 +2,7 @@
 //! through its engine's reader, a caller's limit booked, what the books say
 //! now, and which account one more session may start on.
 use crate::account::{Account, Engine};
-use crate::books::{self, Entry, Status, What};
+use crate::books::{self, Entry, ReadBy, Status, What};
 use crate::login;
 use crate::pick::{self, Candidate, Pick, Reason};
 use crate::readers;
@@ -42,7 +42,7 @@ pub fn read(
             }
             (Some(_), Some(next)) if !now_anyway => ("waits", Some(("next_at", utc(next)))),
             (Some(reader), _) => {
-                let what = reader(a);
+                let what = reader(a, &before);
                 let outcome = match &what {
                     What::Failed(why) => ("failed", Some(("error", why.clone()))),
                     What::Refused(why) => ("refused", Some(("error", why.clone()))),
@@ -54,6 +54,10 @@ pub fn read(
         };
         let after = books::status(&book_of(store, a)?, now);
         let mut shown = json!({ "account": a.name, "outcome": outcome, "windows": windows(&after), "balances": balances(&after) });
+        if outcome == "read" {
+            shown["read_by"] = json!(after.read_by);
+            shown["spent_turn"] = json!(after.read_by == Some(ReadBy::Question));
+        }
         if let Some((key, value)) = said {
             shown[key] = json!(value);
         }
@@ -123,6 +127,7 @@ pub fn status(store: &Store, accounts: &[Account], now: u64) -> Result<Value, St
                 "resets_at": l.resets_at.map(utc),
             })),
             "read_at": s.read_at.map(utc),
+            "read_by": s.read_by,
             "tried_at": s.tried_at.map(utc),
             "failed": s.failed,
             "refused": s.refused,

@@ -116,6 +116,7 @@ fn windows(status: u16, body: &str, account: &Account) -> Result<Vec<Window>, St
                 used_percent: percent(&w["used_ratio"])?,
                 resets_at: w["reset_time"].as_str().and_then(time::parse),
                 minutes: minutes(key),
+                read_by: None,
             })
         })
         .collect();

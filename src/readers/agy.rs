@@ -83,6 +83,7 @@ fn windows(code: Option<i32>, stdout: &str, relog: &str) -> Result<Vec<Window>, 
                 Some(Window {
                     name: b["id"].as_str()?.to_string(),
                     group: group.clone(),
+                    read_by: None,
                     used_percent: (1.0 - left) * 100.0,
                     // 1970 (0) is a window not yet used: it has no reset.
                     resets_at: b["reset_time"]
