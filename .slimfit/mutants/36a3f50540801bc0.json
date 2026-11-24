@@ -1,0 +1,15 @@
+{
+  "tree": "3e4189291a5473fa28a419d94a878d58ea499fda+d1fba762150c532c",
+  "picker": "codex:01a20d99-b38f-72a1-94c3-3356a34f1828:default",
+  "author": "claude-code:c6f7d435-26db-5096-8f99-ee20885e9315:opus",
+  "picks": {
+    "rust": [
+      {
+        "name": "src/readers/agy.rs:68:45: replace && with || in catalog",
+        "why": "The blank-ID fixture has an unmatched name, so it cannot reveal whether an empty ID is accepted for a model named by a quota group.",
+        "outcome": "killed",
+        "first_outcome": "killed"
+      }
+    ]
+  }
+}

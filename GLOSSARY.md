@@ -27,7 +27,8 @@
 - **Window**: one span of an account's use as its engine names it
   (`five_hour`, `seven_day`, `primary`, `gemini-5h`): how much is used, 0 to
   100, and when it resets. An account may have several **groups** of windows
-  (agy's per model group, Grok's per product).
+  (agy's per model group, Grok's per product); a session of a model spends
+  only the windows of the group holding it, and those in no group.
 - **Balance**: what is left of a pay-as-you-go account (dsh), in its
   currency. Such an account has no windows.
 - **Reading**: what one ask of an engine said of an account at a time: its

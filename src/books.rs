@@ -19,6 +19,11 @@ pub struct Window {
     /// product); none where the engine groups none.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub group: Option<String>,
+    /// The models whose use it counts, by the ids the engine's sessions are
+    /// started with (agy's group's: `claude-opus-5-5-high`); none where the
+    /// engine names none.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub models: Vec<String>,
     /// How much of it is used, 0 to 100.
     pub used_percent: f64,
     /// When it resets, in seconds since the Unix epoch, where the engine says.
@@ -102,6 +107,7 @@ pub enum Pace {
 pub struct WindowStatus {
     pub name: String,
     pub group: Option<String>,
+    pub models: Vec<String>,
     /// How much of it is used, 0 to 100; none once it has reset since it
     /// was read.
     pub used_percent: Option<f64>,
@@ -236,6 +242,7 @@ pub fn status(entries: &[Entry], now: u64) -> Status {
         windows.push(WindowStatus {
             name: name.clone(),
             group: None,
+            models: Vec::new(),
             used_percent: Some(100.0),
             resets_at: l.resets_at,
             minutes: None,
@@ -304,6 +311,7 @@ fn window_status(
     let mut status = WindowStatus {
         name: w.name.clone(),
         group: w.group.clone(),
+        models: w.models.clone(),
         used_percent: Some(w.used_percent),
         resets_at: w.resets_at,
         minutes: w.minutes,

@@ -8,7 +8,8 @@
 //! session until that window resets, those running go on; one past its
 //! sessions at once takes none; one whose window, at its present rate with
 //! the sessions running and one more, runs out before it resets takes none;
-//! of the rest, the one with the most left is picked.
+//! of the rest, the one with the most left is picked. A session of a model
+//! is judged by the books its model spends ([`spent`]).
 use crate::books::{self, Status};
 use serde::Serialize;
 
@@ -102,6 +103,35 @@ pub fn pick(candidates: &[Candidate], stop_percent: u8, now: u64) -> Pick {
             why,
         },
     }
+}
+
+/// `s` as a session of `model` spends it: of an account whose windows are
+/// grouped (agy's model groups), only those of the group holding the model
+/// and those in no group, and a limit only on one of them or on the whole
+/// account; and whether it groups its windows but none holds the model,
+/// every window then kept.
+pub fn spent(mut s: Status, model: &str) -> (Status, bool) {
+    let groups: Vec<String> = s
+        .windows
+        .iter()
+        .filter(|w| w.models.iter().any(|id| id == model))
+        .filter_map(|w| w.group.clone())
+        .collect();
+    if groups.is_empty() {
+        let in_no_group = s.windows.iter().any(|w| w.group.is_some());
+        return (s, in_no_group);
+    }
+    s.windows
+        .retain(|w| w.group.as_ref().is_none_or(|g| groups.contains(g)));
+    let kept = |name: &String| s.windows.iter().any(|w| &w.name == name);
+    if s.limit
+        .as_ref()
+        .and_then(|l| l.window.as_ref())
+        .is_some_and(|name| !kept(name))
+    {
+        s.limit = None;
+    }
+    (s, false)
 }
 
 /// How much of its most used window is left, 0 to 100, of the windows
