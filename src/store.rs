@@ -130,24 +130,28 @@ fn migrate(conn: &Connection, steps: &[&str]) -> Result<(), String> {
         "CREATE TABLE IF NOT EXISTS schema_steps (step INTEGER PRIMARY KEY, hash TEXT NOT NULL);",
     )
     .map_err(e)?;
-    let kept: Vec<(usize, String)> = {
+    let mut first = 0;
+    {
         let mut stmt = tx
             .prepare("SELECT step, hash FROM schema_steps ORDER BY step")
             .map_err(e)?;
-        stmt.query_map([], |r| Ok((r.get::<_, i64>(0)? as usize, r.get(1)?)))
-            .and_then(|rows| rows.collect::<rusqlite::Result<_>>())
-            .map_err(e)?
-    };
-    for (n, hash) in &kept {
-        let ours = steps.get(n - 1).filter(|s| step_hash(s) == *hash);
-        if ours.is_none() || *n > at {
-            let theirs = steps.get(n - 1).map_or("none", |s| step_line(s));
-            return Err(format!(
-                "schema step {n} of the store is not this stablehand's step {n} (`{theirs}`): another build's steps migrated it, and these would misread it. Restore the store's backup from before that build ran, or repair it by hand to what these steps make"
-            ));
+        let rows = stmt
+            .query_map([], |r| {
+                Ok((r.get::<_, i64>(0)? as usize, r.get::<_, String>(1)?))
+            })
+            .map_err(e)?;
+        for row in rows {
+            let (n, hash) = row.map_err(e)?;
+            first = at;
+            let ours = steps.get(n - 1);
+            if n > at || ours.map(|s| step_hash(s)) != Some(hash) {
+                let theirs = ours.map_or("none", |s| step_line(s));
+                return Err(format!(
+                    "schema step {n} of the store is not this stablehand's step {n} (`{theirs}`): another build's steps migrated it, and these would misread it. Restore the store's backup from before that build ran, or repair it by hand to what these steps make"
+                ));
+            }
         }
     }
-    let first = if kept.is_empty() { 0 } else { at };
     for (i, step) in steps.iter().enumerate().skip(first) {
         let n = i + 1;
         let run = if i < at { "" } else { step };
@@ -230,16 +234,12 @@ impl Store {
             .conn
             .busy_timeout(BUSY_TIMEOUT)
             .map_err(|e| store.err(e))?;
-        store.migrate()?;
+        migrate(&store.conn, MIGRATIONS).map_err(|e| format!("{}: {e}", store.path.display()))?;
         Ok(store)
     }
 
     fn err(&self, e: rusqlite::Error) -> String {
         format!("{}: {e}", self.path.display())
-    }
-
-    fn migrate(&self) -> Result<(), String> {
-        migrate(&self.conn, MIGRATIONS).map_err(|e| format!("{}: {e}", self.path.display()))
     }
 
     pub fn get(&self, name: &str) -> Result<Option<Account>, String> {
