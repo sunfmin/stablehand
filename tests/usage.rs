@@ -40,7 +40,7 @@ impl Books {
         let bin = root.join("bin");
         std::fs::create_dir_all(&bin).unwrap();
         let contract = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/contract");
-        for tool in ["curl", "sesame", "codex", "pi"] {
+        for tool in ["curl", "sesame", "codex", "pi", "agy"] {
             std::os::unix::fs::symlink(contract.join(format!("fake-{tool}")), bin.join(tool))
                 .unwrap();
         }
@@ -114,6 +114,8 @@ impl Books {
         let out = Command::new(env!("CARGO_BIN_EXE_stablehand"))
             .args(args)
             .env_clear()
+            // The coverage run's profile, so the binary's lines are counted.
+            .envs(std::env::vars().filter(|(k, _)| k == "LLVM_PROFILE_FILE"))
             .envs(self.env.borrow().iter().map(|(k, v)| (k, v)))
             .env("USER", "tester")
             .output()
@@ -346,8 +348,9 @@ fn a_portable_login_is_read_with_sesame_s_token_and_a_setup_token_gets_a_limit()
 }
 
 #[test]
-fn read_without_a_name_reads_every_account_and_one_with_no_reader_is_said() {
+fn read_without_a_name_reads_every_account_and_each_outcome_is_said() {
     let b = Books::new("all");
+    b.set("STABLEHAND_MACHINE", "mini");
     b.ok(&[
         "account",
         "add",
@@ -360,11 +363,11 @@ fn read_without_a_name_reads_every_account_and_one_with_no_reader_is_said() {
     b.ok(&[
         "account",
         "add",
-        "agy-1",
+        "agy-air",
         "--engine",
         "agy",
         "--machine",
-        "mini",
+        "air",
     ]);
     let answer = b.ok(&["read"]);
     let outcomes: Vec<_> = answer["reads"]
@@ -378,13 +381,14 @@ fn read_without_a_name_reads_every_account_and_one_with_no_reader_is_said() {
             )
         })
         .collect();
-    assert_eq!(outcomes, [("agy-1", "no_reader"), ("claude-mini", "read")]);
+    assert_eq!(outcomes, [("agy-air", "failed"), ("claude-mini", "read")]);
     let status = b.ok(&["status"]);
     let agy = &status["accounts"][0];
     assert_eq!(
-        (&agy["name"], &agy["windows"], &agy["tried_at"]),
-        (&json!("agy-1"), &json!([]), &Value::Null)
+        (&agy["name"], &agy["windows"]),
+        (&json!("agy-air"), &json!([]))
     );
+    assert!(agy["tried_at"].is_string(), "{agy}");
     assert_eq!(status["accounts"].as_array().unwrap().len(), 2);
 }
 
@@ -969,5 +973,158 @@ fn grok_s_credits_are_booked_its_weekly_window_and_one_per_product() {
     assert!(
         error.contains("stablehand account edit grok-felix --machine"),
         "{error}"
+    );
+}
+
+impl Books {
+    /// An agy home signed in (its login file a stand-in), answering its
+    /// Gemini group's 5h window used up, resetting in 2 hours, and the
+    /// other group's not yet used.
+    /// This machine is mini, and agy logs each call.
+    fn agy_here(&self) {
+        self.set(
+            "FAKE_AGY_LOG",
+            &self.root.join("agy.log").display().to_string(),
+        );
+        self.set("STABLEHAND_MACHINE", "mini");
+    }
+
+    fn agy_home(&self) -> String {
+        let home = self.root.join("agy-home");
+        let login = home.join(".gemini/antigravity-cli");
+        std::fs::create_dir_all(&login).unwrap();
+        std::fs::write(login.join("antigravity-oauth-token"), "stand-in").unwrap();
+        let bucket = |id: &str, window: &str, left: f64, reset: String| json!({ "id": id, "window": window, "remaining_fraction": left, "reset_time": reset });
+        let body = json!({ "status": "SUCCESS", "num_turns": 0, "command": { "name": "usage", "data": { "groups": [
+            { "name": "Gemini Models", "buckets": [
+                bucket("gemini-weekly", "weekly", 0.75, rfc3339(now() + 4 * 86_400)),
+                bucket("gemini-5h", "5h", 0.0, rfc3339(now() + 2 * 3600)),
+            ]},
+            { "name": "Claude and GPT models", "buckets": [
+                bucket("3p-5h", "5h", 1.0, "1970-01-01T00:00:00Z".into()),
+            ]},
+        ]}}});
+        let file = self.root.join("agy.json");
+        std::fs::write(&file, body.to_string()).unwrap();
+        self.set("FAKE_AGY_BODY", &file.display().to_string());
+        self.set(
+            "FAKE_AGY_LOG",
+            &self.root.join("agy.log").display().to_string(),
+        );
+        self.set("STABLEHAND_MACHINE", "mini");
+        home.display().to_string()
+    }
+}
+
+#[test]
+fn an_agy_account_is_read_in_its_home_a_window_per_model_group() {
+    let b = Books::new("agy");
+    let home = b.agy_home();
+    b.ok(&[
+        "account",
+        "add",
+        "agy-mini",
+        "--engine",
+        "agy",
+        "--machine",
+        "mini",
+        "--home",
+        &home,
+    ]);
+    let read = b.read(&["agy-mini"]);
+    assert_eq!(read["outcome"], "read", "{read}");
+    let log = std::fs::read_to_string(b.root.join("agy.log")).unwrap();
+    assert_eq!(log, format!("-p /usage --output-format json HOME={home}\n"));
+    let gemini = window(&read["windows"], "gemini-5h");
+    assert_eq!(
+        (&gemini["group"], &gemini["used_percent"], &gemini["pace"]),
+        (&json!("Gemini Models"), &json!(100.0), &json!("used_up"))
+    );
+    assert_eq!(
+        window(&read["windows"], "gemini-weekly")["used_percent"],
+        25.0
+    );
+    // A reset of 1970 is a window not yet used: none used, no reset.
+    let unused = window(&read["windows"], "3p-5h");
+    assert_eq!(
+        (
+            &unused["group"],
+            &unused["used_percent"],
+            &unused["resets_at"]
+        ),
+        (&json!("Claude and GPT models"), &json!(0.0), &Value::Null)
+    );
+    assert_eq!(b.status("agy-mini")["pace"], "used_up");
+
+    // Signed out, the read fails, says how to sign in, and keeps the last
+    // windows, stale; within the hour it is not tried again.
+    std::fs::remove_file(format!(
+        "{home}/.gemini/antigravity-cli/antigravity-oauth-token"
+    ))
+    .unwrap();
+    let read = b.read(&["agy-mini", "--now"]);
+    assert_eq!(read["outcome"], "failed", "{read}");
+    let error = read["error"].as_str().unwrap();
+    assert!(
+        error.contains("authentication failed")
+            && error.contains("stablehand account login agy-mini"),
+        "{error}"
+    );
+    let gemini = window(&read["windows"], "gemini-5h");
+    assert_eq!(
+        (&gemini["used_percent"], &gemini["stale"]),
+        (&json!(100.0), &json!(true))
+    );
+    assert_eq!(b.read(&["agy-mini"])["outcome"], "waits");
+    assert_eq!(
+        std::fs::read_to_string(b.root.join("agy.log"))
+            .unwrap()
+            .lines()
+            .count(),
+        2
+    );
+}
+
+#[test]
+fn an_agy_account_portable_or_bound_elsewhere_is_not_run() {
+    let b = Books::new("agy-elsewhere");
+    b.agy_here();
+    b.ok(&["account", "add", "agy-portable", "--engine", "agy"]);
+    b.ok(&[
+        "account",
+        "add",
+        "agy-air",
+        "--engine",
+        "agy",
+        "--machine",
+        "air",
+    ]);
+    let error = |name: &str| b.read(&[name])["error"].as_str().unwrap().to_string();
+    let portable = error("agy-portable");
+    assert!(
+        portable.contains("stablehand account edit agy-portable --machine"),
+        "{portable}"
+    );
+    let elsewhere = error("agy-air");
+    assert!(
+        elsewhere.contains("bound to air and this machine is mini: read it on air"),
+        "{elsewhere}"
+    );
+    assert!(!b.root.join("agy.log").exists());
+    // Bound here with no home, agy runs in the user's own.
+    b.ok(&[
+        "account",
+        "add",
+        "agy-own",
+        "--engine",
+        "agy",
+        "--machine",
+        "mini",
+    ]);
+    b.read(&["agy-own"]);
+    let log = std::fs::read_to_string(b.root.join("agy.log")).unwrap();
+    assert!(
+        log.ends_with(&format!("HOME={}\n", b.root.join("home").display())),
+        "{log}"
     );
 }

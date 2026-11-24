@@ -1,0 +1,10 @@
+{
+  "tree": "9ac81124a74125cf2fe5a8b897a7dc7cf2b51afe+d1fba762150c532c",
+  "lines": 185,
+  "serves": "stablehand#7",
+  "considered": "claude_code.rs's bearer and curl.rs (agy is a program run in a home, not an HTTP endpoint: nothing to share); login.rs's call/engine (no time limit and no stdout capture; this_machine made pub and reused); tests/usage.rs's Books harness (reused, agy linked beside curl and sesame)",
+  "reviewer": "codex:01a20d16-e72a-7380-b2e5-b46e06cec812:default",
+  "author": "claude-code:cf8818fe-ff0b-5c1a-bff6-9bcf3bae274c:opus",
+  "cut": "In src/readers/agy.rs, replace the stdout-reading closure with std::io::read_to_string, pass the usage arguments directly to Command::args, and put the two duration cases in the Window initializer to remove the one-use minutes helper. In tests/usage.rs, set up only the machine name and invocation log for the portable and remote account test, so agy_home can drop its quota parameter and serve the one test that reads its fixture.",
+  "answer": "All made: read_to_string in the reader thread, the args inline, minutes inline in the Window; agy_here sets only the machine and the log, agy_home takes no quota. The rest is the reader with its time limit (a signed-out home waits 60s), its unit tests, the stand-in and the two end-to-end tests."
+}

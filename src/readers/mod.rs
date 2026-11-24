@@ -7,6 +7,7 @@
 use crate::account::{Account, Engine};
 use crate::books::{What, Window};
 
+mod agy;
 mod chatgpt;
 pub mod claude_code;
 mod dsh;
@@ -25,6 +26,7 @@ const READERS: &[(Engine, Read)] = &[
     (Engine::Pi, |a| windows(chatgpt::pi(a))),
     (Engine::Kimi, |a| windows(kimi::read(a))),
     (Engine::Grok, |a| windows(grok::read(a))),
+    (Engine::Agy, |a| windows(agy::read(a))),
     (Engine::Dsh, dsh::read),
 ];
 

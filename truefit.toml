@@ -57,6 +57,30 @@ header = "Authorization: Bearer <login>"
 header = "anthropic-beta: oauth-2025-04-20"
 """
 
+# agy's reader (src/readers/agy.rs) runs `agy -p /usage --output-format json`
+# in the account's home. Both sides answer through agy-shape, which keeps only
+# what the reader reads: the exit, the status, the error, each bucket's shape.
+# The real side is this user's own agy login; signed out, a new empty home
+# (agy waits 60s for a browser sign-in first).
+[[standin]]
+name = "agy"
+run = ["tests/contract/agy-shape", "fake-agy"]
+real = ["tests/contract/agy-shape", "agy"]
+needs = "agy and jq on PATH, and this user's HOME signed in to agy with a Google account"
+ready = ["tests/contract/real-agy-ready"]
+version = ["agy", "--version"]
+faults = ["signed-out"]
+fault_env = "FAKE_AGY_FAULT"
+
+[[standin.case]]
+name = "a-login-s-model-groups"
+args = ["-p", "/usage", "--output-format", "json"]
+
+[[standin.case]]
+name = "a-home-signed-out"
+fault = "signed-out"
+args = ["-p", "/usage", "--output-format", "json"]
+env = { AGY_SHAPE_HOME = "signed-out" }
 # kimi's reader (src/readers/kimi.rs) asks api.kimi.com/coding/v1/usages
 # through curl (src/curl.rs), the bearer on curl's stdin. Both sides answer
 # through kimi-usages-shape, which keeps only what the reader reads: curl's
