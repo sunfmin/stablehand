@@ -132,6 +132,8 @@ enum Register {
     /// ## What trips you up
     ///
     /// A claude-code account whose login is a `claude setup-token` token is refused a usage query: its read fails, and its windows come from `stablehand limit` alone.
+    ///
+    /// A codex or pi account is read through its engine's own login, bound: on its machine, in its home. A portable one, or one bound to another machine, fails with the fix.
     #[command(next_help_heading = SESSIONS, verbatim_doc_comment)]
     Read {
         /// The account to read; without it, every account.

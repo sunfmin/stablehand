@@ -1,0 +1,31 @@
+#!/bin/sh
+# Stand-in for `codex app-server` as stablehand's codex reader runs it
+# (src/readers/chatgpt.rs): JSON-RPC, a request a line on stdin, an answer
+# a line on stdout, until its stdin ends. It answers `initialize` and
+# `account/rateLimits/read` as the real one does (truefit.toml, standin
+# "codex"), a notification between them.
+#
+# FAKE_CODEX_FAULT: logged-out (the read is answered an error). FAKE_CODEX_BODY:
+#   a file whose `rateLimits` a read answers instead of the one below.
+#   FAKE_CODEX_LOG: a file each run appends its arguments and CODEX_HOME to.
+[ "$1" = app-server ] || { echo "fake-codex: only app-server" >&2; exit 2; }
+if [ -n "$FAKE_CODEX_LOG" ]; then
+    echo "codex $* CODEX_HOME=${CODEX_HOME:-}" >>"$FAKE_CODEX_LOG"
+fi
+limits='{"limitId":"codex","limitName":null,"primary":{"usedPercent":42,"windowDurationMins":300,"resetsAt":1794884400},"secondary":{"usedPercent":9,"windowDurationMins":10080,"resetsAt":1795345200},"credits":{"hasCredits":false,"unlimited":false,"balance":"0"},"planType":"plus","rateLimitReachedType":null}'
+[ -n "$FAKE_CODEX_BODY" ] && limits=$(cat "$FAKE_CODEX_BODY")
+while IFS= read -r line; do
+    case "$line" in
+    *'"id":0'*)
+        echo '{"id":0,"result":{"userAgent":"stablehand/0.169.0","codexHome":"/home/account","platformFamily":"unix","platformOs":"macos"}}'
+        echo '{"method":"remoteControl/status/changed","params":{"status":"disabled"}}'
+        ;;
+    *'"id":1'*'account/rateLimits/read'*)
+        if [ "$FAKE_CODEX_FAULT" = logged-out ]; then
+            echo '{"error":{"code":-32600,"message":"codex account authentication required to read rate limits"},"id":1}'
+        else
+            echo "{\"id\":1,\"result\":{\"rateLimits\":$limits,\"accountId\":\"00000000-0000-0000-0000-000000000000\"}}"
+        fi
+        ;;
+    esac
+done

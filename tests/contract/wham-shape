@@ -1,0 +1,29 @@
+#!/bin/sh
+# wham-shape <fake-curl|real-curl-pi> <args>...: runs that curl, beside this
+# script, as stablehand's pi reader does (src/readers/chatgpt.rs,
+# src/curl.rs), its headers on stdin, and prints what the reader reads of
+# chatgpt.com/backend-api/wham/usage's answer, and no more: curl's exit, the
+# HTTP status, and, of a 200, whether rate_limit's primary_window and
+# secondary_window are each a window or none; of any other, the type of its
+# detail.
+program="$(dirname "$0")/$1"
+shift
+out=$("$program" "$@" 2>/dev/null)
+code=$?
+echo "exit $code"
+[ "$code" = 0 ] || exit 0
+status=$(printf '%s' "$out" | tail -n 1)
+body=$(printf '%s' "$out" | sed '$d')
+echo "status $status"
+if [ "$status" = 200 ]; then
+    printf '%s' "$body" | jq -r '
+        def window: if . == null then "window or none"
+            elif ([.used_percent, .limit_window_seconds, .reset_at] | map(type) | all(. == "number"))
+            then "window or none" else "no window" end;
+        .rate_limit
+        | "primary_window: \(.primary_window | window)",
+          "secondary_window: \(.secondary_window | window)",
+          "a window: \([.primary_window, .secondary_window] | map(select(. != null)) | length > 0)"'
+else
+    printf '%s' "$body" | jq -r '"detail \(.detail | type)"'
+fi

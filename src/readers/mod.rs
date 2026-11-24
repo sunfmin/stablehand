@@ -5,6 +5,7 @@
 use crate::account::{Account, Engine};
 use crate::books::Window;
 
+mod chatgpt;
 mod claude_code;
 
 /// A reader: an account's windows now, or why its engine gave none. It
@@ -12,7 +13,11 @@ mod claude_code;
 pub type Read = fn(&Account) -> Result<Vec<Window>, String>;
 
 /// Each engine that has a reader, and its reader.
-const READERS: &[(Engine, Read)] = &[(Engine::ClaudeCode, claude_code::read)];
+const READERS: &[(Engine, Read)] = &[
+    (Engine::ClaudeCode, claude_code::read),
+    (Engine::Codex, chatgpt::codex),
+    (Engine::Pi, chatgpt::pi),
+];
 
 /// The reader of `engine`, where it has one.
 pub fn of(engine: Engine) -> Option<Read> {
