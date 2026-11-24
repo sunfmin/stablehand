@@ -525,3 +525,16 @@ fn a_limit_lifts_at_the_second_it_resets() {
     assert!(status(&entries, NOW + HOUR - 1).limit.is_some());
     assert_eq!(status(&entries, NOW + HOUR).limit, None);
 }
+
+#[test]
+fn a_limit_takes_no_reset_from_a_reading_whose_reset_is_now() {
+    let entries = [
+        read(
+            NOW - 600,
+            vec![window("seven_day", 97.0, Some(NOW + 3 * HOUR))],
+        ),
+        limit(NOW - 60, Some("seven_day"), None),
+    ];
+    let w = status(&entries, NOW + 3 * HOUR).windows[0].clone();
+    assert_eq!((w.source, w.resets_at), (Source::Limit, None));
+}
