@@ -291,6 +291,8 @@ fn each_refusal_carries_its_code_and_the_exit_it_decides() {
         (&["account", "add", "b", "--engine", "nope"], "usage", 2),
         (&["help", "no-such-topic"], "usage", 2),
         (&["account", "show", "nobody"], "no_account", 1),
+        (&["status", "nobody"], "no_account", 1),
+        (&["read", "nobody"], "no_account", 1),
         (
             &["account", "add", "a", "--engine", "codex"],
             "name_taken",

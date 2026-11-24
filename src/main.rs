@@ -323,7 +323,8 @@ fn answer(result: Result<String, Refused>) -> ExitCode {
             ExitCode::SUCCESS
         }
         Err(r) => {
-            println!("{}", json!({ "error": r.text, "code": r.code.name() }));
+            let code = agent_help::Table::entry(&r.code).name;
+            println!("{}", json!({ "error": r.text, "code": code }));
             ExitCode::from(r.code.exit())
         }
     }
@@ -457,9 +458,8 @@ fn run(cmd: Register) -> Result<Value, Refused> {
         Register::Off { name, reason } => {
             let mut a = kept(&store, &name)?;
             if reason.trim().is_empty() {
-                return Err(faults(vec![
-                    "--reason is empty: say why the account is off".into(),
-                ]));
+                let why = "--reason is empty: say why the account is off";
+                return Err(Refused::new(Code::BadTerms, why));
             }
             a.off = Some(Off {
                 by: std::env::var("USER").unwrap_or_else(|_| "unknown".into()),

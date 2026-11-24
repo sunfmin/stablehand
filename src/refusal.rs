@@ -32,11 +32,6 @@ impl Code {
             _ => 1,
         }
     }
-
-    /// The code as a refusal prints it.
-    pub fn name(self) -> &'static str {
-        agent_help::Table::entry(&self).name
-    }
 }
 
 /// A refusal: its code, and the text naming each fault with its fix.

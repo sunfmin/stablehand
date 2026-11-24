@@ -177,8 +177,9 @@ pub fn login(a: &Account, token: bool, now: String) -> Result<Account, Refused> 
             };
             engine(argv, None)?;
         }
-        keep_token(a, login.usage_host)?;
-        return Ok(a.clone());
+        return keep_token(a, login.usage_host)
+            .map(|()| a.clone())
+            .map_err(Into::into);
     };
     if token {
         return refused(format!(
