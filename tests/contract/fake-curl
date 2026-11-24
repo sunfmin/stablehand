@@ -2,10 +2,12 @@
 # Stand-in for curl as stablehand runs it (src/curl.rs):
 #   curl --silent --show-error --max-time N --config - --write-out '\n%{http_code}' <url>
 # with its headers on stdin as curl config. It answers
-# api.anthropic.com/api/oauth/usage as the real endpoint does (truefit.toml,
-# standin "claude-code"): the body, a newline, the HTTP status.
+# api.anthropic.com/api/oauth/usage and cli-chat-proxy.grok.com/v1/billing as
+# the real endpoints do (truefit.toml, standins "claude-code" and "grok"): the
+# body, a newline, the HTTP status.
 #
-# FAKE_CURL_FAULT: unreachable (curl exits 6), unauthorized (401), scope
+# FAKE_CURL_FAULT: unreachable (curl exits 6), unauthorized (401, grok's on
+#   its host), scope
 #   (403, a `claude setup-token` token). FAKE_CURL_BODY: a file whose body
 #   a 200 answers instead of the one below. FAKE_CURL_LOG: a file each call
 #   appends to: its arguments on one line, then its stdin.
@@ -16,12 +18,18 @@ if [ -n "$FAKE_CURL_LOG" ]; then
 fi
 host=${url#*://}
 host=${host%%/*}
+grok=
+[ "$host" = cli-chat-proxy.grok.com ] && grok=1
 case "$FAKE_CURL_FAULT" in
 unreachable)
     echo "curl: (6) Could not resolve host: $host" >&2
     exit 6
     ;;
 unauthorized)
+    if [ -n "$grok" ]; then
+        printf '%s\n401' '{"error":"Invalid or expired credentials (auth_kind=bearer, x_xai_token_auth=none, upstream=Unauthenticated, reason=no auth context)"}'
+        exit 0
+    fi
     printf '%s\n401' '{"type":"error","error":{"type":"authentication_error","message":"Invalid bearer token"},"request_id":"req_011CStandin"}'
     exit 0
     ;;
@@ -32,6 +40,8 @@ scope)
 esac
 if [ -n "$FAKE_CURL_BODY" ]; then
     body=$(cat "$FAKE_CURL_BODY")
+elif [ -n "$grok" ]; then
+    body='{"config":{"currentPeriod":{"type":"USAGE_PERIOD_TYPE_WEEKLY","start":"2026-11-17T11:06:25.960+00:00","end":"2026-11-24T11:06:25.960+00:00"},"creditUsagePercent":92.0,"productUsage":[{"product":"Api","usagePercent":88.0},{"product":"GrokBuild","usagePercent":4.0}],"isUnifiedBillingUser":true,"prepaidBalance":{"val":1765},"topUpMethod":"TOP_UP_METHOD_SAVED_PAYMENT_METHOD","billingPeriodStart":"2026-11-17T11:06:25.960+00:00","billingPeriodEnd":"2026-11-24T11:06:25.960+00:00"}}'
 else
     body='{"five_hour":{"utilization":22.0,"resets_at":"2026-11-24T10:30:00.029137+00:00","limit_dollars":null,"used_dollars":null,"remaining_dollars":null,"locked_reason":null},"seven_day":{"utilization":52.0,"resets_at":"2026-11-29T11:00:00.029154+00:00","limit_dollars":null,"used_dollars":null,"remaining_dollars":null,"locked_reason":null},"seven_day_opus":null,"seven_day_sonnet":null,"extra_usage":{"is_enabled":false,"utilization":null}}'
 fi

@@ -1,0 +1,6 @@
+#!/bin/sh
+# The real curl, its stdin's stand-in bearer `<grok-login>` swapped for this
+# user's grok login (~/.grok/auth.json's https://auth.x.ai::<id> entry),
+# never printed.
+login=$(jq -r '[to_entries[] | select(.key | startswith("https://auth.x.ai::"))][0].value.key // empty' "$HOME/.grok/auth.json" 2>/dev/null)
+cat | sed "s|<grok-login>|$login|" | curl "$@"

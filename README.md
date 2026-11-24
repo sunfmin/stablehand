@@ -141,6 +141,14 @@ stablehand status                   # each account's windows and their pace
 - Its windows are `five_hour`, `seven_day` and any other the endpoint
   lists. A `claude setup-token` token is refused a usage query (HTTP 403):
   such an account is known by `limit` alone.
+- grok's reader asks `cli-chat-proxy.grok.com/v1/billing?format=credits`
+  with the bearer of the grok login in the account's home
+  (`<home>/auth.json`, its `GROK_HOME`; `~/.grok` without `--home`), so a
+  grok account is bound. Its token lasts hours: an expired one is refreshed
+  by grok itself (`grok models`, no model turn). Its windows are the credit
+  period's, `weekly`: the account's, and one per product in its `group`
+  (`Api`, `GrokBuild`): a share of the account's credits, never paced on
+  its own.
 - `limit` books a caller's report that a session met the account's limit: the window it names is used up until `--resets-at`, or until the next reading without it; without `--window`, the whole account is.
 - `status` answers each account's windows (each with its `group` where the
   engine groups them), used %, resets at, source (`read` or `limit`),

@@ -538,3 +538,27 @@ fn a_limit_takes_no_reset_from_a_reading_whose_reset_is_now() {
     let w = status(&entries, NOW + 3 * HOUR).windows[0].clone();
     assert_eq!((w.source, w.resets_at), (Source::Limit, None));
 }
+
+#[test]
+fn windows_of_one_name_in_two_groups_each_have_their_own_rate() {
+    // Grok's weekly credits and each product's share of them.
+    let resets = NOW + 3 * 24 * HOUR;
+    let week = |used: f64, group: Option<&str>| Window {
+        group: group.map(Into::into),
+        ..window("weekly", used, Some(resets))
+    };
+    let book = [
+        read(
+            NOW - 12 * HOUR - 60,
+            vec![week(40.0, None), week(30.0, Some("Api"))],
+        ),
+        read(NOW - 60, vec![week(52.0, None), week(30.0, Some("Api"))]),
+    ];
+    let s = status(&book, NOW);
+    let rates: Vec<_> = s
+        .windows
+        .iter()
+        .map(|w| (w.group.clone(), w.rate))
+        .collect();
+    assert_eq!(rates, [(None, Some(1.0)), (Some("Api".into()), Some(0.0))]);
+}
