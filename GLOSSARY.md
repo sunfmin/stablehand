@@ -18,6 +18,12 @@
   files in a home of that account's on one machine (`auth.json`,
   `~/.gemini`), written and refreshed by the engine itself; a home holding
   its engine's login file is logged in, as of when it was written.
+- **Identity**: the subscription a bound login's files say they are of
+  (ChatGPT's account id, Claude's account and organization): what tells
+  two logins of one account apart from two accounts. `account scan` reads
+  it in memory and keeps only its hash; a portable token tells none. Two
+  logins of one identity are **copies**: one is the account, the others are
+  left unused, since copies of one refresh token refresh each other out.
 - **Window**: one span of an account's use as its engine names it
   (`five_hour`, `seven_day`, `primary`, `gemini-5h`): how much is used, 0 to
   100, and when it resets. An account may have several **groups** of windows

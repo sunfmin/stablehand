@@ -19,7 +19,12 @@ while read -r step field; do
     get)
         echo "\$ get <each>/<label> --field $field"
         for id in $(entries); do
-            "$prog" get "${id%%/*}" --account "${id#*/}" --field "$field" </dev/null 2>/dev/null >out
+            # The label `default` without --account, as a token command names it.
+            if [ "${id#*/}" = default ]; then
+                "$prog" get "${id%%/*}" --field "$field" </dev/null 2>/dev/null >out
+            else
+                "$prog" get "${id%%/*}" --account "${id#*/}" --field "$field" </dev/null 2>/dev/null >out
+            fi
             code=$?
             case "$(cat out)" in
             "") what=empty ;;

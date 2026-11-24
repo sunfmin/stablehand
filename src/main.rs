@@ -4,11 +4,11 @@ mod account;
 mod books;
 mod bounded;
 mod curl;
-mod import;
 mod login;
 mod pick;
 mod readers;
 mod refusal;
+mod scan;
 mod statusline;
 mod store;
 mod time;
@@ -129,7 +129,7 @@ enum Cmd {
 /// The commands that read and change the register and the books.
 #[derive(Subcommand)]
 enum Register {
-    /// Add, list, show, change, import or remove an account.
+    /// Add, find (scan), list, show, change or remove an account.
     #[command(next_help_heading = REGISTER, verbatim_doc_comment)]
     Account {
         #[command(subcommand)]
@@ -315,19 +315,33 @@ enum AccountCmd {
         #[arg(long, value_enum, verbatim_doc_comment)]
         unset: Vec<Field>,
     },
-    /// Move this host's `agent-account-*` entries of mytokens into stablehand.
+    /// Find the engine logins and the portable tokens already on this machine; with `--add`, register them, one account per subscription.
     ///
-    /// Each entry `agent-account-<name>` (`mytokens list`) becomes the account `<name>`: its engine from its HARNESS, bound to its MACHINE if it has one, in the home factorium's workers use, `$HOME/.agent-accounts/<name>` (nothing is made there); an entry with a CLAUDE_CODE_OAUTH_TOKEN is portable, its `--token-command` the `mytokens get <service> --account <label> --field CLAUDE_CODE_OAUTH_TOKEN` that prints it: the token stays in mytokens, and the import reads none. An account already kept is left as it is, but for a bound one with no home, given that home, and a portable one with no token command, given its entry's: a run fills in what an earlier one left out. mytokens is only read: nothing in it is changed or removed.
+    /// It looks in each engine's own default home under `$HOME` ({const:DEFAULT_HOMES}), and in each `--path`; never in a home another program keeps for its own use (factorium's `~/.agent-accounts`, Guild's `~/.guild/engines`) unless a `--path` names it. A home is a login when it holds its engine's login file (below). It also reads `mytokens list`, when mytokens is on PATH: each `agent-account-<name>` entry with an engine's token field (`CLAUDE_CODE_OAUTH_TOKEN`) is a portable account, its `--token-command` `mytokens get agent-account-<name> --field <that field>`; one with no token (a bound one, its `MACHINE`) is skipped. No token is read.
     ///
-    /// Answers `{"dry_run": …, "accounts": [{"from": "agent-account-<name>/<label>", "result": "added"|"would add"|"given its home"|"would give its home"|"given its token command"|"would give its token command"|"already kept", "account": {…}}, …]}`. Refuses, importing nothing, an entry whose HARNESS is no engine, one with both a token and a MACHINE, and a field mytokens does not answer.
+    /// ## One account per subscription
+    ///
+    /// The same subscription is often logged in in several homes (pi's openai-codex and codex on one ChatGPT account). scan tells them apart by the identity each login file holds ({const:IDENTITIES}), read and compared in memory and never said: it answers, and keeps on an account it adds, the identity's hash. Of the logins of one identity, the account is the one an account already kept is (kept at that home, or holding that hash), else the most recently written; the others are copies of it. An identity it cannot read is said so (`identity_unknown`), and that login is never a copy. A portable token tells no identity (a setup token is refused `user:profile`): whether it is a home login's subscription is `unknown`.
+    ///
+    /// ## What it answers
+    ///
+    /// `{"add", "machine", "logins": [{"engine", "home", "logged_in_at", "identity", "identity_unknown", "status", "account", "warning"}], "tokens": [{"entry", "engine", "token_command", "status", "account", "same_as_a_login"}], "mytokens_unread"}`. `status` is `new` (`account` the name `--add` gives it: `<engine>`, or `<engine>-2` … when the name is kept; a token its entry's `<name>`), `added` (with `--add`), `registered` (`account` is it), `copy` (of `account`; `warning` says why to run sessions on that one only) or, for a token entry, `skipped` (with `why`). `mytokens_unread` says why mytokens was not read, null when it was.
+    ///
+    /// ## What it changes
+    ///
+    /// Without `--add`, nothing. With `--add`, it adds each `new` login as `stablehand account add <name> --engine <engine> --machine <this machine> --home <its home>` would, its identity's hash kept, and each `new` token as a portable account with its token command; nothing else: an account kept is never renamed or changed, nothing is written in a home, mytokens is only listed. Run again, it adds nothing more. It refuses a `--path` that is no directory.
+    ///
+    /// ## Engines
+    ///
+    /// {const:ENGINES}
     #[command(verbatim_doc_comment)]
-    Import {
-        /// Read the accounts from mytokens (the one source today).
-        #[arg(long, required = true, verbatim_doc_comment)]
-        from_mytokens: bool,
-        /// Say what it would import, writing nothing.
+    Scan {
+        /// Register each `new` login and token.
         #[arg(long, verbatim_doc_comment)]
-        dry_run: bool,
+        add: bool,
+        /// One more home to look in, for each engine whose login file it holds. Repeatable.
+        #[arg(long, verbatim_doc_comment)]
+        path: Vec<String>,
     },
     /// Remove an account and its books.
     ///
@@ -357,6 +371,22 @@ fn engines_help() -> String {
     lines.collect::<Vec<_>>().join("\n")
 }
 
+/// Each engine's default home, as `stablehand account scan --help` lists it.
+fn default_homes() -> String {
+    let homes = <Engine as clap::ValueEnum>::value_variants()
+        .iter()
+        .map(|e| {
+            let home = e.login().default_home;
+            let home = if home.is_empty() {
+                "~".into()
+            } else {
+                format!("~/{home}")
+            };
+            format!("{} `{home}`", e.name())
+        });
+    homes.collect::<Vec<_>>().join(", ")
+}
+
 /// The manual: clap's command tree, and the constants it places by name.
 fn manual() -> Help {
     Help::new(Cli::command())
@@ -364,6 +394,8 @@ fn manual() -> Help {
         .constant("EXIT_USAGE", Code::Usage.exit())
         .constant("ENGINES", engines_help())
         .constant("TOKEN_COMMANDS", login::TOKEN_COMMANDS)
+        .constant("DEFAULT_HOMES", default_homes())
+        .constant("IDENTITIES", scan::IDENTITIES)
         .constant("TOKEN_COMMAND_SECS", login::TOKEN_COMMAND_SECS)
 }
 
@@ -524,7 +556,7 @@ fn run(cmd: Register) -> Result<Value, Refused> {
                 }
                 Ok(shown(&a))
             }
-            AccountCmd::Import { dry_run, .. } => import::import(&store, dry_run),
+            AccountCmd::Scan { add, path } => scan::scan(&store, &path, add),
             AccountCmd::Rm { name } => {
                 let removed = store.remove(&name)?;
                 Ok(json!({ "name": name, "removed": removed }))

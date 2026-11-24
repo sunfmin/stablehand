@@ -40,13 +40,14 @@ const MIGRATIONS: &[&str] = &[
     ALTER TABLE accounts DROP COLUMN logged_in_at;
     ALTER TABLE accounts ADD COLUMN token_command TEXT;
 ",
+    // The hash of the identity `account scan` read in the account's login.
+    "ALTER TABLE accounts ADD COLUMN identity TEXT;",
 ];
 
 /// How long a process waits for another's write.
 const BUSY_TIMEOUT: Duration = Duration::from_secs(30);
 
-const COLUMNS: &str =
-    "name, engine, machine, sessions, expires, home, off_by, off_at, off_reason, token_command";
+const COLUMNS: &str = "name, engine, machine, sessions, expires, home, off_by, off_at, off_reason, token_command, identity";
 
 pub struct Store {
     conn: Connection,
@@ -114,6 +115,7 @@ fn account_of(row: &Row) -> rusqlite::Result<Account> {
         home: row.get(5)?,
         off,
         token_command: row.get(9)?,
+        identity: row.get(10)?,
     })
 }
 
@@ -189,7 +191,7 @@ impl Store {
         self.conn
             .execute(
                 &format!(
-                    "{verb} accounts ({COLUMNS}) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)"
+                    "{verb} accounts ({COLUMNS}) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)"
                 ),
                 params![
                     a.name,
@@ -202,6 +204,7 @@ impl Store {
                     off.map(|o| &o.at),
                     off.map(|o| &o.reason),
                     a.token_command,
+                    a.identity,
                 ],
             )
             .map(|n| n == 1)

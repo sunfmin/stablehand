@@ -54,8 +54,20 @@ impl Engine {
             Dsh => ".credentials.yaml",
             Agy => ".gemini/antigravity-cli/antigravity-oauth-token",
         };
+        // Where the engine keeps its home when its home variable is unset,
+        // under $HOME: where `account scan` looks.
+        let default_home = match self {
+            ClaudeCode => ".claude",
+            Codex => ".codex",
+            Pi => ".pi/agent",
+            Kimi => ".kimi-code",
+            Agy => "",
+            Grok => ".grok",
+            Dsh => ".dsh",
+        };
         Login {
             home_var,
+            default_home,
             bound,
             token,
             file,
@@ -71,6 +83,8 @@ impl Engine {
 pub struct Login {
     /// The variable the engine reads for its home.
     pub home_var: &'static str,
+    /// Its home without that variable, under `$HOME` (agy's is `$HOME` itself).
+    pub default_home: &'static str,
     /// The command that logs a bound account in, run in its home.
     pub bound: &'static [&'static str],
     /// The file its login writes in its home: a bound home holding it is
@@ -110,6 +124,10 @@ pub struct Account {
     /// (`mytokens get …`): the token stays where the person keeps it, and
     /// stablehand keeps only how to read it (docs/adr/0001).
     pub token_command: Option<String>,
+    /// The hash of the identity its login holds, as `account scan` read it
+    /// (the identity itself is kept nowhere): scan tells by it which login
+    /// found later is this account's.
+    pub identity: Option<String>,
 }
 
 /// An account as every command answers it: its terms, and its login
@@ -189,6 +207,7 @@ pub fn new(name: &str, engine: Engine, change: Change) -> Result<Account, Vec<St
         home: None,
         off: None,
         token_command: None,
+        identity: None,
     };
     let named = check_name(name);
     match (apply(&blank, change), named) {
