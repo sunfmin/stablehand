@@ -166,19 +166,18 @@ pub fn import(store: &Store, dry_run: bool) -> Result<Value, Refused> {
         let result = match (step, dry_run) {
             (Step::Kept, _) => "already kept",
             (Step::GiveHome, true) => "would give its home",
-            (Step::GiveHome, false) => {
-                store.put(a)?;
-                "given its home"
-            }
             (Step::Add, true) => "would add",
-            (Step::Add, false) => {
+            (_, false) => {
                 if token {
                     let again =
                         "; then `stablehand account import --from-mytokens` again imports the rest";
                     login::keep_token_from(a, &e.get(TOKEN)).map_err(|f| format!("{f}{again}"))?;
                 }
-                store.insert(a)?;
-                "added"
+                store.put(a)?;
+                match step {
+                    Step::Add => "added",
+                    _ => "given its home",
+                }
             }
         };
         done.push(json!({ "from": e.id, "result": result, "token": token, "account": a.shown() }));
