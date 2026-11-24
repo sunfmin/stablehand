@@ -360,9 +360,9 @@ fn read_without_a_name_reads_every_account_and_one_with_no_reader_is_said() {
     b.ok(&[
         "account",
         "add",
-        "kimi-1",
+        "agy-1",
         "--engine",
-        "kimi",
+        "agy",
         "--machine",
         "mini",
     ]);
@@ -378,12 +378,12 @@ fn read_without_a_name_reads_every_account_and_one_with_no_reader_is_said() {
             )
         })
         .collect();
-    assert_eq!(outcomes, [("claude-mini", "read"), ("kimi-1", "no_reader")]);
+    assert_eq!(outcomes, [("agy-1", "no_reader"), ("claude-mini", "read")]);
     let status = b.ok(&["status"]);
-    let kimi = &status["accounts"][1];
+    let agy = &status["accounts"][0];
     assert_eq!(
-        (&kimi["name"], &kimi["windows"], &kimi["tried_at"]),
-        (&json!("kimi-1"), &json!([]), &Value::Null)
+        (&agy["name"], &agy["windows"], &agy["tried_at"]),
+        (&json!("agy-1"), &json!([]), &Value::Null)
     );
     assert_eq!(status["accounts"].as_array().unwrap().len(), 2);
 }

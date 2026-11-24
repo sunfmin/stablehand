@@ -6,7 +6,8 @@ use crate::account::{Account, Engine};
 use crate::books::Window;
 
 mod chatgpt;
-mod claude_code;
+pub mod claude_code;
+mod kimi;
 
 /// A reader: an account's windows now, or why its engine gave none. It
 /// never puts a token in what it answers.
@@ -17,6 +18,7 @@ const READERS: &[(Engine, Read)] = &[
     (Engine::ClaudeCode, claude_code::read),
     (Engine::Codex, chatgpt::codex),
     (Engine::Pi, chatgpt::pi),
+    (Engine::Kimi, kimi::read),
 ];
 
 /// The reader of `engine`, where it has one.
