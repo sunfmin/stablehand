@@ -6,7 +6,7 @@
 //! window not yet used. An API-key login exits 2: it has no account quota.
 use crate::account::Account;
 use crate::books::Window;
-use crate::bounded::{self, Ran};
+use crate::bounded;
 use crate::{login, time};
 use std::process::{Command, Stdio};
 use std::time::Duration;
@@ -37,20 +37,8 @@ pub fn read(account: &Account) -> Result<Vec<Window>, String> {
         .env("HOME", &home)
         .stdin(Stdio::null())
         .stderr(Stdio::null());
-    let (code, stdout) = run(agy, TIME_LIMIT)?;
+    let (code, stdout) = bounded::answer(agy, TIME_LIMIT, "agy", "install agy, or put it on PATH")?;
     windows(code, &stdout, &login::login_line(account))
-}
-
-/// Runs `cmd` for its exit code and stdout, killed past `limit`.
-fn run(cmd: Command, limit: Duration) -> Result<(Option<i32>, String), String> {
-    match bounded::run(cmd, limit) {
-        Err(e) => Err(format!("agy: {e}: install agy, or put it on PATH")),
-        Ok(Ran::RanPast) => Err(format!(
-            "agy answered nothing in {}s: try again later (`stablehand read --now`)",
-            limit.as_secs()
-        )),
-        Ok(Ran::Exited(code, out)) => Ok((code, String::from_utf8_lossy(&out).into_owned())),
-    }
 }
 
 /// The windows of agy's answer, its exit `code` and `stdout`, or why it

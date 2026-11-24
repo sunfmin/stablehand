@@ -1,7 +1,7 @@
 //! A program run for its exit and stdout within a time bound: past it, it is
 //! killed with every process it started (it leads a process group of its
-//! own), so nothing it began outlives the bound. agy's reader and a
-//! portable account's token command run through it.
+//! own), so nothing it began outlives the bound. agy's reader, claude-code's
+//! question and a portable account's token command run through it.
 use std::io::Read;
 use std::os::unix::process::CommandExt;
 use std::process::{Child, Command, Stdio};
@@ -46,6 +46,26 @@ pub fn run(mut cmd: Command, limit: Duration) -> std::io::Result<Ran> {
             stop(&mut child);
             Ok(Ran::RanPast)
         }
+    }
+}
+
+/// What a reader's program answered, `cmd` run as [`run`] runs it: its exit
+/// code and stdout; or, as a reader's failure says it, that `what` (its
+/// line, as a fault names it) did not start (`install` the fix) or answered
+/// nothing within `limit`.
+pub fn answer(
+    cmd: Command,
+    limit: Duration,
+    what: &str,
+    install: &str,
+) -> Result<(Option<i32>, String), String> {
+    match run(cmd, limit) {
+        Err(e) => Err(format!("{what}: {e}: {install}")),
+        Ok(Ran::RanPast) => Err(format!(
+            "{what} answered nothing in {}s: try again later (`stablehand read --now`)",
+            limit.as_secs()
+        )),
+        Ok(Ran::Exited(code, out)) => Ok((code, String::from_utf8_lossy(&out).into_owned())),
     }
 }
 
@@ -98,6 +118,25 @@ mod tests {
             Ran::Exited(Some(3), b"hi\n".to_vec())
         );
         assert!(run(Command::new("/no/such/program"), ten).is_err());
+    }
+
+    #[test]
+    fn a_reader_s_program_answers_or_says_why_not() {
+        let ms = Duration::from_millis(300);
+        let ten = Duration::from_secs(10);
+        assert_eq!(
+            answer(sh("echo hi"), ten, "`x`", "fix"),
+            Ok((Some(0), "hi\n".into()))
+        );
+        let fault = answer(Command::new("/no/such/program"), ten, "`x`", "install x").unwrap_err();
+        assert!(
+            fault.starts_with("`x`: ") && fault.ends_with(": install x"),
+            "{fault}"
+        );
+        assert_eq!(
+            answer(sh("sleep 30"), ms, "`x`", "fix"),
+            Err("`x` answered nothing in 0s: try again later (`stablehand read --now`)".into())
+        );
     }
 
     /// Whether no process `pid` is left, within a second of asking.

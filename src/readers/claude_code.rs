@@ -8,7 +8,7 @@
 //! so ([`ReadBy::Question`]), it is asked the question again, not its usage.
 use crate::account::Account;
 use crate::books::{ReadBy, Window};
-use crate::bounded::{self, Ran};
+use crate::bounded;
 use crate::{curl, login, time};
 use std::os::unix::fs::DirBuilderExt;
 use std::path::PathBuf;
@@ -96,18 +96,15 @@ fn question(account: &Account, bearer: &str) -> Result<Vec<Window>, String> {
         .env_remove("ANTHROPIC_AUTH_TOKEN")
         .stdin(Stdio::null())
         .stderr(Stdio::null());
-    let ran = bounded::run(claude, QUESTION_LIMIT);
+    let ran = bounded::answer(
+        claude,
+        QUESTION_LIMIT,
+        "`claude -p … quota`",
+        "install Claude Code (`curl -fsSL https://claude.ai/install.sh | bash`), or put it on PATH",
+    );
     let _ = std::fs::remove_dir_all(&dir);
-    match ran {
-        Err(e) => Err(format!(
-            "claude: {e}: install Claude Code (`curl -fsSL https://claude.ai/install.sh | bash`), or put it on PATH"
-        )),
-        Ok(Ran::RanPast) => Err(format!(
-            "`claude -p … quota` answered nothing in {}s: try again later (`stablehand read --now`)",
-            QUESTION_LIMIT.as_secs()
-        )),
-        Ok(Ran::Exited(code, out)) => stream(code, &String::from_utf8_lossy(&out), account),
-    }
+    let (code, stdout) = ran?;
+    stream(code, &stdout, account)
 }
 
 /// The windows of the question's stream, its exit `code` and `stdout`: the

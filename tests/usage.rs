@@ -466,6 +466,18 @@ fn a_setup_token_refused_usage_is_read_by_one_small_turn_and_its_usage_not_asked
         "{error}"
     );
     assert_eq!(window(&refused["windows"], "five_hour")["stale"], true);
+    // Claude Code not on PATH, or no temporary directory: each fails, saying so.
+    std::fs::remove_file(b.root.join("bin/claude")).unwrap();
+    let error = b.read(&["claude-jp", "--now"])["error"].clone();
+    assert!(
+        error.as_str().unwrap().contains("install Claude Code"),
+        "{error}"
+    );
+    b.set("TMPDIR", &b.root.join("no-such-dir").display().to_string());
+    let error = b.read(&["claude-jp", "--now"])["error"].clone();
+    assert!(error.as_str().unwrap().contains("no-such-dir"), "{error}");
+    b.set("TMPDIR", &b.root.join("tmp").display().to_string());
+
     // Nothing of the questions is left behind: their config dirs are gone.
     let tmp = std::fs::read_dir(b.root.join("tmp")).unwrap().count();
     assert_eq!(
