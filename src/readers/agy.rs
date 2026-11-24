@@ -114,7 +114,7 @@ fn run(cmd: Command, limit: Duration) -> Result<(Option<i32>, String), String> {
 
 /// The windows of agy's answer, its exit `code` and `stdout`, each with the
 /// ids of its group's models in `catalog` (asked only of an answer with
-/// windows), or why it gave none, with the fix.
+/// groups), or why it gave none, with the fix.
 fn windows(
     code: Option<i32>,
     stdout: &str,
@@ -136,7 +136,7 @@ fn windows(
         let exit = code.map_or("was killed".into(), |c| format!("exited {c}"));
         return Err(format!("`agy -p /usage` {exit}: {said}: {fix}"));
     }
-    // The list is asked once, of the first group with a window.
+    // The list is asked once, of the first group.
     let catalog = std::cell::LazyCell::new(catalog);
     let mut found = Vec::new();
     for g in answer["command"]["data"]["groups"]
@@ -167,9 +167,6 @@ fn windows(
                 })
             })
             .collect();
-        if windows.is_empty() {
-            continue;
-        }
         let models = ids(
             &names(g["description"].as_str().unwrap_or_default()),
             &catalog,
