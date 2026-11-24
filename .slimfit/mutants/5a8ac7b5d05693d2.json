@@ -1,0 +1,6 @@
+{
+  "tree": "ff2fe968093bd7adc3898268bbc2cb750e64688e+d1fba762150c532c",
+  "picker": "codex:01a20cce-bd84-78c3-b9b0-f3c4a36e61dc:default",
+  "author": "claude-code:d4bfa17a-6887-5529-95cc-12aaac8c34a9:opus",
+  "none": "The changed import and token-handling mutants either fail to build or would break assertions for parsing, dry runs, bound accounts, token storage, or subprocess failures."
+}
