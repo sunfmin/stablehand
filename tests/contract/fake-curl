@@ -10,7 +10,9 @@
 # FAKE_CURL_FAULT: unreachable (curl exits 6), unauthorized (401), scope
 #   (403, a `claude setup-token` token). FAKE_CURL_BODY, FAKE_CURL_WHAM_BODY:
 #   a file whose body a 200 of api.anthropic.com or grok, of chatgpt.com, answers
-#   instead of the one below. FAKE_CURL_LOG: a file each call appends to:
+#   instead of the one below. FAKE_CURL_GROK_PERIOD=begun: grok answers
+#   its period just begun, nothing used, as proto3 leaves the 0s out.
+#   FAKE_CURL_LOG: a file each call appends to:
 #   its arguments on one line, then its stdin.
 for url; do :; done
 config=$(cat)
@@ -38,6 +40,8 @@ cli-chat-proxy.grok.com:unauthorized)
     ;;
 cli-chat-proxy.grok.com:*)
     file=$FAKE_CURL_BODY
+    [ "$FAKE_CURL_GROK_PERIOD" = begun ] &&
+        body='{"config":{"currentPeriod":{"type":"USAGE_PERIOD_TYPE_WEEKLY","start":"2026-11-24T11:06:25.960+00:00","end":"2026-12-01T11:06:25.960+00:00"},"isUnifiedBillingUser":true,"prepaidBalance":{"val":1765},"topUpMethod":"TOP_UP_METHOD_SAVED_PAYMENT_METHOD","billingPeriodStart":"2026-11-24T11:06:25.960+00:00","billingPeriodEnd":"2026-12-01T11:06:25.960+00:00"}}' ||
     body='{"config":{"currentPeriod":{"type":"USAGE_PERIOD_TYPE_WEEKLY","start":"2026-11-17T11:06:25.960+00:00","end":"2026-11-24T11:06:25.960+00:00"},"creditUsagePercent":92.0,"productUsage":[{"product":"Api","usagePercent":88.0},{"product":"GrokBuild","usagePercent":4.0}],"isUnifiedBillingUser":true,"prepaidBalance":{"val":1765},"topUpMethod":"TOP_UP_METHOD_SAVED_PAYMENT_METHOD","billingPeriodStart":"2026-11-17T11:06:25.960+00:00","billingPeriodEnd":"2026-11-24T11:06:25.960+00:00"}}'
     ;;
 *:unauthorized)
