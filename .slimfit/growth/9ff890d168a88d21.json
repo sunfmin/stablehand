@@ -1,0 +1,10 @@
+{
+  "tree": "94f582f1c9953eac5b55d9e4eaba9f73e6be5438+d1fba762150c532c",
+  "lines": 636,
+  "serves": "stablehand#12",
+  "considered": "Reusing books::status and the pace's at_reset (now with a share) rather than a second rate model; reusing login::logged_in and this_machine for the bars; Guild's Funds/Quota/Listed types, not carried over: the register already holds an account's terms",
+  "reviewer": "codex:01a20d13-1621-7161-bffe-b96fde6fea51:default",
+  "author": "claude-code:ed28443f-13a0-56b8-95ff-8aa7996e2a4e:opus",
+  "cut": "In src/main.rs and src/usage.rs, pass the engine-filtered account iterator directly to usage::pick and build Candidates in one pass with owned Status values, removing the intermediate account vector, judged tuples, and barred clones. In src/pick.rs, keep the best eligible candidate during the existing loop, replacing it only on a strictly better score to preserve first-in-order ties. In src/pick_tests.rs, build Candidate directly and delete Acct and its conversion. In tests/usage.rs, reuse one reason-list extractor in picked and the full JSON assertion.",
+  "answer": "Made each cut (94f582f, -31 lines): usage::pick filters the engine's accounts and builds each Candidate once with its owned Status and barred, no judged tuples or clones; pick keeps the best in its loop, replacing only on strictly more left; the tests build Candidate directly, Acct gone; tests/usage.rs has one reasons() for both."
+}
