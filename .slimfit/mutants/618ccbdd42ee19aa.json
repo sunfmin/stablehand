@@ -1,0 +1,6 @@
+{
+  "tree": "9ac81124a74125cf2fe5a8b897a7dc7cf2b51afe+d1fba762150c532c",
+  "picker": "codex:01a20d17-57ad-71e3-9267-a334d32266a4:default",
+  "author": "claude-code:cf8818fe-ff0b-5c1a-bff6-9bcf3bae274c:opus",
+  "none": "The buildable candidates are covered by assertions on machine binding, subprocess success and timeout, exit and status handling, error guidance, quota conversion, window lengths, and the epoch reset boundary."
+}
