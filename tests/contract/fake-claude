@@ -8,7 +8,7 @@
 # It answers the stream Claude Code 2.1.326 answered on afkconvoy's host
 # (recorded/claude-code-question.jsonl), its rate_limit_event's
 # unifiedWindows the account's windows, exit 0 (truefit.toml, standin
-# "claude-code"). With no CLAUDE_CODE_OAUTH_TOKEN, or FAKE_CLAUDE_FAULT=refused,
+# "claude-code-question"). With no CLAUDE_CODE_OAUTH_TOKEN, or FAKE_CLAUDE_FAULT=refused,
 # it answers as Claude Code 2.1.331 does a token refused (HTTP 401), exit 1.
 #
 # FAKE_CLAUDE_BODY: a file whose stream it answers instead.

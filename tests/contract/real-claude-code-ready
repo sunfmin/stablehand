@@ -1,8 +1,0 @@
-#!/bin/sh
-# Ready for `truefit contract --real claude-code`: curl, jq and claude on
-# PATH, a Claude Code login in ~/.claude/.credentials.json, and the mytokens
-# profile of a `claude setup-token` token (see real-curl, real-claude).
-command -v curl >/dev/null && command -v jq >/dev/null && command -v claude >/dev/null &&
-    command -v mytokens >/dev/null &&
-    jq -e '.claudeAiOauth.accessToken' "$HOME/.claude/.credentials.json" >/dev/null 2>&1 &&
-    mytokens list 2>/dev/null | grep -q "^${STABLEHAND_CONTRACT_SETUP_TOKEN:-claude-theplant-jp}/"
