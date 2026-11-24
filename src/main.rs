@@ -6,8 +6,8 @@ mod store;
 #[cfg_attr(not(test), allow(dead_code))]
 mod version;
 
-use account::{Account, Change, Engine, Field, Off};
-use clap::{Args, Parser, Subcommand};
+use account::{Account, Change, Engine, Field, Off, Terms};
+use clap::{Parser, Subcommand};
 use serde_json::{Value, json};
 use std::process::ExitCode;
 use store::Store;
@@ -52,23 +52,6 @@ enum Cmd {
     ///
     /// An account already on stays as it is. Answers {"account": {…}}.
     On { name: String },
-}
-
-/// An account's terms, as `add` and `edit` take them.
-#[derive(Args)]
-struct Terms {
-    /// The machine its bound login lives on; without it the login is portable.
-    #[arg(long)]
-    machine: Option<String>,
-    /// Sessions it runs at once (`add` without it: claude-code 2, other engines no limit).
-    #[arg(long)]
-    sessions: Option<u32>,
-    /// When its portable token expires, YYYY-MM-DD (a portable login only).
-    #[arg(long)]
-    expires: Option<String>,
-    /// Its bound login's home on --machine (a bound login only).
-    #[arg(long)]
-    home: Option<String>,
 }
 
 #[derive(Subcommand)]
@@ -152,17 +135,6 @@ fn shown(a: &Account) -> Value {
     json!({ "account": a.shown() })
 }
 
-fn change(engine: Option<Engine>, t: Terms, unset: Vec<Field>) -> Change {
-    Change {
-        engine,
-        machine: t.machine,
-        sessions: t.sessions,
-        expires: t.expires,
-        home: t.home,
-        unset,
-    }
-}
-
 /// The account `name`, or the refusal that says how to find one.
 fn kept(store: &Store, name: &str) -> Result<Account, String> {
     store.get(name)?.ok_or_else(|| {
@@ -181,7 +153,15 @@ fn run(cmd: Cmd) -> Result<Value, String> {
                 engine,
                 terms,
             } => {
-                let a = account::new(&name, engine, change(None, terms, vec![])).map_err(faults)?;
+                let a = account::new(
+                    &name,
+                    engine,
+                    Change {
+                        terms,
+                        ..Change::default()
+                    },
+                )
+                .map_err(faults)?;
                 if !store.insert(&a)? {
                     return Err(format!(
                         "account `{name}` is already kept: change it with `stablehand account edit {name} …`, or remove it first with `stablehand account rm {name}`"
@@ -201,8 +181,15 @@ fn run(cmd: Cmd) -> Result<Value, String> {
                 terms,
                 unset,
             } => {
-                let a = account::apply(&kept(&store, &name)?, change(engine, terms, unset))
-                    .map_err(faults)?;
+                let a = account::apply(
+                    &kept(&store, &name)?,
+                    Change {
+                        engine,
+                        terms,
+                        unset,
+                    },
+                )
+                .map_err(faults)?;
                 store.put(&a)?;
                 Ok(shown(&a))
             }

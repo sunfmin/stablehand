@@ -35,7 +35,7 @@ pub struct Off {
 }
 
 /// One account as the register keeps it (GLOSSARY.md "Account", "Login").
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Account {
     pub name: String,
     pub engine: Engine,
@@ -54,44 +54,48 @@ pub struct Account {
 /// (`portable` or `bound`) said outright.
 #[derive(Serialize)]
 pub struct Shown<'a> {
-    name: &'a str,
-    engine: Engine,
+    #[serde(flatten)]
+    account: &'a Account,
     login: &'static str,
-    machine: Option<&'a str>,
-    sessions: Option<u32>,
-    expires: Option<&'a str>,
-    home: Option<&'a str>,
-    off: Option<&'a Off>,
 }
 
 impl Account {
     pub fn shown(&self) -> Shown<'_> {
+        let login = if self.machine.is_some() {
+            "bound"
+        } else {
+            "portable"
+        };
         Shown {
-            name: &self.name,
-            engine: self.engine,
-            login: if self.machine.is_some() {
-                "bound"
-            } else {
-                "portable"
-            },
-            machine: self.machine.as_deref(),
-            sessions: self.sessions,
-            expires: self.expires.as_deref(),
-            home: self.home.as_deref(),
-            off: self.off.as_ref(),
+            account: self,
+            login,
         }
     }
 }
 
+/// An account's terms as `add` and `edit` take them, each `Some` to set it.
+#[derive(Debug, Default, clap::Args)]
+pub struct Terms {
+    /// The machine its bound login lives on; without it the login is portable.
+    #[arg(long)]
+    pub machine: Option<String>,
+    /// Sessions it runs at once (`add` without it: claude-code 2, other engines no limit).
+    #[arg(long)]
+    pub sessions: Option<u32>,
+    /// When its portable token expires, YYYY-MM-DD (a portable login only).
+    #[arg(long)]
+    pub expires: Option<String>,
+    /// Its bound login's home on --machine (a bound login only).
+    #[arg(long)]
+    pub home: Option<String>,
+}
+
 /// What the person asked to change of an account (`add` gives all of it,
-/// `edit` some): each field `Some` to set it; `unset` names those to clear.
+/// `edit` some); `unset` names the terms to clear.
 #[derive(Debug, Default)]
 pub struct Change {
     pub engine: Option<Engine>,
-    pub machine: Option<String>,
-    pub sessions: Option<u32>,
-    pub expires: Option<String>,
-    pub home: Option<String>,
+    pub terms: Terms,
     pub unset: Vec<Field>,
 }
 
@@ -132,7 +136,7 @@ pub fn apply(account: &Account, change: Change) -> Result<Account, Vec<String>> 
     if let Some(engine) = change.engine {
         next.engine = engine;
     }
-    if let Some(machine) = change.machine {
+    if let Some(machine) = change.terms.machine {
         if machine.trim().is_empty() {
             faults.push(
                 "--machine is empty: name the host, or `--unset machine` for a portable login"
@@ -141,19 +145,19 @@ pub fn apply(account: &Account, change: Change) -> Result<Account, Vec<String>> 
         }
         next.machine = Some(machine);
     }
-    if let Some(sessions) = change.sessions {
+    if let Some(sessions) = change.terms.sessions {
         if sessions == 0 {
             faults.push("--sessions 0 would start nothing: give 1 or more, or switch the account off with `stablehand off`".into());
         }
         next.sessions = Some(sessions);
     }
-    if let Some(expires) = change.expires {
+    if let Some(expires) = change.terms.expires {
         if let Err(f) = check_date(&expires) {
             faults.push(f);
         }
         next.expires = Some(expires);
     }
-    if let Some(home) = change.home {
+    if let Some(home) = change.terms.home {
         if home.trim().is_empty() {
             faults.push("--home is empty: give the bound login's home directory".into());
         }

@@ -160,89 +160,62 @@ fn add_list_show_edit_and_rm() {
 fn refusals_name_the_fix_and_write_nothing() {
     let r = Register::new("refusals");
     r.ok(&["account", "add", "claude-felix", "--engine", "claude-code"]);
-
-    let fault = r.refused(&["account", "add", "x", "--engine", "gemini"], 2);
-    assert!(
-        fault.contains("claude-code") && fault.contains("dsh"),
-        "{fault}"
-    );
-    let fault = r.refused(
-        &["account", "edit", "claude-felix", "--engine", "gemini"],
-        2,
-    );
-    assert!(fault.contains("possible values"), "{fault}");
-
-    let fault = r.refused(&["account", "add", "claude-felix", "--engine", "codex"], 1);
-    assert!(
-        fault.contains("stablehand account edit claude-felix"),
-        "{fault}"
-    );
-
-    let fault = r.refused(
-        &[
-            "account",
-            "add",
-            "c2",
-            "--engine",
-            "codex",
-            "--expires",
-            "2027-02-30",
-        ],
-        1,
-    );
-    assert!(fault.contains("YYYY-MM-DD"), "{fault}");
-
-    // Every fault at once, each with its fix.
-    let fault = r.refused(
-        &[
-            "account",
-            "add",
-            "two words",
-            "--engine",
-            "grok",
-            "--machine",
-            "mini",
-            "--expires",
-            "2027-01-31",
-            "--sessions",
-            "0",
-        ],
-        1,
-    );
-    for part in ["not one word", "--sessions 0", "no --expires"] {
-        assert!(fault.contains(part), "{part}: {fault}");
+    // Each case: its arguments split at `|`, its exit code, and the parts of
+    // its message; the second-to-last names every fault at once.
+    let cases: &[(&str, i32, &[&str])] = &[
+        ("account|add|x|--engine|gemini", 2, &["claude-code", "dsh"]),
+        (
+            "account|edit|claude-felix|--engine|gemini",
+            2,
+            &["possible values"],
+        ),
+        (
+            "account|add|claude-felix|--engine|codex",
+            1,
+            &["stablehand account edit claude-felix"],
+        ),
+        (
+            "account|add|c2|--engine|codex|--expires|2027-02-30",
+            1,
+            &["YYYY-MM-DD"],
+        ),
+        (
+            "account|add|g|--engine|grok|--home|/h",
+            1,
+            &["needs --machine"],
+        ),
+        (
+            "account|add|g|--engine|grok|--machine| ",
+            1,
+            &["--machine is empty"],
+        ),
+        (
+            "account|edit|claude-felix|--machine|mini|--home|",
+            1,
+            &["--home is empty"],
+        ),
+        (
+            "account|edit|nobody|--sessions|1",
+            1,
+            &["stablehand account add nobody"],
+        ),
+        ("off|nobody|--reason|x", 1, &["no account `nobody`"]),
+        ("on|nobody", 1, &["no account `nobody`"]),
+        ("off|claude-felix|--reason| ", 1, &["say why"]),
+        ("account|add|y", 2, &["--engine"]),
+        (
+            "account|add|two words|--engine|grok|--machine|mini|--expires|2027-01-31|--sessions|0",
+            1,
+            &["not one word", "--sessions 0", "no --expires"],
+        ),
+    ];
+    for (args, code, parts) in cases {
+        let args: Vec<&str> = args.split('|').collect();
+        let fault = r.refused(&args, *code);
+        for part in *parts {
+            assert!(fault.contains(part), "{args:?}: {part}: {fault}");
+        }
     }
-    let fault = r.refused(
-        &["account", "add", "g", "--engine", "grok", "--home", "/h"],
-        1,
-    );
-    assert!(fault.contains("needs --machine"), "{fault}");
-    let fault = r.refused(
-        &["account", "add", "g", "--engine", "grok", "--machine", " "],
-        1,
-    );
-    assert!(fault.contains("--machine is empty"), "{fault}");
-    let fault = r.refused(
-        &[
-            "account",
-            "edit",
-            "claude-felix",
-            "--machine",
-            "mini",
-            "--home",
-            "",
-        ],
-        1,
-    );
-    assert!(fault.contains("--home is empty"), "{fault}");
-    let fault = r.refused(&["account", "edit", "nobody", "--sessions", "1"], 1);
-    assert!(fault.contains("stablehand account add nobody"), "{fault}");
-    r.refused(&["off", "nobody", "--reason", "x"], 1);
-    r.refused(&["on", "nobody"], 1);
-    let fault = r.refused(&["off", "claude-felix", "--reason", " "], 1);
-    assert!(fault.contains("say why"), "{fault}");
-    let fault = r.refused(&["account", "add", "y"], 2);
-    assert!(fault.contains("--engine"), "{fault}");
 }
 
 #[test]
