@@ -52,6 +52,28 @@ fn bearer(account: &Account) -> Result<String, String> {
         .ok_or_else(|| fix("no claudeAiOauth.accessToken in it".into()))
 }
 
+/// The windows of what Claude Code gives its status line command on stdin:
+/// each of its `rate_limits` (`five_hour`, `seven_day`) with a
+/// `used_percentage`, resetting at its `resets_at` (seconds since the Unix
+/// epoch). None where it gives none, as before a session's first answer.
+pub fn statusline(stdin: &[u8]) -> Vec<Window> {
+    let given: serde_json::Value = serde_json::from_slice(stdin).unwrap_or_default();
+    given["rate_limits"]
+        .as_object()
+        .into_iter()
+        .flatten()
+        .filter_map(|(name, w)| {
+            Some(Window {
+                name: name.clone(),
+                group: None,
+                used_percent: w["used_percentage"].as_f64()?,
+                resets_at: w["resets_at"].as_u64(),
+                minutes: minutes(name),
+            })
+        })
+        .collect()
+}
+
 /// How long a window of this name is, in minutes, where its name says.
 fn minutes(name: &str) -> Option<u64> {
     if name.starts_with("five_hour") {

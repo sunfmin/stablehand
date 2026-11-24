@@ -5,7 +5,7 @@
 use crate::account::{Account, Engine};
 use crate::books::Window;
 
-mod claude_code;
+pub mod claude_code;
 mod kimi;
 
 /// A reader: an account's windows now, or why its engine gave none. It
