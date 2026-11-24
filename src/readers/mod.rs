@@ -8,6 +8,7 @@ use crate::books::Window;
 mod agy;
 mod chatgpt;
 pub mod claude_code;
+mod grok;
 mod kimi;
 
 /// A reader: an account's windows now, or why its engine gave none. It
@@ -20,6 +21,7 @@ const READERS: &[(Engine, Read)] = &[
     (Engine::Codex, chatgpt::codex),
     (Engine::Pi, chatgpt::pi),
     (Engine::Kimi, kimi::read),
+    (Engine::Grok, grok::read),
     (Engine::Agy, agy::read),
 ];
 

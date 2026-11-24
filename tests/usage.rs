@@ -362,9 +362,9 @@ fn read_without_a_name_reads_every_account_and_one_with_no_reader_is_said() {
     b.ok(&[
         "account",
         "add",
-        "grok-1",
+        "dsh-1",
         "--engine",
-        "grok",
+        "dsh",
         "--machine",
         "mini",
     ]);
@@ -380,12 +380,12 @@ fn read_without_a_name_reads_every_account_and_one_with_no_reader_is_said() {
             )
         })
         .collect();
-    assert_eq!(outcomes, [("claude-mini", "read"), ("grok-1", "no_reader")]);
+    assert_eq!(outcomes, [("claude-mini", "read"), ("dsh-1", "no_reader")]);
     let status = b.ok(&["status"]);
-    let grok = &status["accounts"][1];
+    let dsh = &status["accounts"][1];
     assert_eq!(
-        (&grok["name"], &grok["windows"], &grok["tried_at"]),
-        (&json!("grok-1"), &json!([]), &Value::Null)
+        (&dsh["name"], &dsh["windows"], &dsh["tried_at"]),
+        (&json!("dsh-1"), &json!([]), &Value::Null)
     );
     assert_eq!(status["accounts"].as_array().unwrap().len(), 2);
 }
@@ -847,6 +847,131 @@ fn a_chatgpt_read_refused_leaves_the_last_windows_stale_and_is_not_retried_in_th
         assert!(read["error"].as_str().unwrap().contains(said), "{read}");
     }
     assert_eq!(b.engines_log(), asked);
+}
+
+/// A grok login in `file`, its bearer `key`, expiring `expires_at`, as grok
+/// leaves `auth.json`.
+fn grok_login(file: &Path, key: &str, expires_at: u64) {
+    let entry =
+        json!({ "key": key, "expires_at": rfc3339(expires_at), "refresh_token": "stand-in" });
+    std::fs::write(file, json!({ "https://auth.x.ai::b1": entry }).to_string()).unwrap();
+}
+
+#[test]
+fn grok_s_credits_are_booked_its_weekly_window_and_one_per_product() {
+    const GROK_TOKEN: &str = "eyJ0eX-standin-grok";
+    let b = Books::new("grok");
+    let home = b.root.join("grok-home");
+    std::fs::create_dir_all(&home).unwrap();
+    let auth = home.join("auth.json");
+    grok_login(&auth, GROK_TOKEN, now() + 3 * 3600);
+    std::fs::write(home.join("version.json"), r#"{"version":"1.0.92"}"#).unwrap();
+    let engine = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/engines/fake-engine");
+    std::os::unix::fs::symlink(engine, b.root.join("bin/grok")).unwrap();
+    let file = |name: &str| b.root.join(name).display().to_string();
+    b.set("FAKE_ARGV_LOG", &file("argv.log"));
+    let resets = rfc3339(now() + 86_400);
+    let body = json!({ "config": {
+        "currentPeriod": { "type": "USAGE_PERIOD_TYPE_WEEKLY", "start": rfc3339(now() - 6 * 86_400), "end": resets },
+        "creditUsagePercent": 85.0,
+        "productUsage": [{ "product": "Api", "usagePercent": 81.0 }, { "product": "GrokBuild", "usagePercent": 4.0 }],
+    }});
+    std::fs::write(file("grok.json"), body.to_string()).unwrap();
+    b.set("FAKE_CURL_BODY", &file("grok.json"));
+    let h = home.display().to_string();
+    let add = ["account", "add", "grok-mini", "--engine", "grok"];
+    b.ok(&[&add[..], &["--machine", "mini", "--home", &h]].concat());
+
+    let read = b.read(&["grok-mini"]);
+    assert_eq!(read["outcome"], "read", "{read}");
+    assert_eq!(read["windows"].as_array().unwrap().len(), 3, "{read}");
+    let build = &read["windows"][2];
+    assert_eq!(
+        (
+            &build["name"],
+            &build["group"],
+            &build["used_percent"],
+            &build["resets_at"]
+        ),
+        (
+            &json!("weekly"),
+            &json!("GrokBuild"),
+            &json!(4.0),
+            &json!(resets)
+        )
+    );
+    let log = b.log();
+    let (args, config) = log.split_once('\n').unwrap();
+    assert!(
+        args.ends_with("https://cli-chat-proxy.grok.com/v1/billing?format=credits"),
+        "{args}"
+    );
+    assert!(!args.contains(GROK_TOKEN), "{args}");
+    assert!(
+        config.contains(&format!("Authorization: Bearer {GROK_TOKEN}\"")),
+        "{config}"
+    );
+    assert!(
+        config.contains("x-grok-client-version: 1.0.92\""),
+        "{config}"
+    );
+    // Six days in, 85% runs to 99%: steady. GrokBuild, 4%, would be spare
+    // were a share of the credits paced on its own.
+    let status = b.status("grok-mini");
+    assert_eq!(
+        (&status["engine"], &status["pace"]),
+        (&json!("grok"), &json!("steady"))
+    );
+
+    // A refused bearer is a failed try: the windows kept, stale; not asked
+    // again within the hour.
+    b.set("FAKE_CURL_FAULT", "unauthorized");
+    let read = b.read(&["grok-mini", "--now"]);
+    let error = read["error"].as_str().unwrap();
+    assert!(
+        error.contains("HTTP 401: Invalid or expired credentials")
+            && error.contains("stablehand account login grok-mini"),
+        "{error}"
+    );
+    assert!(!error.contains(GROK_TOKEN), "{error}");
+    assert_eq!(read["windows"][0]["stale"], true);
+    assert_eq!(b.read(&["grok-mini"])["outcome"], "waits");
+    assert_eq!(b.log().matches("v1/billing").count(), 2);
+
+    // A login expiring within the minute is grok's to refresh, in the
+    // account's home; one it leaves so is a failed try that asks nothing.
+    b.set("FAKE_CURL_FAULT", "");
+    grok_login(&auth, GROK_TOKEN, now() + 30);
+    let read = b.read(&["grok-mini", "--now"]);
+    let error = read["error"].as_str().unwrap();
+    assert!(
+        error.contains("has expired and `grok models` did not refresh it"),
+        "{error}"
+    );
+    let argv = std::fs::read_to_string(file("argv.log")).unwrap();
+    assert_eq!(argv, format!("grok models GROK_HOME={h}\n"));
+    assert_eq!(b.log().matches("v1/billing").count(), 2);
+    // One grok renews is read with its new bearer.
+    grok_login(
+        &b.root.join("renewed.json"),
+        "eyJ0eX-renewed",
+        now() + 3 * 3600,
+    );
+    b.set("FAKE_ENGINE_LOGIN", &file("renewed.json"));
+    assert_eq!(b.read(&["grok-mini", "--now"])["outcome"], "read");
+    assert!(
+        b.log()
+            .ends_with("Bearer eyJ0eX-renewed\"\nheader = \"x-grok-client-version: 1.0.92\"\n")
+    );
+
+    // A portable grok account is told to bind.
+    b.ok(&["account", "add", "grok-felix", "--engine", "grok"]);
+    let read = b.read(&["grok-felix"]);
+    let error = read["error"].as_str().unwrap();
+    assert!(
+        error.contains("stablehand account edit grok-felix --machine"),
+        "{error}"
+    );
 }
 
 impl Books {
