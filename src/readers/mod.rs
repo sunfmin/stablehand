@@ -5,7 +5,7 @@
 use crate::account::{Account, Engine};
 use crate::books::Window;
 
-mod claude_code;
+pub mod claude_code;
 
 /// A reader: an account's windows now, or why its engine gave none. It
 /// never puts a token in what it answers.

@@ -120,6 +120,14 @@ says = '''mytokens is only read: nothing in it is changed or removed.'''
 source = "README.md:83"
 check = ["test"]
 
+# tests/statusline.rs then_hands_the_same_stdin_to_the_person_s_own_line
+[[promise]]
+name = "statusline-then-byte-for-byte"
+says = '''With
+  `--then <cmd>`, `sh -c <cmd>` gets the same stdin byte for byte'''
+source = "README.md:166"
+check = ["test"]
+
 # sesame keeps a portable account's token (`account login`, `account show`):
 # the calls stablehand makes, each case a run of calls in a store of its own
 # (tests/contract/sesame-steps). stablehand reads their exit codes; of
