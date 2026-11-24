@@ -10,17 +10,15 @@ pub enum Code {
     NoAccount,
     /// `account add` of a name already kept: change it with `account edit`, or `account rm` it first.
     NameTaken,
-    /// An account's terms as given are not ones it can have: a date that is no day, `--expires` on a bound login, `--home` on a portable one, an empty `--reason`.
+    /// An account's terms as given are not ones it can have: a date that is no day, `--expires` or `--token-command` on a bound login, `--home` on a portable one, an empty `--reason` or `--token-command`.
     BadTerms,
-    /// `credential` of an account no session may start on here: off, not logged in, with no home, bound to another machine, or of an engine with no token variable. Exit 2.
+    /// `credential` of an account no session may start on here: off, not logged in (its token command answers no token, its home holds no login file), with no home, bound to another machine, or of an engine with no token variable. Exit 2.
     NoSession,
-    /// `account login` asked for what this account's login cannot do: `--token` on a bound login, no token command without `--token`, another machine, no home.
-    LoginRefused,
     /// `limit` given a `--resets-at` that is no RFC 3339 time or is past, or an empty `--window`.
     BadLimit,
     /// `account import` found entries it cannot import, and imported none of them.
     ImportRefused,
-    /// Something stablehand reads or runs failed (the register, sesame, mytokens, an engine's login): the text says what, and how to fix it.
+    /// Something stablehand reads or runs failed (the register, mytokens, an engine's reader): the text says what, and how to fix it.
     Fault,
 }
 

@@ -1,14 +1,15 @@
 //! dsh's reader end to end: `read` and `status` of a DeepSeek account, a
 //! balance and no window, run through the binary against the stand-ins of
-//! curl (tests/contract/fake-curl-dsh), sesame and dsh's login, first on PATH.
+//! curl (tests/contract/fake-curl-dsh) and dsh, first on PATH; a portable
+//! grant is the first line of a file its token command prints.
 use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-/// The grant dsh keeps in a bound login's home, and the token sesame hands
-/// over for a portable one: stand-ins.
+/// The grant dsh keeps in a bound login's home, and the one a portable
+/// account's token command prints: stand-ins.
 const GRANT: &str = "dsh-standin-grant";
-const SESAME_TOKEN: &str = "dsh-standin-portable";
+const PORTABLE_TOKEN: &str = "dsh-standin-portable";
 
 struct Dsh {
     root: PathBuf,
@@ -26,7 +27,6 @@ impl Dsh {
         let tests = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests");
         for (to, name) in [
             ("contract/fake-curl-dsh", "curl"),
-            ("contract/fake-sesame", "sesame"),
             ("engines/fake-engine", "dsh"),
         ] {
             std::os::unix::fs::symlink(tests.join(to), bin.join(name)).unwrap();
@@ -41,12 +41,7 @@ impl Dsh {
             ),
         )
         .unwrap();
-        let sesame = root.join("sesame/fake");
-        for kept in ["providers", "tokens"] {
-            std::fs::create_dir_all(sesame.join(kept)).unwrap();
-        }
-        std::fs::write(sesame.join("providers/stablehand-deepseek-p"), "").unwrap();
-        std::fs::write(sesame.join("tokens/stablehand-deepseek-p"), SESAME_TOKEN).unwrap();
+        std::fs::write(root.join("portable-token"), PORTABLE_TOKEN).unwrap();
         let at = |p: &str| root.join(p).display().to_string();
         let env = vec![
             ("PATH".into(), format!("{}:/usr/bin:/bin", bin.display())),
@@ -55,7 +50,6 @@ impl Dsh {
             ("STABLEHAND_MACHINE".into(), "mini".into()),
             ("FAKE_CURL_LOG".into(), at("curl.log")),
             ("FAKE_ARGV_LOG".into(), at("argv.log")),
-            ("SESAME_CONFIG_DIR".into(), at("sesame")),
         ];
         Dsh { root, env }
     }
@@ -213,7 +207,11 @@ fn a_refused_grant_is_not_asked_again_until_a_login() {
     assert_eq!(read["outcome"], "refused", "{read}");
     let error = read["error"].as_str().unwrap();
     assert!(
-        error.contains("invalid token") && error.contains("stablehand account login deepseek"),
+        error.contains("invalid token")
+            && error.contains(&format!(
+                "`DSH_HOME={} dsh tui` on mini",
+                d.root.join("dsh-home").display()
+            )),
         "{error}"
     );
     assert!(!error.contains(GRANT), "{error}");
@@ -234,8 +232,11 @@ fn a_refused_grant_is_not_asked_again_until_a_login() {
         (&json!(true), &read["error"])
     );
 
-    // A login lifts it: the next read asks again.
-    d.ok(&["account", "login", "deepseek"]);
+    // A login lifts it: dsh's login file written after the refusal (not in
+    // its second), and the next read asks again. Nothing of it is booked.
+    std::thread::sleep(std::time::Duration::from_millis(1100));
+    let file = d.root.join("dsh-home/.credentials.yaml");
+    std::fs::write(&file, std::fs::read(&file).unwrap()).unwrap();
     assert_eq!(d.status("deepseek")["refused"], false);
     let read = d.read(&["deepseek", "--now"]);
     assert_eq!(read["outcome"], "read", "{read}");
@@ -243,16 +244,31 @@ fn a_refused_grant_is_not_asked_again_until_a_login() {
 }
 
 #[test]
-fn a_portable_login_is_read_with_sesame_s_token_and_a_bound_one_without_its_grant_fails() {
-    let d = Dsh::new("portable");
-    d.ok(&["account", "add", "deepseek-p", "--engine", "dsh"]);
+fn a_portable_login_is_read_with_its_command_s_token_and_a_bound_one_without_its_grant_fails() {
+    let mut d = Dsh::new("portable");
+    let cmd = format!("cat {}", d.root.join("portable-token").display());
+    let add = ["account", "add", "deepseek-p", "--engine", "dsh"];
+    d.ok(&[&add[..], &["--token-command", &cmd]].concat());
     assert_eq!(d.read(&["deepseek-p"])["outcome"], "read");
     assert!(
         d.log()
-            .contains(&format!("header = \"x-dsh-auth-token: {SESAME_TOKEN}\"")),
+            .contains(&format!("header = \"x-dsh-auth-token: {PORTABLE_TOKEN}\"")),
         "{}",
         d.log()
     );
+
+    // A portable grant refused is held until its token command is given
+    // again: the person has kept a new one where it reads.
+    d.set("FAKE_CURL_FAULT", "refused");
+    assert_eq!(d.read(&["deepseek-p", "--now"])["outcome"], "refused");
+    d.set("FAKE_CURL_FAULT", "");
+    assert_eq!(d.read(&["deepseek-p", "--now"])["outcome"], "refused");
+    let asked = d.asks();
+    d.ok(&["account", "edit", "deepseek-p", "--token-command", &cmd]);
+    assert_eq!(d.status("deepseek-p")["refused"], false);
+    assert_eq!(d.read(&["deepseek-p", "--now"])["outcome"], "read");
+    assert_eq!(d.asks(), asked + 1);
+    let asked = d.asks();
 
     // A bound login whose home holds no grant: failed, naming the fix, asking nothing.
     let nowhere = d.root.join("nowhere").display().to_string();
@@ -271,8 +287,11 @@ fn a_portable_login_is_read_with_sesame_s_token_and_a_bound_one_without_its_gran
     assert_eq!(read["outcome"], "failed", "{read}");
     let error = read["error"].as_str().unwrap();
     assert!(
-        error.contains(".credentials.yaml") && error.contains("stablehand account login deepseek"),
+        error.contains(".credentials.yaml")
+            && error.contains(&format!(
+                "log it in with `DSH_HOME={nowhere} dsh tui` on mini"
+            )),
         "{error}"
     );
-    assert_eq!(d.asks(), 1);
+    assert_eq!(d.asks(), asked);
 }

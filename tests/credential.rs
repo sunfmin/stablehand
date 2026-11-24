@@ -1,6 +1,6 @@
 //! `credential`: an account's login as a session's caller is handed it (a
 //! token, or the login files to link), through the binary, against the
-//! stand-in of sesame.
+//! stand-in of mytokens its token command reads.
 mod support;
 
 use serde_json::json;
@@ -9,28 +9,12 @@ use support::Register;
 /// A token a shell would end a quote in or expand: one value all the same.
 const TOKEN: &str = "sk-ant-it's$HOME`x`";
 
-/// Every file under `dir` whose bytes hold `secret`.
-fn holding(dir: &std::path::Path, secret: &str) -> Vec<String> {
-    let mut found = Vec::new();
-    for entry in std::fs::read_dir(dir).unwrap() {
-        let path = entry.unwrap().path();
-        if path.is_dir() {
-            found.extend(holding(&path, secret));
-        } else if let Ok(bytes) = std::fs::read(&path)
-            && bytes.windows(secret.len()).any(|w| w == secret.as_bytes())
-        {
-            found.push(path.display().to_string());
-        }
-    }
-    found
-}
-
 #[test]
-fn a_portable_account_starts_with_its_token_from_sesame() {
+fn a_portable_account_starts_with_its_token_from_its_command() {
     let r = Register::new("credential-portable");
-    r.ok(&["account", "add", "claude-felix", "--engine", "claude-code"]);
-    let login = ["account", "login", "claude-felix", "--token"];
-    assert_eq!(r.run_with(&login, &[], &format!("{TOKEN}\n")).code, 0);
+    let cmd = r.kept_token("agent-account-claude-felix", TOKEN);
+    let add = ["account", "add", "claude-felix", "--engine", "claude-code"];
+    r.ok(&[&add[..], &["--token-command", &cmd]].concat());
 
     let (code, out) = r.raw(&["credential", "claude-felix"], &[], "");
     assert_eq!(code, 0, "{out}");
@@ -55,16 +39,17 @@ fn a_portable_account_starts_with_its_token_from_sesame() {
         json!({"name": "claude-felix", "login": "portable", "env": {"CLAUDE_CODE_OAUTH_TOKEN": TOKEN}})
     );
 
-    // Read from sesame's stdout: on no command line, in no file but sesame's.
+    // Read from its command's stdout: on no command line, in no file but
+    // the person's own secret store.
     let argv = r.argv();
     assert!(!argv.contains(TOKEN), "{argv}");
-    assert_eq!(
-        argv.lines().last(),
-        Some("sesame token stablehand-claude-felix --json")
+    assert_eq!(argv.lines().last(), Some(cmd.as_str()));
+    let held = r.holding(TOKEN);
+    assert_eq!(held.len(), 1, "{held:?}");
+    assert!(
+        held[0].contains("/mytokens/agent-account-claude-felix/"),
+        "{held:?}"
     );
-    let root = r.dir.parent().unwrap();
-    let sesame = root.join("sesame/fake/tokens/stablehand-claude-felix");
-    assert_eq!(holding(root, TOKEN), [sesame.display().to_string()]);
 }
 
 #[test]
@@ -82,7 +67,8 @@ fn a_bound_account_answers_its_login_files_not_its_home() {
         "--home",
         &home,
     ]);
-    r.ok(&["account", "login", "chatgpt"]);
+    std::fs::create_dir_all(&home).unwrap();
+    std::fs::write(format!("{home}/auth.json"), "{}").unwrap();
     let files = json!([{"path": format!("{home}/auth.json"), "as": "auth.json"}]);
     let want = json!({"name": "chatgpt", "login": "bound", "files": files});
     // No `export` lines: the session's home is its caller's, so there is no
@@ -145,8 +131,8 @@ fn an_account_no_session_may_start_on_is_refused_with_its_fix() {
     for name in ["claude-off", "claude-none"] {
         r.ok(&["account", "add", name, "--engine", "claude-code"]);
     }
-    let login = ["account", "login", "claude-off", "--token"];
-    assert_eq!(r.run_with(&login, &[], "sk-ant-x\n").code, 0);
+    let cmd = r.kept_token("agent-account-claude-off", "sk-ant-x");
+    r.ok(&["account", "edit", "claude-off", "--token-command", &cmd]);
     r.ok(&["off", "claude-off", "--reason", "card declined"]);
     r.ok(&["account", "add", "kimi-1", "--engine", "kimi"]);
     let home = r.path("homes/codex-1");
@@ -182,21 +168,26 @@ fn an_account_no_session_may_start_on_is_refused_with_its_fix() {
         "--home",
         &fresh,
     ]);
-    r.ok(&["account", "login", "codex-1"]);
+    std::fs::create_dir_all(&home).unwrap();
+    std::fs::write(format!("{home}/auth.json"), "{}").unwrap();
     let none: &[(&str, &str)] = &[];
     // Each case: the account, its environment, a part of its refusal.
     type Case<'a> = (&'a str, &'a [(&'a str, &'a str)], &'a str);
     let cases: &[Case] = &[
         ("claude-off", none, "card declined"),
         ("claude-off", none, "stablehand on claude-off"),
-        ("claude-none", none, "stablehand account login claude-none"),
+        (
+            "claude-none",
+            none,
+            "stablehand account edit claude-none --token-command",
+        ),
         ("kimi-1", none, "--machine <machine> --home <dir>"),
         (
             "codex-new",
             none,
             "stablehand account edit codex-new --home",
         ),
-        ("codex-fresh", none, "stablehand account login codex-fresh"),
+        ("codex-fresh", none, "codex login` on mini"),
         (
             "codex-1",
             &[("STABLEHAND_MACHINE", "box")],
@@ -212,12 +203,4 @@ fn an_account_no_session_may_start_on_is_refused_with_its_fix() {
     // Not an account of the register: a fault of the caller's, exit 1.
     let fault = r.refused(&["credential", "nobody"], 1);
     assert!(fault.contains("stablehand account list"), "{fault}");
-    // A failure to ask sesame is no refusal of the account: exit 1.
-    let fault = r.refused_with(
-        &["credential", "claude-none"],
-        &[("PATH", "/usr/bin:/bin")],
-        "",
-        1,
-    );
-    assert!(fault.contains("brew install sunfmin/tap/sesame"), "{fault}");
 }

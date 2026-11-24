@@ -4,7 +4,8 @@
 //! **balance** per wallet (`biz_data.normal_wallets[]`, `bonus_wallets[]`),
 //! no window. dsh drops its grant on HTTP 401 or code 40003, so this
 //! reader reports either as a refused credential, not asked again until
-//! `stablehand account login`.
+//! it logs in again (its login file written after it, or a portable
+//! account's `account edit --token-command`).
 use crate::account::Account;
 use crate::books::{Balance, What};
 use crate::{curl, login};
@@ -34,21 +35,18 @@ pub fn read(account: &Account) -> What {
         curl::get(SUMMARY, &headers)
     });
     match asked {
-        Ok((status, body)) => balances(status, &body, &account.name),
+        Ok((status, body)) => balances(status, &body, &login::login_line(account)),
         Err(why) => What::Failed(why),
     }
 }
 
-/// The account's grant: a portable login's from sesame (as `stablehand
-/// account login --token` keeps it), a bound one's from dsh's credential
+/// The account's grant: a portable login's from its token command
+/// ([`login::token`]), a bound one's from dsh's credential
 /// store in its home, `<DSH_HOME>/.credentials.yaml` (`~/.dsh` where it
 /// names none).
 fn grant(account: &Account) -> Result<String, String> {
-    let name = &account.name;
     if account.machine.is_none() {
-        return login::token(account)?.ok_or_else(|| {
-            format!("sesame keeps no token for `{name}`: log it in with `stablehand account login {name} --token`")
-        });
+        return login::token(account);
     }
     let home = match &account.home {
         Some(home) => PathBuf::from(home),
@@ -57,9 +55,9 @@ fn grant(account: &Account) -> Result<String, String> {
     let file = home.join(".credentials.yaml");
     let fix = |why: &str| {
         format!(
-            "{}: {why}: log it in on {} with `stablehand account login {name}`",
+            "{}: {why}: log it in with {}",
             file.display(),
-            account.machine.as_deref().unwrap_or_default()
+            login::login_line(account)
         )
     };
     let text = std::fs::read_to_string(&file).map_err(|e| fix(&e.to_string()))?;
@@ -82,12 +80,12 @@ fn grant_in(text: &str) -> Option<String> {
 
 /// The balances of the endpoint's answer, `status` and `body`, or why it
 /// gave none, with the fix: refused where it refused the grant.
-fn balances(status: u16, body: &str, name: &str) -> What {
+fn balances(status: u16, body: &str, relog: &str) -> What {
     let answer: serde_json::Value = serde_json::from_str(body).unwrap_or_default();
     let said = answer["msg"].as_str().unwrap_or("no message");
     if status == 401 || answer["code"] == 40003 {
         return What::Refused(format!(
-            "{SUMMARY} refused the login (HTTP {status}, code {}: {said}); dsh drops it too: log in again with `stablehand account login {name}`",
+            "{SUMMARY} refused the login (HTTP {status}, code {}: {said}); dsh drops it too: log in again with {relog}",
             answer["code"]
         ));
     }
@@ -165,11 +163,12 @@ mod tests {
     #[test]
     fn a_refused_login_is_refused_and_other_faults_fail() {
         let refused = r#"{"code":40003,"msg":"Authorization Failed (invalid token)","data":null}"#;
-        let What::Refused(why) = balances(200, refused, "deepseek") else {
+        let What::Refused(why) = balances(200, refused, "`DSH_HOME=/h dsh tui` on mini") else {
             panic!("40003 is a refusal")
         };
         assert!(
-            why.contains("invalid token") && why.contains("stablehand account login deepseek"),
+            why.contains("invalid token")
+                && why.contains("log in again with `DSH_HOME=/h dsh tui` on mini"),
             "{why}"
         );
         assert!(matches!(balances(401, "", "d"), What::Refused(_)));

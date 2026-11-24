@@ -11,6 +11,18 @@ use crate::store::Store;
 use crate::time::utc;
 use serde_json::{Value, json};
 
+/// `a`'s books, with its login as an entry ([`What::LoggedIn`]) where its
+/// home's login file says when it logged in: a credential refused before it
+/// was written is asked again. It goes first, so one written in the second
+/// of a refusal is not after it (the books keep the order of a second).
+fn book_of(store: &Store, a: &Account) -> Result<Vec<Entry>, String> {
+    let login = login::login_file(a)?.map(|f| Entry {
+        at: f.written,
+        what: What::LoggedIn,
+    });
+    Ok(login.into_iter().chain(store.entries(&a.name)?).collect())
+}
+
 /// Reads each of `accounts` whose engine has a reader and books what came
 /// of it; one read in the last hour waits unless `now_anyway`.
 pub fn read(
@@ -21,7 +33,7 @@ pub fn read(
 ) -> Result<Value, String> {
     let mut reads = Vec::new();
     for a in accounts {
-        let before = books::status(&store.entries(&a.name)?, now);
+        let before = books::status(&book_of(store, a)?, now);
         let (outcome, said) = match (readers::of(a.engine), books::read_next(&before, now)) {
             (None, _) => ("no_reader", None),
             // A refused credential is not asked again, `--now` or not.
@@ -40,7 +52,7 @@ pub fn read(
                 outcome
             }
         };
-        let after = books::status(&store.entries(&a.name)?, now);
+        let after = books::status(&book_of(store, a)?, now);
         let mut shown = json!({ "account": a.name, "outcome": outcome, "windows": windows(&after), "balances": balances(&after) });
         if let Some((key, value)) = said {
             shown[key] = json!(value);
@@ -97,7 +109,7 @@ pub fn limit(
 pub fn status(store: &Store, accounts: &[Account], now: u64) -> Result<Value, String> {
     let mut shown = Vec::new();
     for a in accounts {
-        let s = books::status(&store.entries(&a.name)?, now);
+        let s = books::status(&book_of(store, a)?, now);
         shown.push(json!({
             "name": a.name,
             "engine": a.engine,
@@ -176,7 +188,7 @@ pub fn pick(
             )),
             _ if !login::logged_in(a)? => Some((
                 Reason::NotLoggedIn,
-                format!("not logged in: `stablehand account login {}`", a.name),
+                format!("not logged in: log it in with {}", login::login_line(a)),
             )),
             _ => None,
         };
@@ -189,7 +201,7 @@ pub fn pick(
                 .filter(|(n, _)| n == &a.name)
                 .map(|(_, c)| c)
                 .sum(),
-            status: books::status(&store.entries(&a.name)?, now),
+            status: books::status(&book_of(store, a)?, now),
         });
     }
     Ok(match pick::pick(&candidates, stop_percent, now) {

@@ -6,9 +6,10 @@
 //! window not yet used. An API-key login exits 2: it has no account quota.
 use crate::account::Account;
 use crate::books::Window;
+use crate::bounded::{self, Ran};
 use crate::{login, time};
 use std::process::{Command, Stdio};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 /// How long agy may take to answer. A home it is not signed in to waits 60
 /// seconds for a browser sign-in, then says so: this is past that.
@@ -37,42 +38,24 @@ pub fn read(account: &Account) -> Result<Vec<Window>, String> {
         .stdin(Stdio::null())
         .stderr(Stdio::null());
     let (code, stdout) = run(agy, TIME_LIMIT)?;
-    windows(code, &stdout, name)
+    windows(code, &stdout, &login::login_line(account))
 }
 
 /// Runs `cmd` for its exit code and stdout, killed past `limit`.
-fn run(mut cmd: Command, limit: Duration) -> Result<(Option<i32>, String), String> {
-    let mut child = cmd
-        .stdout(Stdio::piped())
-        .spawn()
-        .map_err(|e| format!("agy: {e}: install agy, or put it on PATH"))?;
-    let mut out = child.stdout.take().expect("stdout is piped");
-    let reader = std::thread::spawn(move || std::io::read_to_string(&mut out));
-    let started = Instant::now();
-    let status = loop {
-        if let Some(status) = child.try_wait().map_err(|e| format!("agy: {e}"))? {
-            break status;
-        }
-        if started.elapsed() >= limit {
-            let _ = child.kill();
-            let _ = child.wait();
-            return Err(format!(
-                "agy answered nothing in {}s: try again later (`stablehand read --now`)",
-                limit.as_secs()
-            ));
-        }
-        std::thread::sleep(Duration::from_millis(50));
-    };
-    let text = reader
-        .join()
-        .map_err(|_| "agy: its stdout was not read".to_string())?
-        .map_err(|e| format!("agy: {e}"))?;
-    Ok((status.code(), text))
+fn run(cmd: Command, limit: Duration) -> Result<(Option<i32>, String), String> {
+    match bounded::run(cmd, limit) {
+        Err(e) => Err(format!("agy: {e}: install agy, or put it on PATH")),
+        Ok(Ran::RanPast) => Err(format!(
+            "agy answered nothing in {}s: try again later (`stablehand read --now`)",
+            limit.as_secs()
+        )),
+        Ok(Ran::Exited(code, out)) => Ok((code, String::from_utf8_lossy(&out).into_owned())),
+    }
 }
 
 /// The windows of agy's answer, its exit `code` and `stdout`, or why it
 /// gave none, with the fix.
-fn windows(code: Option<i32>, stdout: &str, name: &str) -> Result<Vec<Window>, String> {
+fn windows(code: Option<i32>, stdout: &str, relog: &str) -> Result<Vec<Window>, String> {
     let answer: serde_json::Value = serde_json::from_str(stdout).unwrap_or_default();
     if code != Some(0) || answer["status"] != "SUCCESS" {
         let said = answer["error"].as_str().unwrap_or("no error said");
@@ -81,7 +64,7 @@ fn windows(code: Option<i32>, stdout: &str, name: &str) -> Result<Vec<Window>, S
                 "an API-key login has no account quota: log it in with its Google account".into()
             }
             _ if said.contains("authentication") => {
-                format!("its home is not signed in: `stablehand account login {name}`")
+                format!("its home is not signed in: log it in with {relog}")
             }
             _ => "try again later (`stablehand read --now`)".to_string(),
         };
@@ -176,10 +159,10 @@ mod tests {
     #[test]
     fn a_failure_names_its_fix() {
         let out = r#"{"status":"ERROR","error":"authentication failed or timed out"}"#;
-        let fault = windows(Some(1), out, "agy-felix").unwrap_err();
+        let fault = windows(Some(1), out, "`HOME=/h agy` on mini").unwrap_err();
         assert!(
             fault.contains("exited 1: authentication failed or timed out")
-                && fault.contains("stablehand account login agy-felix"),
+                && fault.contains("log it in with `HOME=/h agy` on mini"),
             "{fault}"
         );
         let fault = windows(Some(2), "", "a").unwrap_err();
@@ -194,21 +177,5 @@ mod tests {
         assert!(fault.contains("answered no window"), "{fault}");
         let fault = windows(Some(0), r#"{"status":"ERROR"}"#, "a").unwrap_err();
         assert!(fault.contains("try again later"), "{fault}");
-    }
-
-    #[test]
-    fn a_program_past_its_time_limit_is_killed() {
-        let mut sleep = Command::new("sleep");
-        sleep.arg("30");
-        let started = Instant::now();
-        let fault = run(sleep, Duration::from_millis(200)).unwrap_err();
-        assert!(fault.contains("answered nothing in 0s"), "{fault}");
-        assert!(started.elapsed() < Duration::from_secs(5));
-        let mut echo = Command::new("sh");
-        echo.args(["-c", "echo hi; exit 3"]);
-        assert_eq!(
-            run(echo, TIME_LIMIT).unwrap(),
-            (Some(3), "hi\n".to_string())
-        );
     }
 }

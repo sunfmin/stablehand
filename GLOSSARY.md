@@ -8,13 +8,16 @@
   spend one account (pi and codex on one ChatGPT account), and one engine may
   have several accounts.
 - **Register**: the accounts stablehand keeps, with their terms (sessions
-  at once, a portable token's expiry) and whether each is off; one SQLite
-  file, holding no token.
-- **Login**: how an account's credential is held. **Portable**: a long-lived
-  token (`claude setup-token`) kept in sesame, usable on any machine that
-  reaches sesame's store. **Bound**: the engine's own login files in a home of
-  that account's on one machine (`auth.json`, `~/.gemini`), refreshed by the
-  engine itself; a home holding its engine's login file is logged in.
+  at once, a portable token's expiry and token command) and whether each is
+  off; one SQLite file, holding no token.
+- **Login**: how an account's credential is held; stablehand runs none and
+  keeps no secret. **Portable**: a long-lived token (`claude setup-token`)
+  kept where the person keeps secrets (the Keychain, 1Password, mytokens);
+  stablehand keeps only its **token command**, which prints it, and the
+  account is logged in when that answers. **Bound**: the engine's own login
+  files in a home of that account's on one machine (`auth.json`,
+  `~/.gemini`), written and refreshed by the engine itself; a home holding
+  its engine's login file is logged in, as of when it was written.
 - **Window**: one span of an account's use as its engine names it
   (`five_hour`, `seven_day`, `primary`, `gemini-5h`): how much is used, 0 to
   100, and when it resets. An account may have several **groups** of windows

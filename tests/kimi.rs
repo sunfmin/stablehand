@@ -1,13 +1,13 @@
 //! kimi's reader through the binary: `read` and `status` against the stand-in
-//! of curl answering api.kimi.com/coding/v1/usages (tests/contract/kimi-fake-curl)
-//! and sesame's.
+//! of curl answering api.kimi.com/coding/v1/usages (tests/contract/kimi-fake-curl);
+//! a portable token from its token command.
 mod support;
 use serde_json::{Value, json};
 use support::Register;
 
-/// The bound login's access token, and the portable one sesame keeps: stand-ins.
+/// The bound login's access token, and the portable one its command prints: stand-ins.
 const LOGIN_TOKEN: &str = "kimi-standin-login";
-const SESAME_TOKEN: &str = "sk-kimi-standin-portable";
+const PORTABLE_TOKEN: &str = "sk-kimi-standin-portable";
 
 struct Kimi {
     r: Register,
@@ -130,7 +130,9 @@ fn a_refused_kimi_token_keeps_the_last_windows_stale_and_waits_the_hour() {
     assert!(
         error.contains("HTTP 401: The API Key appears to be invalid")
             && error.contains(&format!("KIMI_CODE_HOME={home} on mini"))
-            && error.contains("stablehand account login kimi-mini`"),
+            && error.contains(&format!(
+                "log in again with `KIMI_CODE_HOME={home} kimi login` on mini"
+            )),
         "{error}"
     );
     assert!(!error.contains(LOGIN_TOKEN), "{error}");
@@ -160,34 +162,29 @@ fn a_refused_kimi_token_keeps_the_last_windows_stale_and_waits_the_hour() {
             .as_str()
             .unwrap()
             .contains("credentials/kimi-code.json")
-            && error
-                .as_str()
-                .unwrap()
-                .contains("log it in on mini with `stablehand account login kimi-mini`"),
+            && error.as_str().unwrap().contains(&format!(
+                "log it in with `KIMI_CODE_HOME={home} kimi login` on mini"
+            )),
         "{error}"
     );
 }
 
 #[test]
-fn a_portable_kimi_login_is_read_with_sesame_s_token() {
+fn a_portable_kimi_login_is_read_with_its_command_s_token() {
     let k = Kimi::new("kimi-portable");
     k.run(&["account", "add", "kimi-1", "--engine", "kimi"], "");
     let error = k.read(&["kimi-1"], "")["error"].clone();
     assert!(
-        error.as_str().unwrap().contains("sesame keeps no token")
+        error.as_str().unwrap().contains("not logged in")
             && error
                 .as_str()
                 .unwrap()
-                .contains("stablehand account login kimi-1 --token"),
+                .contains("stablehand account edit kimi-1 --token-command"),
         "{error}"
     );
-    let login = k.r.run_with(
-        &["account", "login", "kimi-1", "--token"],
-        &[],
-        SESAME_TOKEN,
-    );
-    assert_eq!(login.code, 0, "{}", login.json);
+    let cmd = k.r.kept_token("agent-account-kimi-1", PORTABLE_TOKEN);
+    k.run(&["account", "edit", "kimi-1", "--token-command", &cmd], "");
     let read = k.read(&["kimi-1", "--now"], "");
     assert_eq!(read["outcome"], "read", "{read}");
-    assert!(k.log().contains(&format!("Bearer {SESAME_TOKEN}")));
+    assert!(k.log().contains(&format!("Bearer {PORTABLE_TOKEN}")));
 }

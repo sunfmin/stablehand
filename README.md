@@ -12,7 +12,8 @@ in [GLOSSARY.md](GLOSSARY.md).
 ## The account register
 
 ```sh
-stablehand account add claude-felix --engine claude-code --expires 2027-01-31   # a portable login
+stablehand account add claude-felix --engine claude-code --expires 2027-01-31 \
+  --token-command 'mytokens get agent-account-claude-felix --field CLAUDE_CODE_OAUTH_TOKEN'   # a portable login
 stablehand account add chatgpt --engine codex --machine mini --home /Users/agent/chatgpt   # a bound one
 stablehand account list                     # every account, by name
 stablehand account show chatgpt
@@ -25,56 +26,58 @@ stablehand on claude-felix
 - An **account** has its engine (`claude-code`, `codex`, `pi`, `kimi`,
   `agy`, `grok`, `dsh`), its sessions at once (`--sessions`; a claude-code
   account without it runs 2, as Guild's ledger has it, the others no
-  limit), and its login: **portable** without `--machine`, with when its
-  token expires (`--expires YYYY-MM-DD`), or **bound** to the machine
-  `--machine` names, in the home `--home` names.
-- `account edit` changes only the terms given; `--unset machine|sessions|expires|home` clears one.
+  limit), and its login: **portable** without `--machine`, with the command
+  that prints its token (`--token-command`) and when the token expires
+  (`--expires YYYY-MM-DD`), or **bound** to the machine `--machine` names, in
+  the home `--home` names.
+- `account edit` changes only the terms given; `--unset machine|sessions|expires|home|token-command` clears one.
 - `off` keeps who (`$USER`), when (UTC) and why; `on` forgets them.
 - Each command prints one JSON object on stdout: `{"account": {…}}`, `{"accounts": […]}`, or for `rm` `{"name": …, "removed": true|false}`.
-- A refusal prints `{"error": "…"}`, naming each fault with its fix, exits non-zero and writes nothing: an unknown engine, a name already kept, a date that is no calendar day, `--expires` on a bound login, `--home` on a portable one.
+- A refusal prints `{"error": "…"}`, naming each fault with its fix, exits non-zero and writes nothing: an unknown engine, a name already kept, a date that is no calendar day, `--expires` or `--token-command` on a bound login, `--home` on a portable one.
 - `account rm` of an account not kept answers `"removed": false`, so running it twice leaves the same register.
-- The register is one SQLite file, `$STABLEHAND_CONFIG_DIR/stablehand.db` (default `~/.config/stablehand`); the file is 0600, the directory 0700. It keeps no token: a portable login's token is sesame's.
+- The register is one SQLite file, `$STABLEHAND_CONFIG_DIR/stablehand.db` (default `~/.config/stablehand`); the file is 0600, the directory 0700. It keeps no token: of a portable login it keeps the command that prints it.
 
 ## Logging in
 
 ```sh
-stablehand account login claude-felix --expires 2027-11-24   # claude setup-token, then the token into sesame
-stablehand account login kimi-1 --token < token.txt         # a token you have, pasted or piped
-stablehand account login chatgpt                             # on mini: codex login, CODEX_HOME=/Users/agent/chatgpt
+CODEX_HOME=/Users/agent/chatgpt codex login     # on mini: the engine logs itself in
+stablehand account edit claude-felix --token-command 'security find-generic-password -s claude-felix -w'
 stablehand account show claude-felix   # {"account": {…}, "logged_in": true, "days_left": 365, "warning": null}
 ```
 
-- A login is the engine's own (docs/adr/0001): stablehand runs the engine's
-  command, never a vendor's OAuth client.
-- **Portable**: `account login` runs the engine's token command (claude-code:
-  `claude setup-token`; with `--token`, none), then sesame asks for the token
-  with hidden input, or reads it from stdin when stdin is no terminal, and
-  keeps it as the provider `stablehand-<name>`, made with `sesame provider add`
-  the first time, its host the engine's usage host. The token is on no
-  child's command line, in no log and not in the register; sesame gets it on stdin.
-- **Bound**: on the account's machine (`$STABLEHAND_MACHINE`, else
-  `hostname -s`), `account login` runs the engine's login with the variable
-  it reads for its home set to `--home` (`CLAUDE_CONFIG_DIR`, `CODEX_HOME`,
-  `KIMI_CODE_HOME`, `GROK_HOME`, `HOME` for agy, `PI_CODING_AGENT_DIR`,
-  `DSH_HOME`), and records when, as `logged_in_at`. Changing the account's
-  engine, machine or home forgets it. It is refused on another machine.
-- A bound account is logged in too, with no `account login`, when its home
-  on this machine holds its engine's login file (claude-code
+- stablehand runs no login and keeps no secret (docs/adr/0001). A person
+  logs an engine in by the engine itself; stablehand finds the login where
+  it is.
+- **Bound**: logged in when its home, on its machine (`$STABLEHAND_MACHINE`,
+  else `hostname -s`), holds its engine's login file (claude-code
   `.credentials.json`, codex and pi `auth.json`, kimi
   `credentials/kimi-code.json`, grok `auth.json`, dsh `.credentials.yaml`,
-  agy `.gemini/antigravity-cli/antigravity-oauth-token` under its `HOME`): an engine logged in there before stablehand is
-  adopted as it is, nothing written in the home. `account login` is needed
-  only when it holds none.
-- `account show` says whether the account is logged in: a bound one as
-  recorded or by its login file, `login_file` naming the file and when it
-  was written (`{"path", "written_at"}`, null without one), a portable one
-  when sesame holds its token. For a token with
-  `--expires` it counts `days_left`, and from 30 days ahead its `warning`
+  agy `.gemini/antigravity-cli/antigravity-oauth-token` under its `HOME`),
+  as of when that file was written: an engine logged in there before
+  stablehand is adopted as it is, nothing written in the home. Its login
+  line is the engine's own with the variable it reads for its home set to
+  `--home` (`CLAUDE_CONFIG_DIR=<home> claude auth login`, `CODEX_HOME`,
+  `KIMI_CODE_HOME`, `GROK_HOME`, `HOME` for agy, `PI_CODING_AGENT_DIR`,
+  `DSH_HOME`).
+- **Portable**: logged in when its `--token-command` prints its token: the
+  first line of what `sh -c <cmd>` prints, run with no input, its stderr
+  dropped, stopped after 20s (`$STABLEHAND_TOKEN_COMMAND_SECS`) with all it
+  started. The token stays where the person keeps secrets: the Keychain
+  (`security find-generic-password -s <service> -w`), 1Password (`op read
+  op://<vault>/<item>/<field>`), mytokens (`mytokens get <entry> --field
+  <field>`); claude-code's is made by `claude setup-token`. stablehand runs
+  the command each time it needs the token and writes the token nowhere:
+  it is on no child's command line, in no log and not in the register.
+- A command that exits non-zero, prints no first line or runs past its
+  bound is refused naming the command, never what it printed.
+- Every refusal of an account not logged in names the line that logs it
+  in: its engine's login line, or the `account edit --token-command` that
+  names its token.
+- `account show` says whether the account is logged in, `login_file`
+  naming a bound one's file and when it was written (`{"path",
+  "written_at"}`, null without one). For a token with `--expires` it counts
+  `days_left`, and from 30 days ahead its `warning`
   says to make a new one.
-- A refused login exits 1 and writes nothing to the register: an engine with
-  no token command without `--token`, `--token` or `--expires` on a bound
-  login, a bound one with no `--home`, a token sesame refuses, an engine's
-  login that fails.
 
 ## Importing from mytokens
 
@@ -85,20 +88,20 @@ stablehand account import --from-mytokens
 
 - Each `agent-account-<name>` entry of this host's mytokens (`mytokens list`)
   becomes the account `<name>`: its engine from `HARNESS`, bound to `MACHINE`
-  where the entry has one, else portable, with its `CLAUDE_CODE_OAUTH_TOKEN`
-  kept in sesame as `account login` keeps one. The token goes from
-  `mytokens get` to sesame's stdin, on no command line and in no answer.
+  where the entry has one, else portable, its `--token-command` the
+  `mytokens get <service> --account <label> --field CLAUDE_CODE_OAUTH_TOKEN`
+  that prints its token: the token stays in mytokens, and the import reads
+  none.
 - A bound account is given the home factorium's workers use,
   `~/.agent-accounts/<name>` (`$HOME` of this host); nothing is made there.
 - An account already kept is left as it is, answered `"already kept"`, so
   running it again adds nothing; but a kept bound account with no home is
-  given that one, answered `"given its home"`, so a run fills in what an
-  earlier import left out. mytokens is only read: nothing in it is changed or removed.
-- `--dry-run` answers `"would add"` (or `"would give its home"`) for each, reading no token and writing nothing.
+  given that one, answered `"given its home"`, and a kept portable one with
+  no token command its entry's, `"given its token command"`, so a run fills
+  in what an earlier import left out. mytokens is only read: nothing in it is changed or removed.
+- `--dry-run` answers `"would add"` (or `"would give its home"`, `"would give its token command"`) for each, writing nothing.
 - It refuses, importing nothing, an entry whose `HARNESS` is no engine, one
-  with both a token and a `MACHINE`, and a field mytokens does not answer. A
-  token sesame refuses stops it there: the accounts before it are added, and
-  running it again adds the rest.
+  with both a token and a `MACHINE`, and a field mytokens does not answer.
 
 ## An account's credential
 
@@ -112,10 +115,10 @@ stablehand credential chatgpt               # on mini: {"name": "chatgpt", "logi
   hands a session's caller an account's login and nothing else of it: the
   session's home is the caller's own (factorium builds a kept home per
   engine), so a person's settings, hooks or skills in the account's home
-  never reach a worker. It only reads; `account login` logs in.
+  never reach a worker. It only reads, and logs nothing in.
 - **Portable**: the engine's token variable (claude-code:
-  `CLAUDE_CODE_OAUTH_TOKEN`), its value the token sesame keeps (`sesame token
-  stablehand-<name> --json`): one `export NAME='value'` line, the value one
+  `CLAUDE_CODE_OAUTH_TOKEN`), its value the token its `--token-command`
+  prints: one `export NAME='value'` line, the value one
   shell word whatever it holds, or with `--json` one object.
 - **Bound**, on its machine only: the engine's login file in the account's
   home (`path`) and where the engine's home holds it (`as`), one JSON object
@@ -126,10 +129,10 @@ stablehand credential chatgpt               # on mini: {"name": "chatgpt", "logi
 - Nothing is written: the token goes to stdout alone, no file is left behind,
   and no child is given it on its command line.
 - It refuses, exit 2 with `{"error": "…"}` naming the fix, an account that is
-  off, not logged in, or bound to another machine; also one bound with no
+  off, not logged in (its token command refused as above, its home holding
+  no login file), or bound to another machine; also one bound with no
   home, and a portable one of an engine with no token variable (any but
-  claude-code: bind it). Exit 1 is an account not kept, or sesame that could
-  not be asked.
+  claude-code: bind it). Exit 1 is an account not kept.
 - factorium can hand a portable answer to a session unchanged (factorium SPEC
   §1.7; its test "an account secret stays off the command line"): its stdout
   is the very text factorium writes to a secrets file (`export NAME='value'`
@@ -154,8 +157,7 @@ stablehand status                   # each account's windows and their pace
 - A reader's failure is booked as a failed try and said (`"outcome": "failed"`, with its `"error"` and fix), and still exits 0; the account's last windows are kept, marked `"stale": true`.
 - An engine with no reader yet answers `"outcome": "no_reader"` and books nothing.
 - claude-code's reader asks `api.anthropic.com/api/oauth/usage` with the
-  account's bearer: a portable login's from sesame, as `account login`
-  keeps it, a bound one's from `<home>/.credentials.json` (its
+  account's bearer: a portable login's from its `--token-command`, a bound one's from `<home>/.credentials.json` (its
   `CLAUDE_CONFIG_DIR`; `~/.claude` without `--home`).
 - The bearer goes to curl on its stdin, never on a command line.
 - Its windows are `five_hour`, `seven_day` and any other the endpoint
@@ -171,13 +173,15 @@ stablehand status                   # each account's windows and their pace
 - dsh's reader asks DeepSeek Platform
   (`platform.deepseek.com/api/v0/users/get_user_summary`) with the grant
   dsh keeps, `<home>/.credentials.yaml` (its `DSH_HOME`; `~/.dsh` without
-  `--home`), or a portable login's from sesame, on curl's stdin with dsh's
+  `--home`), or a portable login's from its `--token-command`, on curl's stdin with dsh's
   `x-client-*` headers. A DeepSeek account is pay-as-you-go: its reading is
   a **balance** per wallet (`normal`, `bonus`), no window, and `status`
   shows it under `balances`.
 - A credential the engine refused (dsh: HTTP 401 or code 40003; dsh drops
   its grant then) is booked `"outcome": "refused"` and never asked again,
-  `--now` or not, until `account login`; `status` says `"refused": true`.
+  `--now` or not, until it logs in again: its home's login file written
+  after it, or a portable one given its `--token-command` again (`account
+  edit`); `status` says `"refused": true`.
 - codex's and pi's readers read a ChatGPT account's `primary` and
   `secondary` windows, where it answers them (used %, length, resets at), through the engine's own
   bound login, on its machine: codex's app server (`codex app-server`,
@@ -188,8 +192,8 @@ stablehand status                   # each account's windows and their pace
   stdin. A codex and a pi login of one ChatGPT account (one
   `ChatGPT-Account-Id`) are one account: register it once.
 - kimi's reader asks `api.kimi.com/coding/v1/usages`, as Kimi Code's own
-  `/usage` does, with the account's bearer: a portable login's from sesame
-  (`account login --token`), a bound one's from
+  `/usage` does, with the account's bearer: a portable login's from its
+  `--token-command`, a bound one's from
   `<home>/credentials/kimi-code.json` (its `KIMI_CODE_HOME`; `~/.kimi-code`
   without `--home`). Its windows are `limit_5h` and any other it lists
   (`limit_7d`, `limit_month_total`, `limit_month_code`). A bound login's

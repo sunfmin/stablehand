@@ -1,8 +1,8 @@
 //! `account import --from-mytokens`: this host's `agent-account-*` entries of
-//! mytokens moved into the register (docs/adr/0001 "One home"), each token
-//! into sesame as `account login` keeps one. mytokens is only read.
+//! mytokens moved into the register (docs/adr/0001 "One home"), a portable
+//! one's token left in mytokens, read by the `mytokens get` the account
+//! names as its token command. mytokens is only read, and no token is.
 use crate::account::{self, Account, Change, Engine, Terms};
-use crate::login;
 use crate::refusal::{Code, Refused};
 use crate::store::Store;
 use serde_json::{Value, json};
@@ -47,6 +47,22 @@ impl Entry<'_> {
     fn get<'f>(&'f self, field: &'f str) -> [&'f str; 7] {
         let (s, l) = (self.service, self.label);
         ["mytokens", "get", s, "--account", l, "--field", field]
+    }
+
+    /// The token command of its account: `mytokens get` of its token, each
+    /// word quoted for `sh -c`, where it has a token.
+    fn token_command(&self) -> Option<String> {
+        let quoted = self.get(TOKEN).map(|w| {
+            let plain = w
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || "-_./@:".contains(c));
+            if plain {
+                w.to_string()
+            } else {
+                format!("'{}'", w.replace('\'', "'\\''"))
+            }
+        });
+        self.has(TOKEN).then(|| quoted.join(" "))
     }
 }
 
@@ -117,6 +133,7 @@ fn planned(e: &Entry) -> Result<Account, Vec<String>> {
         terms: Terms {
             machine,
             home,
+            token_command: e.token_command(),
             ..Terms::default()
         },
         ..Change::default()
@@ -132,22 +149,48 @@ enum Step {
     Add,
     /// A kept bound account with no home is given the workers' one.
     GiveHome,
+    /// A kept portable account naming no token command is given its entry's.
+    GiveTokenCommand,
 }
 
-/// Imports every entry not kept yet, and gives a kept bound account with no
-/// home the workers' (`dry_run`: says what it would): all its entries' faults
-/// refuse it before anything is written.
+/// What `kept` lacks of what an import gives an account of entry `e`: a
+/// bound one the workers' home, a portable one its token command.
+fn step(kept: &Account, e: &Entry) -> Result<(Account, Step), String> {
+    if kept.machine.is_some() && kept.home.is_none() {
+        let home = Some(workers_home(&kept.name)?);
+        return Ok((
+            Account {
+                home,
+                ..kept.clone()
+            },
+            Step::GiveHome,
+        ));
+    }
+    match e.token_command() {
+        Some(cmd) if kept.machine.is_none() && kept.token_command.is_none() => Ok((
+            Account {
+                token_command: Some(cmd),
+                ..kept.clone()
+            },
+            Step::GiveTokenCommand,
+        )),
+        _ => Ok((kept.clone(), Step::Kept)),
+    }
+}
+
+/// Imports every entry not kept yet, and gives a kept account what an
+/// import gives it where it lacks it ([`step`]; `dry_run`: says what it
+/// would): all its entries' faults refuse it before anything is written.
 pub fn import(store: &Store, dry_run: bool) -> Result<Value, Refused> {
     let list = read(&["mytokens", "list"])?;
     let mut faults = Vec::new();
     let mut plan = Vec::new();
     for e in entries(&list) {
         match store.get(e.name())? {
-            Some(kept) if kept.machine.is_some() && kept.home.is_none() => {
-                let home = Some(workers_home(&kept.name)?);
-                plan.push((e, Account { home, ..kept }, Step::GiveHome));
+            Some(kept) => {
+                let (a, step) = step(&kept, &e)?;
+                plan.push((e, a, step));
             }
-            Some(kept) => plan.push((e, kept, Step::Kept)),
             None => match planned(&e) {
                 Ok(a) => plan.push((e, a, Step::Add)),
                 Err(f) => faults.extend(f),
@@ -162,25 +205,21 @@ pub fn import(store: &Store, dry_run: bool) -> Result<Value, Refused> {
     }
     let mut done = Vec::new();
     for (e, a, step) in &plan {
-        let token = *step == Step::Add && e.has(TOKEN);
         let result = match (step, dry_run) {
             (Step::Kept, _) => "already kept",
             (Step::GiveHome, true) => "would give its home",
+            (Step::GiveTokenCommand, true) => "would give its token command",
             (Step::Add, true) => "would add",
             (_, false) => {
-                if token {
-                    let again =
-                        "; then `stablehand account import --from-mytokens` again imports the rest";
-                    login::keep_token_from(a, &e.get(TOKEN)).map_err(|f| format!("{f}{again}"))?;
-                }
                 store.put(a)?;
                 match step {
                     Step::Add => "added",
-                    _ => "given its home",
+                    Step::GiveHome => "given its home",
+                    _ => "given its token command",
                 }
             }
         };
-        done.push(json!({ "from": e.id, "result": result, "token": token, "account": a.shown() }));
+        done.push(json!({ "from": e.id, "result": result, "account": a.shown() }));
     }
     Ok(json!({ "dry_run": dry_run, "accounts": done }))
 }

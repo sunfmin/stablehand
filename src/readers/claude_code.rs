@@ -21,15 +21,12 @@ pub fn read(account: &Account) -> Result<Vec<Window>, String> {
     windows(status, &body, &account.name)
 }
 
-/// The account's access token: a portable login's from sesame (as
-/// `stablehand account login` keeps it), a bound one's from the login in its
+/// The account's access token: a portable login's from its token command
+/// ([`login::token`]), a bound one's from the login in its
 /// home, Claude Code's `CLAUDE_CONFIG_DIR` (`~/.claude` where it names none).
 fn bearer(account: &Account) -> Result<String, String> {
-    let name = &account.name;
     if account.machine.is_none() {
-        return login::token(account)?.ok_or_else(|| {
-            format!("sesame keeps no token for `{name}`: log it in with `stablehand account login {name}`")
-        });
+        return login::token(account);
     }
     let home = match &account.home {
         Some(home) => PathBuf::from(home),
@@ -38,9 +35,9 @@ fn bearer(account: &Account) -> Result<String, String> {
     let file = home.join(".credentials.json");
     let fix = |why: String| {
         format!(
-            "{}: {why}: log it in on {} with `stablehand account login {name}`",
+            "{}: {why}: log it in with {}",
             file.display(),
-            account.machine.as_deref().unwrap_or_default()
+            login::login_line(account)
         )
     };
     let text = std::fs::read_to_string(&file).map_err(|e| fix(e.to_string()))?;

@@ -65,7 +65,7 @@ pub fn codex(account: &Account) -> Result<Vec<Window>, String> {
     let _ = child.wait();
     written.map_err(|e| format!("codex app-server: {e}"))?;
     match answer {
-        Ok(Some(answer)) => codex_windows(&answer, &account.name),
+        Ok(Some(answer)) => codex_windows(&answer, &relog(account)),
         Ok(None) => Err(
             "codex app-server ended with no answer to account/rateLimits/read: run `codex app-server` to see why".into(),
         ),
@@ -125,8 +125,9 @@ fn home(account: &Account) -> Result<Option<PathBuf>, String> {
     let name = &account.name;
     let Some(machine) = &account.machine else {
         return Err(format!(
-            "{}'s login is bound: bind account `{name}` with `stablehand account edit {name} --machine <machine> --home <dir>`, then `stablehand account login {name}` there",
-            account.engine.name()
+            "{}'s login is bound: bind account `{name}` with `stablehand account edit {name} --machine <machine> --home <dir>`, then log it in there with `{}`",
+            account.engine.name(),
+            account.engine.login().bound.join(" ")
         ));
     };
     let here = login::this_machine()?;
@@ -140,11 +141,7 @@ fn home(account: &Account) -> Result<Option<PathBuf>, String> {
 
 /// The fix of a login the engine did not take.
 fn relog(account: &Account) -> String {
-    format!(
-        "log it in on {} with `stablehand account login {}`",
-        account.machine.as_deref().unwrap_or_default(),
-        account.name
-    )
+    format!("log it in with {}", login::login_line(account))
 }
 
 /// The windows `primary` and `secondary` of `engine`'s `limits`, each keyed
@@ -182,11 +179,9 @@ fn found(
 
 /// The windows of the app server's answer to `account/rateLimits/read`:
 /// its `rateLimits`' `primary` and `secondary`, a `null` one not had.
-fn codex_windows(answer: &Value, name: &str) -> Result<Vec<Window>, String> {
+fn codex_windows(answer: &Value, relog: &str) -> Result<Vec<Window>, String> {
     if let Some(said) = answer["error"]["message"].as_str() {
-        return Err(format!(
-            "codex app-server: {said}: log it in with `stablehand account login {name}`"
-        ));
+        return Err(format!("codex app-server: {said}: {relog}"));
     }
     found(
         &answer["result"]["rateLimits"],
@@ -243,10 +238,9 @@ mod tests {
             [("primary", 42.0, Some(1_794_884_400), Some(300))]
         );
         let refused: Value = serde_json::from_str(r#"{"error":{"code":-32600,"message":"codex account authentication required to read rate limits"},"id":1}"#).unwrap();
-        let fault = codex_windows(&refused, "chatgpt").unwrap_err();
+        let fault = codex_windows(&refused, "log it in again").unwrap_err();
         assert!(
-            fault.contains("authentication required")
-                && fault.contains("stablehand account login chatgpt"),
+            fault.contains("authentication required") && fault.contains(": log it in again"),
             "{fault}"
         );
         let fault = codex_windows(&serde_json::json!({"id": 1, "result": {}}), "c").unwrap_err();

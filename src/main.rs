@@ -2,6 +2,7 @@
 //! usage windows (README.md, docs/adr/0001): the account register and the books.
 mod account;
 mod books;
+mod bounded;
 mod curl;
 mod import;
 mod login;
@@ -36,6 +37,8 @@ const LEARN: &str = "Learn";
 
 /// One home for agent engine accounts (Claude Code, Codex, pi, Kimi Code, agy, Grok, dsh): how each logs in, where it may run, and how much of its usage windows is left.
 ///
+/// stablehand runs no login and keeps no secret: a person logs an engine in by the engine itself, and stablehand finds the login where it is. A bound account is logged in when its home holds its engine's login file; a portable one when the command it names (`--token-command`) prints its token, the token kept where the person keeps secrets (the Keychain, 1Password, mytokens).
+///
 /// `stablehand credential <name>` hands a session's caller an account's login (a token, or the login files to link into the session's own home); `stablehand read` asks an account's engine for its windows and books the reading, `stablehand limit` books a session's report that it met the account's limit, `stablehand status` says what the books say now, each window's pace with it, and `stablehand pick --engine <engine>` which account one more session may start on.
 ///
 /// Start with `stablehand account list`. Run `stablehand <command> --help` before a command's first run.
@@ -45,7 +48,7 @@ const LEARN: &str = "Learn";
 /// - Every command but `credential` of a portable login prints one JSON object on stdout. A refusal is `{"error": "…", "code": "…"}`, each fault with the line that fixes it, exit 1, and nothing written; a command line stablehand cannot read is the same with exit {const:EXIT_USAGE}. `--help`, `help` and `--version` answer text.
 /// - `stablehand statusline` answers the status bar's line: it is Claude Code's status line command, not one to run by hand.
 /// - `stablehand credential <name>` of a portable login answers shell text, an `export` line (`--json`: one object); it refuses an account no session may start on with exit {const:EXIT_USAGE}.
-/// - The register and the books are one SQLite file, `$STABLEHAND_CONFIG_DIR/stablehand.db` (default `~/.config/stablehand`). It keeps no token: a portable login's token is sesame's.
+/// - The register and the books are one SQLite file, `$STABLEHAND_CONFIG_DIR/stablehand.db` (default `~/.config/stablehand`). It keeps no token: of a portable login it keeps the command that prints it.
 ///
 /// ## Refusals
 ///
@@ -66,9 +69,9 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Cmd {
-    /// An account's login, as a session's caller is handed it: a token, or the login files to link. It only reads; `stablehand account login` logs in.
+    /// An account's login, as a session's caller is handed it: a token, or the login files to link. It only reads, and logs nothing in.
     ///
-    /// The session's home is the caller's: it sets the engine's home variable to a home of its own and links the login into it, so nothing else of the account's home (a person's settings, hooks, skills) reaches the session. Portable: the engine's token variable (below), its value the token sesame keeps (`sesame token stablehand-<name> --json`). Bound: the engine's login file (below) in the account's `--home`, on its machine only (`$STABLEHAND_MACHINE`, else `hostname -s`).
+    /// The session's home is the caller's: it sets the engine's home variable to a home of its own and links the login into it, so nothing else of the account's home (a person's settings, hooks, skills) reaches the session. Portable: the engine's token variable (below), its value the first line the account's `--token-command` prints, run by `sh -c` with no input, its stderr dropped, stopped past {const:TOKEN_COMMAND_SECS}s (`$STABLEHAND_TOKEN_COMMAND_SECS`). Bound: the engine's login file (below) in the account's `--home`, on its machine only (`$STABLEHAND_MACHINE`, else `hostname -s`).
     ///
     /// ## What it answers
     ///
@@ -76,7 +79,7 @@ enum Cmd {
     ///
     /// ## What it refuses
     ///
-    /// Exit {const:EXIT_USAGE}, with the fix: an account off, not logged in, bound to another machine or with no home, and a portable one of an engine with no token variable. Exit 1: no such account, or sesame that could not be asked.
+    /// Exit {const:EXIT_USAGE}, with the fix: an account off, not logged in (its home holds no login file: the fix is its engine's login line, `CODEX_HOME=<home> codex login`; it names no token command, or its command exits non-zero, prints no first line or runs past the bound: the refusal names the command, never what it printed), bound to another machine or with no home, and a portable one of an engine with no token variable. Exit 1: no such account.
     ///
     /// ## Engines
     ///
@@ -126,7 +129,7 @@ enum Cmd {
 /// The commands that read and change the register and the books.
 #[derive(Subcommand)]
 enum Register {
-    /// Add, list, show, log in, change, import or remove an account.
+    /// Add, list, show, change, import or remove an account.
     #[command(next_help_heading = REGISTER, verbatim_doc_comment)]
     Account {
         #[command(subcommand)]
@@ -149,15 +152,15 @@ enum Register {
     On { name: String },
     /// Read an account's usage windows, or its balance, from its engine, and book the reading.
     ///
-    /// Without a name, every account. An account is read at most once an hour: one read or tried in the last hour waits, unless `--now`. A reader's failure is booked as a failed try and said; the account's last windows and balances are kept, marked stale. A credential the engine refused (dsh: HTTP 401 or code 40003) is never asked again, `--now` or not, until `stablehand account login`. A failed or refused read still exits 0.
+    /// Without a name, every account. An account is read at most once an hour: one read or tried in the last hour waits, unless `--now`. A reader's failure is booked as a failed try and said; the account's last windows and balances are kept, marked stale. A credential the engine refused (dsh: HTTP 401 or code 40003) is never asked again, `--now` or not, until the account logs in again: its home's login file written after it, or a portable one given its `--token-command` again (`stablehand account edit`). A failed or refused read still exits 0.
     ///
     /// ## What it answers
     ///
-    /// `{"reads": [{"account", "outcome", "windows", "balances", …}]}`, `outcome` one of `read`, `failed` (with `error`, the reason and its fix), `refused` (with `error`: the engine refused its credential, now or before, and nothing is asked until `stablehand account login`), `waits` (with `next_at`) or `no_reader` (its engine has no reader yet); each window and balance as `stablehand status` shows it.
+    /// `{"reads": [{"account", "outcome", "windows", "balances", …}]}`, `outcome` one of `read`, `failed` (with `error`, the reason and its fix), `refused` (with `error`: the engine refused its credential, now or before, and nothing is asked until it logs in again), `waits` (with `next_at`) or `no_reader` (its engine has no reader yet); each window and balance as `stablehand status` shows it.
     ///
     /// ## Engines
     ///
-    /// claude-code is read for its windows. dsh, pay-as-you-go, is read for its balance and has no window: `GET platform.deepseek.com/api/v0/users/get_user_summary` with the grant dsh keeps (`<home>/.credentials.yaml`, its `DSH_HOME`; `~/.dsh` without `--home`), or a portable login's from sesame.
+    /// claude-code is read for its windows. dsh, pay-as-you-go, is read for its balance and has no window: `GET platform.deepseek.com/api/v0/users/get_user_summary` with the grant dsh keeps (`<home>/.credentials.yaml`, its `DSH_HOME`; `~/.dsh` without `--home`), or a portable login's from its `--token-command`.
     ///
     /// ## What trips you up
     ///
@@ -197,7 +200,7 @@ enum Register {
     ///
     /// ## What it answers
     ///
-    /// `{"accounts": [{"name", "engine", "off", "pace", "windows", "balances", "limit", "read_at", "tried_at", "failed", "refused", "read_next"}]}`. `refused` is true when the last try's credential was refused and the account has not logged in since: it is read again only after `stablehand account login`, whatever `read_next` says. Each balance (a pay-as-you-go account's, dsh's; such an account has no window) is `{"wallet" ("normal" or "bonus"), "currency", "amount", "at", "stale" (a later try failed)}`. Each window is `{"name", "group" (null where the engine groups none), "used_percent" (null once it has reset since it was read), "resets_at", "source" ("read" or "limit"), "at" (when that was booked), "stale" (a later try failed, or it has reset since), "pace"}`.
+    /// `{"accounts": [{"name", "engine", "off", "pace", "windows", "balances", "limit", "read_at", "tried_at", "failed", "refused", "read_next"}]}`. `refused` is true when the last try's credential was refused and the account has not logged in since: it is read again only after it logs in again (its home's login file written since, or `stablehand account edit --token-command`), whatever `read_next` says. Each balance (a pay-as-you-go account's, dsh's; such an account has no window) is `{"wallet" ("normal" or "bonus"), "currency", "amount", "at", "stale" (a later try failed)}`. Each window is `{"name", "group" (null where the engine groups none), "used_percent" (null once it has reset since it was read), "resets_at", "source" ("read" or "limit"), "at" (when that was booked), "stale" (a later try failed, or it has reset since), "pace"}`.
     ///
     /// ## Pace
     ///
@@ -263,7 +266,15 @@ fn running(s: &str) -> Result<(String, u32), String> {
 enum AccountCmd {
     /// Add an account.
     ///
-    /// Answers `{"account": {"name", "engine", "login" ("portable" or "bound"), "machine", "sessions", "expires", "home", "off", "logged_in_at"}}`, a field it lacks null. Refuses, writing nothing, a name already kept, an unknown engine (exit {const:EXIT_USAGE}), a date that is no YYYY-MM-DD day, `--expires` with `--machine` (a bound login has no token to expire) and `--home` without `--machine`.
+    /// Answers `{"account": {"name", "engine", "login" ("portable" or "bound"), "machine", "sessions", "expires", "home", "off", "token_command"}}`, a field it lacks null. Refuses, writing nothing, a name already kept, an unknown engine (exit {const:EXIT_USAGE}), a date that is no YYYY-MM-DD day, `--expires` or `--token-command` with `--machine` (a bound login is its engine's files, no token) and `--home` without `--machine`.
+    ///
+    /// ## Logging in
+    ///
+    /// stablehand runs no login. A bound account is logged in by its engine itself, in its home, on its machine (below: `CODEX_HOME=<home> codex login`). A portable one names the command that prints its token, kept where the person keeps secrets: {const:TOKEN_COMMANDS}; claude-code's token is made by `claude setup-token`.
+    ///
+    /// ## Engines
+    ///
+    /// {const:ENGINES}
     #[command(verbatim_doc_comment)]
     Add {
         /// The account's name, one word (claude-felix).
@@ -282,35 +293,16 @@ enum AccountCmd {
     List,
     /// One account, and whether it is logged in.
     ///
-    /// Answers `{"account": {…}, "logged_in": true|false, "days_left": n|null, "warning": "…"|null}`: a bound login is logged in as `stablehand account login` recorded it (`logged_in_at`), or when its home on this machine holds its engine's login file (below), a portable one when sesame holds its token (`sesame token stablehand-<name>`); `days_left` counts to `--expires`, and `warning` says from 30 days ahead to make a new token; `login_file` is `{"path", "written_at"}`, the engine's login file in a bound account's home and when it was last written, or null where it holds none or the account is not bound to this machine. The file is only looked at, never written.
+    /// Answers `{"account": {…}, "logged_in": true|false, "days_left": n|null, "warning": "…"|null}`: a bound login is logged in when its home on this machine holds its engine's login file (below), logged in when that was written; a portable one when its `--token-command` prints a token (it is run, and the token shown nowhere); `days_left` counts to `--expires`, and `warning` says from 30 days ahead to make a new token; `login_file` is `{"path", "written_at"}`, the engine's login file in a bound account's home and when it was last written, or null where it holds none or the account is not bound to this machine. The file is only looked at, never written.
     ///
     /// ## Engines
     ///
     /// {const:ENGINES}
     #[command(verbatim_doc_comment)]
     Show { name: String },
-    /// Log an account in by its engine's own login.
-    ///
-    /// Portable: runs the engine's token command (below; with `--token`, none), then sesame asks for the token with hidden input, or reads it from stdin when stdin is no terminal, and keeps it as the provider `stablehand-<name>` (made with `sesame provider add` if missing). The token is on no command line, in no log and not in the register. Bound: on the account's machine (`$STABLEHAND_MACHINE`, else `hostname -s`), runs the engine's login (below) with the variable it reads for its home set to the account's `--home`, and records when. A bound account whose home already holds its engine's login file (below) is logged in without it (`stablehand account show`). Answers as `stablehand account show` does.
-    ///
-    /// Refuses, writing nothing, a bound login on another machine or with no home, `--token` or `--expires` on a bound login, and an engine with no token command without `--token`.
-    ///
-    /// ## Engines
-    ///
-    /// {const:ENGINES}
-    #[command(verbatim_doc_comment)]
-    Login {
-        name: String,
-        /// Paste the token instead of running the engine's token command.
-        #[arg(long, verbatim_doc_comment)]
-        token: bool,
-        /// When the new token expires, YYYY-MM-DD, kept as the account's --expires.
-        #[arg(long, verbatim_doc_comment)]
-        expires: Option<String>,
-    },
     /// Change an account's terms: only those given change.
     ///
-    /// Answers `{"account": {…}}`; refuses as `stablehand account add` does, judging the account as it would be.
+    /// Answers `{"account": {…}}`; refuses as `stablehand account add` does, judging the account as it would be. Giving `--token-command` is a new login: a credential its engine refused is asked again.
     #[command(verbatim_doc_comment)]
     Edit {
         name: String,
@@ -319,21 +311,21 @@ enum AccountCmd {
         engine: Option<Engine>,
         #[command(flatten)]
         terms: Terms,
-        /// Clear a term: machine (the login becomes portable), sessions (no limit), expires, home. Repeatable.
+        /// Clear a term: machine (the login becomes portable), sessions (no limit), expires, home, token-command. Repeatable.
         #[arg(long, value_enum, verbatim_doc_comment)]
         unset: Vec<Field>,
     },
     /// Move this host's `agent-account-*` entries of mytokens into stablehand.
     ///
-    /// Each entry `agent-account-<name>` (`mytokens list`) becomes the account `<name>`: its engine from its HARNESS, bound to its MACHINE if it has one, in the home factorium's workers use, `$HOME/.agent-accounts/<name>` (nothing is made there); its CLAUDE_CODE_OAUTH_TOKEN, if it has one, goes from `mytokens get` straight into sesame, as `stablehand account login` keeps a token. An account already kept is left as it is, but for a bound one with no home: it is given that home, so a run fills in what an earlier one left out. mytokens is only read: nothing in it is changed or removed.
+    /// Each entry `agent-account-<name>` (`mytokens list`) becomes the account `<name>`: its engine from its HARNESS, bound to its MACHINE if it has one, in the home factorium's workers use, `$HOME/.agent-accounts/<name>` (nothing is made there); an entry with a CLAUDE_CODE_OAUTH_TOKEN is portable, its `--token-command` the `mytokens get <service> --account <label> --field CLAUDE_CODE_OAUTH_TOKEN` that prints it: the token stays in mytokens, and the import reads none. An account already kept is left as it is, but for a bound one with no home, given that home, and a portable one with no token command, given its entry's: a run fills in what an earlier one left out. mytokens is only read: nothing in it is changed or removed.
     ///
-    /// Answers `{"dry_run": …, "accounts": [{"from": "agent-account-<name>/<label>", "result": "added"|"would add"|"given its home"|"would give its home"|"already kept", "token": true|false, "account": {…}}, …]}`, no token shown. Refuses, importing nothing, an entry whose HARNESS is no engine, one with both a token and a MACHINE, and a field mytokens does not answer; a token sesame refuses stops it there, and running it again imports the rest.
+    /// Answers `{"dry_run": …, "accounts": [{"from": "agent-account-<name>/<label>", "result": "added"|"would add"|"given its home"|"would give its home"|"given its token command"|"would give its token command"|"already kept", "account": {…}}, …]}`. Refuses, importing nothing, an entry whose HARNESS is no engine, one with both a token and a MACHINE, and a field mytokens does not answer.
     #[command(verbatim_doc_comment)]
     Import {
         /// Read the accounts from mytokens (the one source today).
         #[arg(long, required = true, verbatim_doc_comment)]
         from_mytokens: bool,
-        /// Say what it would import, reading no token and writing nothing.
+        /// Say what it would import, writing nothing.
         #[arg(long, verbatim_doc_comment)]
         dry_run: bool,
     },
@@ -344,7 +336,7 @@ enum AccountCmd {
     Rm { name: String },
 }
 
-/// Each engine's login, as `stablehand credential --help`, `stablehand account login --help` and `stablehand account show --help` list it.
+/// Each engine's login, as `stablehand credential --help`, `stablehand account add --help` and `stablehand account show --help` list it.
 fn engines_help() -> String {
     let lines = <Engine as clap::ValueEnum>::value_variants()
         .iter()
@@ -352,9 +344,9 @@ fn engines_help() -> String {
             let l = e.login();
             let token = l
                 .token
-                .map_or("none: --token".into(), |t| format!("`{}`", t.join(" ")));
+                .map_or("none made".into(), |t| format!("made by `{}`", t.join(" ")));
             format!(
-                "- {}: bound `{}`, {}; token {token}, in {}; login file `{}`",
+                "- {}: bound, logged in by `{}` with {} its home; portable token {token}, in {}; login file `{}`",
                 e.name(),
                 l.bound.join(" "),
                 l.home_var,
@@ -371,6 +363,8 @@ fn manual() -> Help {
         .table::<Code>("refusal")
         .constant("EXIT_USAGE", Code::Usage.exit())
         .constant("ENGINES", engines_help())
+        .constant("TOKEN_COMMANDS", login::TOKEN_COMMANDS)
+        .constant("TOKEN_COMMAND_SECS", login::TOKEN_COMMAND_SECS)
 }
 
 fn main() -> ExitCode {
@@ -506,33 +500,13 @@ fn run(cmd: Register) -> Result<Value, Refused> {
                 Ok(json!({ "accounts": shown }))
             }
             AccountCmd::Show { name } => with_status(&kept(&store, &name)?),
-            AccountCmd::Login {
-                name,
-                token,
-                expires,
-            } => {
-                let change = Change {
-                    terms: Terms {
-                        expires,
-                        ..Terms::default()
-                    },
-                    ..Change::default()
-                };
-                let a = account::apply(&kept(&store, &name)?, change).map_err(faults)?;
-                let at = now()?;
-                let a = login::login(&a, token, time::utc(at))?;
-                store.put(&a)?;
-                // A credential its engine refused is asked again from now.
-                let what = books::What::LoggedIn;
-                store.book(&a.name, &books::Entry { at, what })?;
-                with_status(&a)
-            }
             AccountCmd::Edit {
                 name,
                 engine,
                 terms,
                 unset,
             } => {
+                let given_command = terms.token_command.is_some();
                 let a = account::apply(
                     &kept(&store, &name)?,
                     Change {
@@ -543,6 +517,11 @@ fn run(cmd: Register) -> Result<Value, Refused> {
                 )
                 .map_err(faults)?;
                 store.put(&a)?;
+                if given_command {
+                    // A new login: a credential its engine refused is asked again.
+                    let what = books::What::LoggedIn;
+                    store.book(&a.name, &books::Entry { at: now()?, what })?;
+                }
                 Ok(shown(&a))
             }
             AccountCmd::Import { dry_run, .. } => import::import(&store, dry_run),

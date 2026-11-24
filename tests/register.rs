@@ -12,7 +12,7 @@ fn account(name: &str, engine: &str, sessions: Value) -> Value {
     json!({
         "name": name, "engine": engine, "login": "portable", "machine": null,
         "sessions": sessions, "expires": null, "home": null, "off": null,
-        "logged_in_at": null,
+        "token_command": null,
     })
 }
 
@@ -146,6 +146,16 @@ fn refusals_name_the_fix_and_write_nothing() {
             "account|edit|claude-felix|--machine|mini|--home|",
             1,
             &["--home is empty"],
+        ),
+        (
+            "account|edit|claude-felix|--machine|mini|--token-command|mytokens get x",
+            1,
+            &["no --token-command", "--unset token-command"],
+        ),
+        (
+            "account|edit|claude-felix|--token-command| ",
+            1,
+            &["--token-command is empty"],
         ),
         (
             "account|edit|nobody|--sessions|1",
@@ -305,7 +315,6 @@ fn each_refusal_carries_its_code_and_the_exit_it_decides() {
         ),
         (&["off", "a", "--reason", " "], "bad_terms", 1),
         (&["credential", "a"], "no_session", 2),
-        (&["account", "login", "a"], "login_refused", 1),
         (&["limit", "a", "--resets-at", now], "bad_limit", 1),
     ];
     for (args, code, exit) in cases {

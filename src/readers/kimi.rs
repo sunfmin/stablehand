@@ -35,21 +35,19 @@ fn home(account: &Account) -> PathBuf {
     }
 }
 
-/// The account's bearer: a portable login's from sesame (as `stablehand
-/// account login --token` keeps it), a bound one's from the login in its home,
+/// The account's bearer: a portable login's from its token command
+/// ([`login::token`]), a bound one's from the login in its home,
 /// `credentials/kimi-code.json` under Kimi Code's `KIMI_CODE_HOME`.
 fn bearer(account: &Account) -> Result<String, String> {
-    let name = &account.name;
-    let Some(machine) = account.machine.as_deref() else {
-        return login::token(account)?.ok_or_else(|| {
-            format!("sesame keeps no token for `{name}`: log it in with `stablehand account login {name} --token`")
-        });
-    };
+    if account.machine.is_none() {
+        return login::token(account);
+    }
     let file = home(account).join("credentials/kimi-code.json");
     let fix = |why: String| {
         format!(
-            "{}: {why}: log it in on {machine} with `stablehand account login {name}`",
-            file.display()
+            "{}: {why}: log it in with {}",
+            file.display(),
+            login::login_line(account)
         )
     };
     let text = std::fs::read_to_string(&file).map_err(|e| fix(e.to_string()))?;
@@ -92,13 +90,16 @@ fn windows(status: u16, body: &str, account: &Account) -> Result<Vec<Window>, St
             .unwrap_or("no error message");
         let fix = match (status, account.machine.as_deref()) {
             (401, Some(machine)) => format!(
-                "the login was refused or its token has expired (Kimi Code refreshes it only in a session): start a kimi session with KIMI_CODE_HOME={} on {machine}, or log in again with `stablehand account login {}`",
+                "the login was refused or its token has expired (Kimi Code refreshes it only in a session): start a kimi session with KIMI_CODE_HOME={} on {machine}, or log in again with {}",
                 home(account).display(),
-                account.name
+                login::login_line(account)
             ),
             (401, None) => format!(
-                "the token was refused or has expired: log in again with `stablehand account login {} --token`",
-                account.name
+                "the token was refused or has expired: make a new one and keep it where `{}` reads it",
+                account
+                    .token_command
+                    .as_deref()
+                    .unwrap_or("its --token-command")
             ),
             _ => "try again later (`stablehand read --now`)".to_string(),
         };
@@ -140,7 +141,7 @@ mod tests {
             expires: None,
             home: None,
             off: None,
-            logged_in_at: None,
+            token_command: Some("mytokens get kimi".into()),
         }
     }
 
@@ -173,7 +174,7 @@ mod tests {
         let bad = r#"{"error":{"message":"The API Key appears to be invalid or may have expired.","type":"invalid_authentication_error"}}"#;
         let fault = windows(401, bad, &account()).unwrap_err();
         assert!(
-            fault.contains("stablehand account login kimi-1 --token"),
+            fault.contains("make a new one and keep it where `mytokens get kimi` reads it"),
             "{fault}"
         );
         let fault = windows(502, "bad gateway", &account()).unwrap_err();
