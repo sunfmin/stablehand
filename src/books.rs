@@ -380,8 +380,9 @@ fn recent_rate(
 /// rate is the recent one where readings tell it; otherwise its use over
 /// the time it has been open, taken over at least a tenth of it. A window
 /// under [`TIGHT_FROM_PERCENT`] used, or read longer than [`REPORT_FRESH`]
-/// ago, runs on at no rate.
-fn at_reset(w: &WindowStatus, now: u64) -> Option<f64> {
+/// ago, runs on at no rate. `share`: how many times over that rate runs on
+/// (1: as it is).
+fn at_reset(w: &WindowStatus, now: u64, share: f64) -> Option<f64> {
     let (used, resets_at, minutes) = (w.used_percent?, w.resets_at?, w.minutes?);
     if resets_at <= now {
         return None;
@@ -396,7 +397,7 @@ fn at_reset(w: &WindowStatus, now: u64) -> Option<f64> {
     } else {
         used / (span - left).max(span / 10.0)
     };
-    Some(used + per_second * left)
+    Some(used + per_second * left * share)
 }
 
 /// The pace of one window at `now`: its use, run on at its present rate
@@ -406,7 +407,7 @@ fn window_pace(w: &WindowStatus, now: u64) -> Pace {
         return Pace::UsedUp;
     }
     let (Some(at_reset), Some(resets_at), Some(minutes)) =
-        (at_reset(w, now), w.resets_at, w.minutes)
+        (at_reset(w, now, 1.0), w.resets_at, w.minutes)
     else {
         return Pace::Steady;
     };
@@ -418,6 +419,17 @@ fn window_pace(w: &WindowStatus, now: u64) -> Pace {
     } else {
         Pace::Steady
     }
+}
+
+/// How much of window `w` is used at its reset were one more session to
+/// start on its account at `now`, `running` already on it, where that is 100
+/// or more: it runs out before it resets. The sessions running share its
+/// present rate ([`at_reset`]), so one more adds one share of it; with none
+/// running, the new one runs at the whole rate. None where it lasts, or its
+/// use, reset or length is not known.
+pub fn runs_out(w: &WindowStatus, running: u32, now: u64) -> Option<f64> {
+    let share = (f64::from(running) + 1.0) / f64::from(running.max(1));
+    at_reset(w, now, share).filter(|at| *at >= 100.0)
 }
 
 /// When the account of `status` may be read next: none when it may be now.

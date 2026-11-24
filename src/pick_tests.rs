@@ -1,0 +1,471 @@
+//! The pick's rules, as Guild's ledger tests hold them
+//! (`crates/ledger/tests/{quota,promises}.rs`), carried over to the
+//! accounts of one engine.
+use super::*;
+use crate::books::{Entry, What, Window, status};
+
+const NOW: u64 = 1_800_000_000;
+const MINUTE: u64 = 60;
+
+/// claude-code's windows, as its reader turns them out.
+fn window(name: &str, used: f64, resets_at: u64) -> Window {
+    let minutes = if name == "five_hour" {
+        300
+    } else {
+        7 * 24 * 60
+    };
+    Window {
+        name: name.into(),
+        group: None,
+        used_percent: used,
+        resets_at: Some(resets_at),
+        minutes: Some(minutes),
+    }
+}
+
+/// `windows`, each `(name, used, resets_at)`, read at `at`.
+fn said(at: u64, windows: &[(&str, f64, u64)]) -> Entry {
+    Entry {
+        at,
+        what: What::Read(
+            windows
+                .iter()
+                .map(|&(name, used, resets_at)| window(name, used, resets_at))
+                .collect(),
+        ),
+    }
+}
+
+/// A five-hour window read a minute ago, `used` percent used, resetting in
+/// `minutes`.
+fn five_hour(used: f64, minutes: u64) -> Vec<Entry> {
+    vec![said(
+        NOW - MINUTE,
+        &[("five_hour", used, NOW + minutes * MINUTE)],
+    )]
+}
+
+/// A week read three hours ago, `used` percent used, resetting in three
+/// days: too old to run on at any rate, so only its use counts.
+fn steady(used: f64) -> Vec<Entry> {
+    vec![said(
+        NOW - 180 * MINUTE,
+        &[("seven_day", used, NOW + 3 * 1440 * MINUTE)],
+    )]
+}
+
+/// The account `name`, its books `entries` at `now`, two sessions at once,
+/// none running.
+fn acct(name: &'static str, entries: &[Entry], now: u64) -> Candidate<'static> {
+    Candidate {
+        name,
+        barred: None,
+        sessions: Some(2),
+        running: 0,
+        status: status(entries, now),
+    }
+}
+
+/// Why the one account of `entries`, `running` on it, is passed over at
+/// `now`: its reason and until when; none where it is picked.
+fn passed_over(entries: &[Entry], running: u32, now: u64) -> Option<(Reason, Option<u64>)> {
+    let mut a = acct("solo", entries, now);
+    a.sessions = None;
+    a.running = running;
+    match pick(&[a], STOP_PERCENT, now) {
+        Pick::Account(_) => None,
+        Pick::None { why, until } => {
+            assert_eq!(until, why[0].until);
+            Some((why[0].reason, why[0].until))
+        }
+    }
+}
+
+fn why_of(entries: &[Entry], running: u32) -> String {
+    let mut a = acct("solo", entries, NOW);
+    a.running = running;
+    a.sessions = None;
+    match pick(&[a], STOP_PERCENT, NOW) {
+        Pick::None { why, .. } => why[0].why.clone(),
+        picked => panic!("picked: {picked:?}"),
+    }
+}
+
+// One more session against a window's rate (Guild's `Funds::runs_out`).
+
+#[test]
+fn a_window_allows_another_session_while_its_rate_with_it_lasts_to_the_reset() {
+    // 20% used in two of five hours: 50% at reset at the present rate, but
+    // under half used it runs on at no rate. One running, one more: none.
+    assert_eq!(passed_over(&five_hour(20.0, 180), 1, NOW), None);
+    assert_eq!(passed_over(&five_hour(20.0, 180), 3, NOW), None);
+}
+
+#[test]
+fn a_window_that_one_more_session_would_run_out_names_its_numbers() {
+    // 50% used in two of five hours: 125% at reset; one more of one running
+    // doubles the rest, 200%.
+    let resets = NOW + 180 * MINUTE;
+    assert_eq!(
+        passed_over(&five_hour(50.0, 180), 1, NOW),
+        Some((Reason::RunsOut, Some(resets)))
+    );
+    let why = why_of(&five_hour(50.0, 180), 1);
+    assert!(
+        why.contains("five_hour is 50% used") && why.contains("1 running") && why.contains("200%"),
+        "{why}"
+    );
+    // Under half used it runs on at no rate: nothing runs out of it.
+    assert_eq!(passed_over(&five_hour(30.0, 180), 1, NOW), None);
+}
+
+#[test]
+fn the_sessions_running_share_the_rate_one_more_adds_one_share() {
+    // 50% used in two of five hours, three running: 125%, one more adds a
+    // third of the rest, 150%.
+    assert!(why_of(&five_hour(50.0, 180), 3).contains("150%"));
+    // 54% two hours from reset, three hours open: 90% at its rate; three
+    // running, one more adds a third of the rest, 102%. Under half used,
+    // none.
+    assert!(passed_over(&five_hour(54.0, 120), 3, NOW).is_some());
+    assert_eq!(passed_over(&five_hour(40.0, 120), 3, NOW), None);
+}
+
+#[test]
+fn with_none_running_a_window_allows_one_while_its_present_rate_lasts() {
+    // The first session runs at the window's whole rate: 75% at reset.
+    assert_eq!(passed_over(&five_hour(30.0, 180), 0, NOW), None);
+    assert_eq!(
+        passed_over(&five_hour(50.0, 180), 0, NOW).map(|p| p.0),
+        Some(Reason::RunsOut)
+    );
+}
+
+#[test]
+fn an_account_whose_use_is_not_known_is_picked() {
+    assert_eq!(passed_over(&[], 5, NOW), None);
+}
+
+#[test]
+fn of_several_windows_that_run_out_the_soonest_to_reset_is_said() {
+    let five = NOW + 60 * MINUTE;
+    let week = NOW + 140 * 60 * MINUTE;
+    let book = [said(
+        NOW - MINUTE,
+        &[("seven_day", 54.0, week), ("five_hour", 85.0, five)],
+    )];
+    assert_eq!(
+        passed_over(&book, 0, NOW),
+        Some((Reason::RunsOut, Some(five)))
+    );
+}
+
+// A limit (Guild's `a_usage_limit_that_holds_is_spent_until_it_lifts`).
+
+fn limit(at: u64, window: Option<&str>, resets_at: Option<u64>) -> Entry {
+    Entry {
+        at,
+        what: What::Limit {
+            window: window.map(Into::into),
+            resets_at,
+        },
+    }
+}
+
+#[test]
+fn a_limit_that_holds_takes_no_session_until_it_lifts() {
+    let lifts = NOW + 100 * MINUTE;
+    let mut book = five_hour(40.0, 100);
+    book.push(limit(NOW - MINUTE, Some("five_hour"), Some(lifts)));
+    assert_eq!(
+        passed_over(&book, 0, NOW),
+        Some((Reason::Limit, Some(lifts)))
+    );
+    assert!(why_of(&book, 0).contains("its five_hour's limit"));
+    assert_eq!(passed_over(&book, 0, lifts), None);
+}
+
+#[test]
+fn an_engine_that_reports_no_windows_rests_after_a_limit_until_the_reset_it_names() {
+    let lifts = NOW + 30 * MINUTE;
+    let book = [limit(NOW - MINUTE, None, Some(lifts))];
+    assert_eq!(
+        passed_over(&book, 0, NOW),
+        Some((Reason::Limit, Some(lifts)))
+    );
+    assert!(why_of(&book, 0).contains("the account's limit"));
+    assert_eq!(passed_over(&book, 0, NOW + 31 * MINUTE), None);
+    // One with no reset lifts at the next reading: no time to wait to.
+    let book = [limit(NOW - MINUTE, None, None)];
+    assert_eq!(passed_over(&book, 0, NOW), Some((Reason::Limit, None)));
+    assert!(why_of(&book, 0).contains("its next reading"));
+}
+
+// The stop (Guild's `Funds::stopped`, promise `stopped_account_starts_none`).
+
+#[test]
+fn an_account_ninety_percent_used_of_a_window_takes_no_new_session_until_it_resets() {
+    let resets = NOW + 100 * MINUTE;
+    let a = acct("claude-a", &five_hour(91.0, 100), NOW);
+    let b = acct("claude-b", &five_hour(40.0, 100), NOW);
+    assert_eq!(
+        pick(
+            &[a, acct("claude-b", &five_hour(40.0, 100), NOW)],
+            STOP_PERCENT,
+            NOW
+        ),
+        Pick::Account("claude-b".into())
+    );
+    let Pick::None { until, why } = pick(
+        &[acct("claude-a", &five_hour(91.0, 100), NOW)],
+        STOP_PERCENT,
+        NOW,
+    ) else {
+        panic!("picked a stopped account");
+    };
+    assert_eq!(until, Some(resets));
+    assert_eq!(
+        (why[0].account.as_str(), why[0].reason),
+        ("claude-a", Reason::Stopped)
+    );
+    assert!(
+        why[0]
+            .why
+            .contains("five_hour is 91% used, at its stop of 90%"),
+        "{}",
+        why[0].why
+    );
+    assert_eq!(left_percent(&b.status), Some(60.0));
+
+    // Once its window resets the reading no longer holds: it takes sessions.
+    let later = NOW + 101 * MINUTE;
+    assert_eq!(passed_over(&five_hour(91.0, 100), 0, later), None);
+}
+
+#[test]
+fn the_stop_is_a_setting() {
+    assert_eq!(STOP_PERCENT, 90);
+    assert_eq!(
+        pick(&[acct("claude-a", &steady(91.0), NOW)], 95, NOW),
+        Pick::Account("claude-a".into())
+    );
+    // At the stop exactly, stopped.
+    assert!(matches!(
+        pick(&[acct("claude-a", &steady(95.0), NOW)], 95, NOW),
+        Pick::None { .. }
+    ));
+}
+
+#[test]
+fn a_week_at_ninety_percent_is_stopped() {
+    let resets = NOW + 78 * 60 * MINUTE;
+    let book = [said(NOW - MINUTE, &[("seven_day", 90.0, resets)])];
+    assert_eq!(
+        passed_over(&book, 0, NOW),
+        Some((Reason::Stopped, Some(resets)))
+    );
+}
+
+// Sessions at once (promise `account_sessions_within`).
+
+#[test]
+fn an_account_whose_sessions_at_once_are_running_takes_none_more() {
+    let mut solo = acct("solo", &[], NOW);
+    solo.sessions = Some(1);
+    solo.running = 1;
+    let mut pair = acct("pair", &[], NOW);
+    pair.running = 1;
+    assert_eq!(
+        pick(&[solo, pair], STOP_PERCENT, NOW),
+        Pick::Account("pair".into())
+    );
+
+    let mut pair = acct("pair", &[], NOW);
+    pair.running = 2;
+    let Pick::None { until, why } = pick(&[pair], STOP_PERCENT, NOW) else {
+        panic!("picked a full account");
+    };
+    assert_eq!((until, why[0].reason), (None, Reason::Full));
+    assert!(
+        why[0].why.starts_with("2 sessions running, of its 2"),
+        "{}",
+        why[0].why
+    );
+    // No limit: any number runs.
+    let mut free = acct("free", &[], NOW);
+    free.sessions = None;
+    free.running = 40;
+    assert_eq!(
+        pick(&[free], STOP_PERCENT, NOW),
+        Pick::Account("free".into())
+    );
+}
+
+// What the register and the login bar (Guild's `a_tight_account_switched_off_is_off`).
+
+#[test]
+fn a_barred_account_is_passed_over_whatever_its_books_say() {
+    let mut off = acct("claude-a", &five_hour(10.0, 100), NOW);
+    off.barred = Some((Reason::Off, "switched off: card declined".into()));
+    let Pick::None { until, why } = pick(&[off], STOP_PERCENT, NOW) else {
+        panic!("picked an account off");
+    };
+    assert_eq!(until, None);
+    assert_eq!(
+        (why[0].reason, why[0].why.as_str()),
+        (Reason::Off, "switched off: card declined")
+    );
+}
+
+// The order (Guild's `Funds::left_percent`: the most left first).
+
+#[test]
+fn of_those_that_may_take_one_the_most_left_is_picked_and_no_reading_last() {
+    let accounts = [
+        acct("never-read", &[], NOW),
+        acct("half", &steady(45.0), NOW),
+        acct("most", &steady(10.0), NOW),
+        acct("little", &steady(80.0), NOW),
+    ];
+    assert_eq!(
+        pick(&accounts, STOP_PERCENT, NOW),
+        Pick::Account("most".into())
+    );
+    // Its most used window decides how much is left.
+    let both = [said(
+        NOW - 180 * MINUTE,
+        &[
+            ("five_hour", 5.0, NOW + 280 * MINUTE),
+            ("seven_day", 70.0, NOW + 3 * 1440 * MINUTE),
+        ],
+    )];
+    let accounts = [
+        acct("week-used", &both, NOW),
+        acct("half", &steady(45.0), NOW),
+    ];
+    assert_eq!(
+        pick(&accounts, STOP_PERCENT, NOW),
+        Pick::Account("half".into())
+    );
+    // An account never read comes after every one read, however little is left.
+    let accounts = [
+        acct("never-read", &[], NOW),
+        acct("little", &steady(80.0), NOW),
+    ];
+    assert_eq!(
+        pick(&accounts, STOP_PERCENT, NOW),
+        Pick::Account("little".into())
+    );
+    // Of equals, the first given.
+    let accounts = [acct("a", &[], NOW), acct("b", &[], NOW)];
+    assert_eq!(
+        pick(&accounts, STOP_PERCENT, NOW),
+        Pick::Account("a".into())
+    );
+}
+
+#[test]
+fn an_account_read_only_stale_comes_after_every_one_read_fresh() {
+    let mut stale = five_hour(5.0, 280);
+    stale.push(Entry {
+        at: NOW,
+        what: What::Failed("HTTP 401".into()),
+    });
+    let accounts = [
+        acct("stale", &stale, NOW),
+        acct("little", &steady(80.0), NOW),
+    ];
+    assert_eq!(
+        pick(&accounts, STOP_PERCENT, NOW),
+        Pick::Account("little".into())
+    );
+}
+
+#[test]
+fn none_waits_until_the_earliest_any_lifts() {
+    let soon = NOW + 30 * MINUTE;
+    let mut full = acct("full", &[], NOW);
+    full.running = 2;
+    let accounts = [
+        acct("stopped", &five_hour(95.0, 100), NOW),
+        full,
+        acct("limited", &[limit(NOW - MINUTE, None, Some(soon))], NOW),
+    ];
+    let Pick::None { until, why } = pick(&accounts, STOP_PERCENT, NOW) else {
+        panic!("picked");
+    };
+    assert_eq!(until, Some(soon));
+    let reasons: Vec<_> = why.iter().map(|p| (p.account.as_str(), p.reason)).collect();
+    assert_eq!(
+        reasons,
+        [
+            ("stopped", Reason::Stopped),
+            ("full", Reason::Full),
+            ("limited", Reason::Limit)
+        ]
+    );
+    assert_eq!(
+        pick(&[], STOP_PERCENT, NOW),
+        Pick::None {
+            until: None,
+            why: vec![]
+        }
+    );
+}
+
+// The rate, from the readings (Guild's quota.rs, its book of control#1295).
+
+#[test]
+fn a_window_climbing_fast_across_two_readings_runs_out() {
+    let resets = NOW + 140 * 60 * MINUTE;
+    let book = [
+        said(NOW - 130 * MINUTE, &[("seven_day", 54.0, resets)]),
+        said(NOW - 10 * MINUTE, &[("seven_day", 64.0, resets)]),
+    ];
+    assert_eq!(
+        passed_over(&book, 0, NOW),
+        Some((Reason::RunsOut, Some(resets)))
+    );
+}
+
+#[test]
+fn a_single_reading_is_paced_by_the_use_since_its_window_opened() {
+    // 54% used 25 hours into the week: 359% at reset.
+    let resets = NOW + 143 * 60 * MINUTE;
+    let book = [said(NOW - 10 * MINUTE, &[("seven_day", 54.0, resets)])];
+    assert_eq!(
+        passed_over(&book, 0, NOW).map(|p| p.0),
+        Some(Reason::RunsOut)
+    );
+}
+
+#[test]
+fn a_reading_older_than_two_hours_runs_out_of_nothing_on_its_own() {
+    let resets = NOW + 140 * 60 * MINUTE;
+    let book = [said(NOW - 3 * 60 * MINUTE, &[("seven_day", 64.0, resets)])];
+    assert_eq!(passed_over(&book, 0, NOW), None);
+}
+
+#[test]
+fn a_night_s_burst_in_a_week_under_half_used_runs_out_of_nothing() {
+    // 15% to 24% in 7h, 78h left of a week: 108% at reset by the burst run
+    // on, yet only 24% used (sunfmin/control#1358).
+    let resets = NOW + 78 * 60 * MINUTE;
+    let book = [
+        said(NOW - 420 * MINUTE, &[("seven_day", 15.0, resets)]),
+        said(NOW - MINUTE, &[("seven_day", 24.0, resets)]),
+    ];
+    assert_eq!(passed_over(&book, 0, NOW), None);
+}
+
+#[test]
+fn a_window_flat_across_its_readings_runs_out_of_nothing_however_early_its_use_came() {
+    // control#1295: seven_day at 34%, 25 hours into its week, flat.
+    const WEEK_RESETS: u64 = 1_795_345_200;
+    let book = [
+        said(1_794_829_689, &[("seven_day", 34.0, WEEK_RESETS)]),
+        said(1_794_830_114, &[("seven_day", 34.0, WEEK_RESETS)]),
+        said(1_794_830_770, &[("seven_day", 34.0, WEEK_RESETS)]),
+    ];
+    assert_eq!(passed_over(&book, 0, 1_794_830_770 + 10 * MINUTE), None);
+}
