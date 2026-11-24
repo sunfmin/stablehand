@@ -97,10 +97,11 @@ pub fn pi(account: &Account) -> Result<Vec<Window>, String> {
     }
     let bearer = String::from_utf8_lossy(&out.stdout).trim().to_string();
     // pi has written its refreshed login by now: the account's id is in it.
-    let home = home.unwrap_or_else(|| {
-        PathBuf::from(std::env::var("HOME").unwrap_or_default()).join(".pi/agent")
-    });
-    let file = Engine::Pi.login_file(&home);
+    let file = home
+        .unwrap_or_else(|| {
+            PathBuf::from(std::env::var("HOME").unwrap_or_default()).join(".pi/agent")
+        })
+        .join("auth.json");
     let fault = |why: String| format!("{}: {why}: {relog}", file.display());
     let text = std::fs::read_to_string(&file).map_err(|e| fault(e.to_string()))?;
     let auth: Value = serde_json::from_str(&text).map_err(|e| fault(format!("not JSON: {e}")))?;

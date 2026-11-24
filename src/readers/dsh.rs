@@ -54,7 +54,7 @@ fn grant(account: &Account) -> Result<String, String> {
         Some(home) => PathBuf::from(home),
         None => PathBuf::from(std::env::var("HOME").unwrap_or_default()).join(".dsh"),
     };
-    let file = account.engine.login_file(&home);
+    let file = home.join(".credentials.yaml");
     let fix = |why: &str| {
         format!(
             "{}: {why}: log it in on {} with `stablehand account login {name}`",

@@ -134,22 +134,6 @@ enum Step {
     GiveHome,
 }
 
-/// The kept account `kept` with the workers' home, where it is bound and has none.
-fn homed(kept: &Account) -> Result<Option<Account>, Refused> {
-    if kept.machine.is_none() || kept.home.is_some() {
-        return Ok(None);
-    }
-    let change = Change {
-        terms: Terms {
-            home: Some(workers_home(&kept.name)?),
-            ..Terms::default()
-        },
-        ..Change::default()
-    };
-    let a = account::apply(kept, change).map_err(|f| f.join("; "))?;
-    Ok(Some(a))
-}
-
 /// Imports every entry not kept yet, and gives a kept bound account with no
 /// home the workers' (`dry_run`: says what it would): all its entries' faults
 /// refuse it before anything is written.
@@ -159,10 +143,11 @@ pub fn import(store: &Store, dry_run: bool) -> Result<Value, Refused> {
     let mut plan = Vec::new();
     for e in entries(&list) {
         match store.get(e.name())? {
-            Some(kept) => match homed(&kept)? {
-                Some(a) => plan.push((e, a, Step::GiveHome)),
-                None => plan.push((e, kept, Step::Kept)),
-            },
+            Some(kept) if kept.machine.is_some() && kept.home.is_none() => {
+                let home = Some(workers_home(&kept.name)?);
+                plan.push((e, Account { home, ..kept }, Step::GiveHome));
+            }
+            Some(kept) => plan.push((e, kept, Step::Kept)),
             None => match planned(&e) {
                 Ok(a) => plan.push((e, a, Step::Add)),
                 Err(f) => faults.extend(f),

@@ -45,7 +45,7 @@ fn bearer(account: &Account) -> Result<String, String> {
             format!("sesame keeps no token for `{name}`: log it in with `stablehand account login {name} --token`")
         });
     };
-    let file = account.engine.login_file(&home(account));
+    let file = home(account).join("credentials/kimi-code.json");
     let fix = |why: String| {
         format!(
             "{}: {why}: log it in on {machine} with `stablehand account login {name}`",
