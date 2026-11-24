@@ -11,7 +11,6 @@ const SESAME_TOKEN: &str = "sk-kimi-standin-portable";
 
 struct Kimi {
     r: Register,
-    fault: std::cell::RefCell<&'static str>,
 }
 
 impl Kimi {
@@ -20,35 +19,50 @@ impl Kimi {
         let fake =
             std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/contract/kimi-fake-curl");
         std::os::unix::fs::symlink(fake, r.path("bin/curl")).unwrap();
-        std::fs::create_dir_all(r.path("kimi/credentials")).unwrap();
-        std::fs::write(
-            r.path("kimi/credentials/kimi-code.json"),
-            json!({ "access_token": LOGIN_TOKEN, "refresh_token": "kept", "expires_in": 900 })
-                .to_string(),
-        )
-        .unwrap();
-        Kimi {
-            r,
-            fault: "".into(),
-        }
+        Kimi { r }
     }
 
-    fn ok(&self, args: &[&str]) -> Value {
-        let log = self.r.path("curl.log");
-        let out = self.r.run_with(
-            args,
-            &[
-                ("FAKE_CURL_LOG", &log),
-                ("FAKE_CURL_FAULT", *self.fault.borrow()),
-            ],
-            "",
-        );
+    /// `kimi-mini`, bound to mini, its login in `home` (`--home`), or in
+    /// `~/.kimi-code` without one: the login's file.
+    fn bound(name: &str, home: Option<&str>) -> (Kimi, String) {
+        let k = Kimi::new(name);
+        let dir = k.r.path(home.unwrap_or("home/.kimi-code"));
+        let mut add = vec![
+            "account",
+            "add",
+            "kimi-mini",
+            "--engine",
+            "kimi",
+            "--machine",
+            "mini",
+        ];
+        if home.is_some() {
+            add.extend(["--home", &dir]);
+        }
+        k.run(&add, "");
+        std::fs::create_dir_all(format!("{dir}/credentials")).unwrap();
+        let file = format!("{dir}/credentials/kimi-code.json");
+        let login =
+            json!({ "access_token": LOGIN_TOKEN, "refresh_token": "kept", "expires_in": 900 });
+        std::fs::write(&file, login.to_string()).unwrap();
+        (k, file)
+    }
+
+    /// The binary run on `args`, curl's stand-in answering `fault`.
+    fn run(&self, args: &[&str], fault: &str) -> Value {
+        let (log, home) = (self.r.path("curl.log"), self.r.path("home"));
+        let env = [
+            ("FAKE_CURL_LOG", log.as_str()),
+            ("FAKE_CURL_FAULT", fault),
+            ("HOME", &home),
+        ];
+        let out = self.r.run_with(args, &env, "");
         assert_eq!(out.code, 0, "{args:?}: {}", out.json);
         out.json
     }
 
-    fn read(&self, args: &[&str]) -> Value {
-        self.ok(&[&["read"], args].concat())["reads"][0].clone()
+    fn read(&self, args: &[&str], fault: &str) -> Value {
+        self.run(&[&["read"], args].concat(), fault)["reads"][0].clone()
     }
 
     fn log(&self) -> String {
@@ -67,20 +81,8 @@ fn window<'a>(windows: &'a Value, name: &str) -> &'a Value {
 
 #[test]
 fn read_and_status_book_a_bound_kimi_login_s_usages() {
-    let k = Kimi::new("kimi-bound");
-    let home = k.r.path("kimi");
-    k.ok(&[
-        "account",
-        "add",
-        "kimi-mini",
-        "--engine",
-        "kimi",
-        "--machine",
-        "mini",
-        "--home",
-        &home,
-    ]);
-    let read = k.read(&["kimi-mini"]);
+    let (k, _) = Kimi::bound("kimi-bound", None);
+    let read = k.read(&["kimi-mini"], "");
     assert_eq!(read["outcome"], "read", "{read}");
     let five = window(&read["windows"], "limit_5h");
     assert_eq!(
@@ -106,7 +108,7 @@ fn read_and_status_book_a_bound_kimi_login_s_usages() {
         "{config}"
     );
 
-    let status = k.ok(&["status", "kimi-mini"])["accounts"][0].clone();
+    let status = k.run(&["status", "kimi-mini"], "")["accounts"][0].clone();
     assert_eq!(
         (&status["engine"], &status["failed"]),
         (&json!("kimi"), &Value::Null)
@@ -119,27 +121,16 @@ fn read_and_status_book_a_bound_kimi_login_s_usages() {
 
 #[test]
 fn a_refused_kimi_token_keeps_the_last_windows_stale_and_waits_the_hour() {
-    let k = Kimi::new("kimi-refused");
-    let home = k.r.path("kimi");
-    k.ok(&[
-        "account",
-        "add",
-        "kimi-mini",
-        "--engine",
-        "kimi",
-        "--machine",
-        "mini",
-        "--home",
-        &home,
-    ]);
-    k.read(&["kimi-mini"]);
-    *k.fault.borrow_mut() = "unauthorized";
-    let read = k.read(&["kimi-mini", "--now"]);
+    let (k, file) = Kimi::bound("kimi-refused", Some("kimi"));
+    k.read(&["kimi-mini"], "");
+    let read = k.read(&["kimi-mini", "--now"], "unauthorized");
     assert_eq!(read["outcome"], "failed", "{read}");
     let error = read["error"].as_str().unwrap();
+    let home = k.r.path("kimi");
     assert!(
         error.contains("HTTP 401: The API Key appears to be invalid")
-            && error.contains(&format!("KIMI_CODE_HOME={home} on mini")),
+            && error.contains(&format!("KIMI_CODE_HOME={home} on mini"))
+            && error.contains("stablehand account login kimi-mini`"),
         "{error}"
     );
     assert!(!error.contains(LOGIN_TOKEN), "{error}");
@@ -148,17 +139,22 @@ fn a_refused_kimi_token_keeps_the_last_windows_stale_and_waits_the_hour() {
         (&five["used_percent"], &five["stale"]),
         (&json!(0.3), &json!(true))
     );
-    let status = k.ok(&["status", "kimi-mini"])["accounts"][0].clone();
+    let status = k.run(&["status", "kimi-mini"], "")["accounts"][0].clone();
     assert_eq!(status["failed"], read["error"]);
 
     // The refused token is not asked again before the hour.
-    *k.fault.borrow_mut() = "";
-    assert_eq!(k.read(&["kimi-mini"])["outcome"], "waits");
+    assert_eq!(k.read(&["kimi-mini"], "")["outcome"], "waits");
     assert_eq!(k.log().matches("/usages").count(), 2);
 
-    // No login file in its home is a failed try naming its fix.
-    std::fs::remove_file(k.r.path("kimi/credentials/kimi-code.json")).unwrap();
-    let error = k.read(&["kimi-mini", "--now"])["error"].clone();
+    // A login file without a token, or none, is a failed try naming its fix.
+    std::fs::write(&file, "{}").unwrap();
+    let error = k.read(&["kimi-mini", "--now"], "")["error"].clone();
+    assert!(
+        error.as_str().unwrap().contains("no access_token in it"),
+        "{error}"
+    );
+    std::fs::remove_file(&file).unwrap();
+    let error = k.read(&["kimi-mini", "--now"], "")["error"].clone();
     assert!(
         error
             .as_str()
@@ -167,7 +163,7 @@ fn a_refused_kimi_token_keeps_the_last_windows_stale_and_waits_the_hour() {
             && error
                 .as_str()
                 .unwrap()
-                .contains("stablehand account login kimi-mini"),
+                .contains("log it in on mini with `stablehand account login kimi-mini`"),
         "{error}"
     );
 }
@@ -175,12 +171,14 @@ fn a_refused_kimi_token_keeps_the_last_windows_stale_and_waits_the_hour() {
 #[test]
 fn a_portable_kimi_login_is_read_with_sesame_s_token() {
     let k = Kimi::new("kimi-portable");
-    k.ok(&["account", "add", "kimi-1", "--engine", "kimi"]);
-    let read = k.read(&["kimi-1"]);
-    let error = read["error"].as_str().unwrap();
+    k.run(&["account", "add", "kimi-1", "--engine", "kimi"], "");
+    let error = k.read(&["kimi-1"], "")["error"].clone();
     assert!(
-        error.contains("sesame keeps no token")
-            && error.contains("stablehand account login kimi-1 --token"),
+        error.as_str().unwrap().contains("sesame keeps no token")
+            && error
+                .as_str()
+                .unwrap()
+                .contains("stablehand account login kimi-1 --token"),
         "{error}"
     );
     let login = k.r.run_with(
@@ -189,7 +187,7 @@ fn a_portable_kimi_login_is_read_with_sesame_s_token() {
         SESAME_TOKEN,
     );
     assert_eq!(login.code, 0, "{}", login.json);
-    let read = k.read(&["kimi-1", "--now"]);
+    let read = k.read(&["kimi-1", "--now"], "");
     assert_eq!(read["outcome"], "read", "{read}");
     assert!(k.log().contains(&format!("Bearer {SESAME_TOKEN}")));
 }

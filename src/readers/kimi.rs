@@ -14,7 +14,6 @@ use crate::{curl, login, time};
 use std::path::PathBuf;
 
 const USAGES: &str = "https://api.kimi.com/coding/v1/usages";
-const ACCEPT: &str = "Accept: application/json";
 
 pub fn read(account: &Account) -> Result<Vec<Window>, String> {
     let bearer = bearer(account)?;
@@ -22,7 +21,7 @@ pub fn read(account: &Account) -> Result<Vec<Window>, String> {
         USAGES,
         &[
             format!("Authorization: Bearer {bearer}"),
-            ACCEPT.to_string(),
+            "Accept: application/json".to_string(),
         ],
     )?;
     windows(status, &body, account)
@@ -41,17 +40,16 @@ fn home(account: &Account) -> PathBuf {
 /// `credentials/kimi-code.json` under Kimi Code's `KIMI_CODE_HOME`.
 fn bearer(account: &Account) -> Result<String, String> {
     let name = &account.name;
-    if account.machine.is_none() {
+    let Some(machine) = account.machine.as_deref() else {
         return login::token(account)?.ok_or_else(|| {
             format!("sesame keeps no token for `{name}`: log it in with `stablehand account login {name} --token`")
         });
-    }
+    };
     let file = home(account).join("credentials/kimi-code.json");
     let fix = |why: String| {
         format!(
-            "{}: {why}: log it in on {} with `stablehand account login {name}`",
-            file.display(),
-            account.machine.as_deref().unwrap_or_default()
+            "{}: {why}: log it in on {machine} with `stablehand account login {name}`",
+            file.display()
         )
     };
     let text = std::fs::read_to_string(&file).map_err(|e| fix(e.to_string()))?;
@@ -133,14 +131,14 @@ mod tests {
     use super::*;
     use crate::account::Engine;
 
-    fn account(machine: Option<&str>) -> Account {
+    fn account() -> Account {
         Account {
             name: "kimi-1".into(),
             engine: Engine::Kimi,
-            machine: machine.map(String::from),
+            machine: None,
             sessions: None,
             expires: None,
-            home: machine.map(|_| "/Users/agent/kimi".into()),
+            home: None,
             off: None,
             logged_in_at: None,
         }
@@ -154,7 +152,7 @@ mod tests {
             "limit_7d":{"used_ratio":"0.5","reset_time":"2026-11-29T00:00:00Z"},
             "limit_month_total":{"used_ratio":0.8269,"reset_time":"2026-11-25T00:00:00Z"},
             "limit_month_code":{"used_ratio":0.8269},"limit_none":null,"limit_odd":{"used_ratio":"many"}}}"#;
-        let got = windows(200, body, &account(None)).unwrap();
+        let got = windows(200, body, &account()).unwrap();
         let shown: Vec<_> = got
             .iter()
             .map(|w| (w.name.as_str(), w.used_percent, w.resets_at, w.minutes))
@@ -173,24 +171,17 @@ mod tests {
     #[test]
     fn a_refusal_names_its_fix() {
         let bad = r#"{"error":{"message":"The API Key appears to be invalid or may have expired.","type":"invalid_authentication_error"}}"#;
-        let fault = windows(401, bad, &account(Some("mini"))).unwrap_err();
-        assert!(
-            fault.contains("HTTP 401: The API Key appears to be invalid")
-                && fault.contains("KIMI_CODE_HOME=/Users/agent/kimi on mini")
-                && fault.contains("stablehand account login kimi-1`"),
-            "{fault}"
-        );
-        let fault = windows(401, bad, &account(None)).unwrap_err();
+        let fault = windows(401, bad, &account()).unwrap_err();
         assert!(
             fault.contains("stablehand account login kimi-1 --token"),
             "{fault}"
         );
-        let fault = windows(502, "bad gateway", &account(None)).unwrap_err();
+        let fault = windows(502, "bad gateway", &account()).unwrap_err();
         assert!(
             fault.contains("HTTP 502: no error message: try again later"),
             "{fault}"
         );
-        let fault = windows(200, r#"{"usages":{}}"#, &account(None)).unwrap_err();
+        let fault = windows(200, r#"{"usages":{}}"#, &account()).unwrap_err();
         assert!(fault.contains("answered no window"), "{fault}");
     }
 }
