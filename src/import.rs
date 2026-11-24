@@ -10,61 +10,48 @@ use std::process::{Command, Stdio};
 const PREFIX: &str = "agent-account-";
 const TOKEN: &str = "CLAUDE_CODE_OAUTH_TOKEN";
 
-/// One `agent-account-*` entry as `mytokens list` lists it.
+/// One `agent-account-*` entry as a line of `mytokens list` lists it.
 #[derive(Debug, PartialEq)]
-struct Entry {
-    service: String,
-    label: String,
-    fields: Vec<String>,
+struct Entry<'a> {
+    /// `<service>/<label>`.
+    id: &'a str,
+    service: &'a str,
+    label: &'a str,
+    /// Its fields, `F, F`.
+    fields: &'a str,
 }
 
-impl Entry {
+impl Entry<'_> {
     fn name(&self) -> &str {
         &self.service[PREFIX.len()..]
     }
 
-    fn id(&self) -> String {
-        format!("{}/{}", self.service, self.label)
-    }
-
     fn has(&self, field: &str) -> bool {
-        self.fields.iter().any(|f| f == field)
+        self.fields.split(", ").any(|f| f == field)
     }
 
     /// `mytokens get` of `field`, as its argv.
-    fn get(&self, field: &'static str) -> [&str; 7] {
-        let s = &self.service;
-        [
-            "mytokens",
-            "get",
-            s,
-            "--account",
-            &self.label,
-            "--field",
-            field,
-        ]
+    fn get<'f>(&'f self, field: &'f str) -> [&'f str; 7] {
+        let (s, l) = (self.service, self.label);
+        ["mytokens", "get", s, "--account", l, "--field", field]
     }
 }
 
 /// The `agent-account-*` entries of `mytokens list`'s lines,
 /// `<service>/<label>\t<kind>\t<level>  — <about>  fields: <F>, <F>`.
-fn entries(list: &str) -> Vec<Entry> {
-    list.lines()
-        .filter_map(|line| {
-            let (id, _) = line.split_once('\t')?;
-            let (service, label) = id.split_once('/')?;
-            service.strip_prefix(PREFIX).filter(|n| !n.is_empty())?;
-            let fields = line
-                .rsplit_once("  fields: ")
-                .map(|(_, f)| f.split(", ").map(str::to_string).collect())
-                .unwrap_or_default();
-            Some(Entry {
-                service: service.into(),
-                label: label.into(),
-                fields,
-            })
+fn entries(list: &str) -> impl Iterator<Item = Entry<'_>> {
+    list.lines().filter_map(|line| {
+        let (id, _) = line.split_once('\t')?;
+        let (service, label) = id.split_once('/')?;
+        service.strip_prefix(PREFIX).filter(|n| !n.is_empty())?;
+        let fields = line.rsplit_once("  fields: ").map_or("", |(_, f)| f);
+        Some(Entry {
+            id,
+            service,
+            label,
+            fields,
         })
-        .collect()
+    })
 }
 
 /// What `argv` (a mytokens call) printed, trimmed, or the fault naming it.
@@ -88,7 +75,7 @@ fn read(argv: &[&str]) -> Result<String, String> {
 
 /// The account `e` makes, from its HARNESS and MACHINE, or its faults.
 fn planned(e: &Entry) -> Result<Account, Vec<String>> {
-    let id = e.id();
+    let id = e.id;
     let harness = read(&e.get("HARNESS")).map_err(|f| vec![f])?;
     let Ok(engine) = <Engine as clap::ValueEnum>::from_str(&harness, false) else {
         let engines = <Engine as clap::ValueEnum>::value_variants()
@@ -109,12 +96,11 @@ fn planned(e: &Entry) -> Result<Account, Vec<String>> {
             "{id}: a token and a MACHINE, and a bound login has no token: drop one of them in mytokens, or add the account by hand"
         )]);
     }
-    let terms = Terms {
-        machine,
-        ..Terms::default()
-    };
     let change = Change {
-        terms,
+        terms: Terms {
+            machine,
+            ..Terms::default()
+        },
         ..Change::default()
     };
     account::new(e.name(), engine, change)
@@ -128,13 +114,12 @@ pub fn import(store: &Store, dry_run: bool) -> Result<Value, String> {
     let mut faults = Vec::new();
     let mut plan = Vec::new();
     for e in entries(&list) {
-        if let Some(kept) = store.get(e.name())? {
-            plan.push((e, kept, false));
-            continue;
-        }
-        match planned(&e) {
-            Ok(a) => plan.push((e, a, true)),
-            Err(f) => faults.extend(f),
+        match store.get(e.name())? {
+            Some(kept) => plan.push((e, kept, false)),
+            None => match planned(&e) {
+                Ok(a) => plan.push((e, a, true)),
+                Err(f) => faults.extend(f),
+            },
         }
     }
     if !faults.is_empty() {
@@ -146,18 +131,17 @@ pub fn import(store: &Store, dry_run: bool) -> Result<Value, String> {
         let result = match (new, dry_run) {
             (false, _) => "already kept",
             (true, true) => "would add",
-            (true, false) => "added",
-        };
-        if *new && !dry_run {
-            let again = "; then `stablehand account import --from-mytokens` again imports the rest";
-            if token {
-                login::keep_token_from(a, &e.get(TOKEN)).map_err(|f| format!("{f}{again}"))?;
+            (true, false) => {
+                if token {
+                    let again =
+                        "; then `stablehand account import --from-mytokens` again imports the rest";
+                    login::keep_token_from(a, &e.get(TOKEN)).map_err(|f| format!("{f}{again}"))?;
+                }
+                store.insert(a)?;
+                "added"
             }
-            store.insert(a)?;
-        }
-        done.push(
-            json!({ "from": e.id(), "result": result, "token": token, "account": a.shown() }),
-        );
+        };
+        done.push(json!({ "from": e.id, "result": result, "token": token, "account": a.shown() }));
     }
     Ok(json!({ "dry_run": dry_run, "accounts": done }))
 }
@@ -172,23 +156,25 @@ mod tests {
                     bark/default\tstatic\tserver  — push\n\
                     agent-account-/default\tprofile\tserver  — no name  fields: HARNESS\n\
                     agent-account-x/work\tprofile\tpersonal  — none";
-        let fields = |f: &[&str]| f.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        let all: Vec<_> = entries(list).collect();
         assert_eq!(
-            entries(list),
+            all,
             [
                 Entry {
-                    service: "agent-account-codex".into(),
-                    label: "default".into(),
-                    fields: fields(&["HARNESS", "MACHINE"]),
+                    id: "agent-account-codex/default",
+                    service: "agent-account-codex",
+                    label: "default",
+                    fields: "HARNESS, MACHINE",
                 },
                 Entry {
-                    service: "agent-account-x".into(),
-                    label: "work".into(),
-                    fields: vec![],
+                    id: "agent-account-x/work",
+                    service: "agent-account-x",
+                    label: "work",
+                    fields: "",
                 },
             ]
         );
-        assert_eq!(entries(list)[1].name(), "x");
-        assert_eq!(entries(list)[1].id(), "agent-account-x/work");
+        assert!(all[0].has("MACHINE") && !all[0].has("HARNESS, MACHINE"));
+        assert_eq!(all[1].name(), "x");
     }
 }
