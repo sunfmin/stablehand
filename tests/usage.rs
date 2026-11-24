@@ -481,9 +481,18 @@ fn an_account_removed_takes_its_books_with_it() {
 
 impl Books {
     /// An agy home signed in (its login file a stand-in), answering its
-    /// Gemini group's 5h window this much left, resetting in 2 hours, and
-    /// the other group's not yet used.
-    fn agy_home(&self, gemini_left: f64) -> String {
+    /// Gemini group's 5h window used up, resetting in 2 hours, and the
+    /// other group's not yet used.
+    /// This machine is mini, and agy logs each call.
+    fn agy_here(&self) {
+        self.set(
+            "FAKE_AGY_LOG",
+            &self.root.join("agy.log").display().to_string(),
+        );
+        self.set("STABLEHAND_MACHINE", "mini");
+    }
+
+    fn agy_home(&self) -> String {
         let home = self.root.join("agy-home");
         let login = home.join(".gemini/antigravity-cli");
         std::fs::create_dir_all(&login).unwrap();
@@ -492,7 +501,7 @@ impl Books {
         let body = json!({ "status": "SUCCESS", "num_turns": 0, "command": { "name": "usage", "data": { "groups": [
             { "name": "Gemini Models", "buckets": [
                 bucket("gemini-weekly", "weekly", 0.75, rfc3339(now() + 4 * 86_400)),
-                bucket("gemini-5h", "5h", gemini_left, rfc3339(now() + 2 * 3600)),
+                bucket("gemini-5h", "5h", 0.0, rfc3339(now() + 2 * 3600)),
             ]},
             { "name": "Claude and GPT models", "buckets": [
                 bucket("3p-5h", "5h", 1.0, "1970-01-01T00:00:00Z".into()),
@@ -513,7 +522,7 @@ impl Books {
 #[test]
 fn an_agy_account_is_read_in_its_home_a_window_per_model_group() {
     let b = Books::new("agy");
-    let home = b.agy_home(0.0);
+    let home = b.agy_home();
     b.ok(&[
         "account",
         "add",
@@ -582,7 +591,7 @@ fn an_agy_account_is_read_in_its_home_a_window_per_model_group() {
 #[test]
 fn an_agy_account_portable_or_bound_elsewhere_is_not_run() {
     let b = Books::new("agy-elsewhere");
-    b.agy_home(0.5);
+    b.agy_here();
     b.ok(&["account", "add", "agy-portable", "--engine", "agy"]);
     b.ok(&[
         "account",

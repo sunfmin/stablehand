@@ -7,11 +7,8 @@
 use crate::account::Account;
 use crate::books::Window;
 use crate::{login, time};
-use std::io::Read;
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
-
-const USAGE: [&str; 4] = ["-p", "/usage", "--output-format", "json"];
 
 /// How long agy may take to answer. A home it is not signed in to waits 60
 /// seconds for a browser sign-in, then says so: this is past that.
@@ -35,7 +32,7 @@ pub fn read(account: &Account) -> Result<Vec<Window>, String> {
         None => std::env::var("HOME").unwrap_or_default(),
     };
     let mut agy = Command::new("agy");
-    agy.args(USAGE)
+    agy.args(["-p", "/usage", "--output-format", "json"])
         .env("HOME", &home)
         .stdin(Stdio::null())
         .stderr(Stdio::null());
@@ -50,10 +47,7 @@ fn run(mut cmd: Command, limit: Duration) -> Result<(Option<i32>, String), Strin
         .spawn()
         .map_err(|e| format!("agy: {e}: install agy, or put it on PATH"))?;
     let mut out = child.stdout.take().expect("stdout is piped");
-    let reader = std::thread::spawn(move || {
-        let mut text = String::new();
-        out.read_to_string(&mut text).map(|_| text)
-    });
+    let reader = std::thread::spawn(move || std::io::read_to_string(&mut out));
     let started = Instant::now();
     let status = loop {
         if let Some(status) = child.try_wait().map_err(|e| format!("agy: {e}"))? {
@@ -74,15 +68,6 @@ fn run(mut cmd: Command, limit: Duration) -> Result<(Option<i32>, String), Strin
         .map_err(|_| "agy: its stdout was not read".to_string())?
         .map_err(|e| format!("agy: {e}"))?;
     Ok((status.code(), text))
-}
-
-/// How long a window agy calls `window` is, in minutes.
-fn minutes(window: &str) -> Option<u64> {
-    match window {
-        "5h" => Some(5 * 60),
-        "weekly" => Some(7 * 24 * 60),
-        _ => None,
-    }
 }
 
 /// The windows of agy's answer, its exit `code` and `stdout`, or why it
@@ -121,7 +106,11 @@ fn windows(code: Option<i32>, stdout: &str, name: &str) -> Result<Vec<Window>, S
                         .as_str()
                         .and_then(time::parse)
                         .filter(|at| *at > 0),
-                    minutes: b["window"].as_str().and_then(minutes),
+                    minutes: match b["window"].as_str() {
+                        Some("5h") => Some(5 * 60),
+                        Some("weekly") => Some(7 * 24 * 60),
+                        _ => None,
+                    },
                 })
             })
         })
