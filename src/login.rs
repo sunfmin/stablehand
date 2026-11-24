@@ -2,7 +2,7 @@
 //! engine's own"): the programs it runs, the engine's and sesame's. A token
 //! never passes through stablehand: sesame reads it from the terminal or the
 //! stdin stablehand was given, and no child is given it on its command line.
-use crate::account::Account;
+use crate::account::{self, Account, Session};
 use std::io::IsTerminal;
 use std::os::fd::AsFd;
 use std::process::{Command, Stdio};
@@ -44,14 +44,17 @@ fn call(
     } else {
         cmd.stdout(Stdio::null()).stderr(Stdio::null());
     }
-    let status = cmd.status().map_err(|e| {
-        let fix = match argv[0] {
-            "sesame" => "install it: `brew install sunfmin/tap/sesame`".to_string(),
-            program => format!("install {program}, or put it on PATH"),
-        };
-        format!("`{}` could not start: {e}: {fix}", argv.join(" "))
-    })?;
+    let status = cmd.status().map_err(|e| could_not_start(argv, e))?;
     Ok(status.success())
+}
+
+/// Why `argv` did not start, and how to make it.
+fn could_not_start(argv: &[&str], e: std::io::Error) -> String {
+    let fix = match argv[0] {
+        "sesame" => "install it: `brew install sunfmin/tap/sesame`".to_string(),
+        program => format!("install {program}, or put it on PATH"),
+    };
+    format!("`{}` could not start: {e}: {fix}", argv.join(" "))
 }
 
 /// Runs the engine's `argv` as the person's own: on their terminal, or with
@@ -76,12 +79,65 @@ fn sesame(args: &[&str], stdin: Stdio, shown: bool) -> Result<bool, String> {
 }
 
 /// Whether `a` is logged in: a bound login as the register recorded it, a
-/// portable one as sesame says (`sesame token <provider> --json` answers).
+/// portable one as sesame says ([`token`]).
 pub fn logged_in(a: &Account) -> Result<bool, String> {
     if a.machine.is_some() {
         return Ok(a.logged_in_at.is_some());
     }
-    sesame(&["token", &provider(a), "--json"], Stdio::null(), false)
+    token(a).map(|t| t.is_some())
+}
+
+/// The token sesame keeps for `a`, if it keeps one: `sesame token <provider>
+/// --json` answers it as `access_token`, on its stdout, read here and no
+/// further.
+fn token(a: &Account) -> Result<Option<String>, String> {
+    let p = provider(a);
+    let argv = ["sesame", "token", &p, "--json"];
+    let out = Command::new(argv[0])
+        .args(&argv[1..])
+        .stdin(Stdio::null())
+        .stderr(Stdio::null())
+        .output()
+        .map_err(|e| could_not_start(&argv, e))?;
+    if !out.status.success() {
+        return Ok(None);
+    }
+    let answer: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap_or_default();
+    match answer["access_token"].as_str() {
+        Some(t) => Ok(Some(t.to_string())),
+        None => Err(format!(
+            "`sesame token {p} --json` answered no access_token: upgrade sesame (`brew upgrade sunfmin/tap/sesame`)"
+        )),
+    }
+}
+
+/// What a session on `a` starts with on this machine, each variable and its
+/// value (account::session): `Err` when stablehand could not ask, `Ok(Err)`
+/// a refusal, with its fix, of an account no session may start on here.
+pub type Env = Result<Vec<(&'static str, String)>, String>;
+
+pub fn env(a: &Account) -> Result<Env, String> {
+    let name = &a.name;
+    Ok(match account::session(a) {
+        Err(refusal) => Err(refusal),
+        Ok(Session::Token { var }) => match token(a)? {
+            Some(t) => Ok(vec![(var, t)]),
+            None => Err(format!(
+                "account `{name}` is not logged in: sesame holds no token for {}: `stablehand account login {name}`",
+                provider(a)
+            )),
+        },
+        Ok(Session::Home { machine, var, home }) => {
+            let here = this_machine()?;
+            if here == machine {
+                Ok(vec![(var, home.to_string())])
+            } else {
+                Err(format!(
+                    "account `{name}` is bound to {machine} and this machine is {here} ($STABLEHAND_MACHINE, else `hostname -s`): start its session on {machine}, or on another account"
+                ))
+            }
+        }
+    })
 }
 
 /// Logs `a` in by its engine's own login: a portable token into sesame

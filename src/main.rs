@@ -34,6 +34,33 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Cmd {
+    /// What a session on an account starts with: its engine's variables.
+    ///
+    /// Portable: the engine's token variable (below), its value the token
+    /// sesame keeps (`sesame token stablehand-<name> --json`). Bound: the
+    /// engine's home variable (below) set to the account's --home, on its
+    /// machine only ($STABLEHAND_MACHINE, else `hostname -s`). Prints one
+    /// `export NAME='value'` line each, the value one shell word, for a shell
+    /// to read (`. <file>`, or `eval`); with --json, {"name", "login",
+    /// "env": {NAME: value}}. Written to stdout alone: no file, and no child
+    /// is given a value on its command line. Refuses, exit 2, with the fix,
+    /// an account off, not logged in, bound to another machine or with no
+    /// home, and a portable one of an engine with no token variable; exit 1
+    /// is no such account, or sesame that could not be asked.
+    #[command(after_long_help = engines_help())]
+    Env {
+        name: String,
+        /// Answer one JSON object instead of `export` lines.
+        #[arg(long)]
+        json: bool,
+    },
+    #[command(flatten)]
+    Register(Register),
+}
+
+/// The commands that read and change the register.
+#[derive(Subcommand)]
+enum Register {
     /// Add, list, show, change or remove an account.
     Account {
         #[command(subcommand)]
@@ -140,10 +167,11 @@ fn engines_help() -> String {
                 .token
                 .map_or("none: --token".into(), |t| format!("`{}`", t.join(" ")));
             format!(
-                "  {}: bound `{}`, {}; token {token}",
+                "  {}: bound `{}`, {}; token {token}, in {}",
                 e.name(),
                 l.bound.join(" "),
-                l.home_var
+                l.home_var,
+                l.token_var.unwrap_or("none: bound only")
             )
         });
     format!("Engines:\n{}", lines.collect::<Vec<_>>().join("\n"))
@@ -158,13 +186,22 @@ fn main() -> ExitCode {
             return answer(Err(msg.trim().to_string()), ExitCode::from(2));
         }
     };
-    answer(run(cli.cmd), ExitCode::FAILURE)
+    match cli.cmd {
+        Cmd::Env { name, json } => match env(&name, json) {
+            Ok(Err(refusal)) => answer(Err(refusal), ExitCode::from(2)),
+            Ok(text) => answer(text, ExitCode::FAILURE),
+            Err(e) => answer(Err(e), ExitCode::FAILURE),
+        },
+        Cmd::Register(cmd) => answer(run(cmd).map(|v| format!("{v}\n")), ExitCode::FAILURE),
+    }
 }
 
-fn answer(result: Result<Value, String>, failure: ExitCode) -> ExitCode {
+/// Prints the answer, its text as it is, or the fault as {"error": …},
+/// exiting `failure`.
+fn answer(result: Result<String, String>, failure: ExitCode) -> ExitCode {
     match result {
-        Ok(v) => {
-            println!("{v}");
+        Ok(text) => {
+            print!("{text}");
             ExitCode::SUCCESS
         }
         Err(e) => {
@@ -172,6 +209,25 @@ fn answer(result: Result<Value, String>, failure: ExitCode) -> ExitCode {
             failure
         }
     }
+}
+
+/// `env`'s answer: the account's variables as `export` lines, or with
+/// `json` as {"name", "login", "env": {…}}; `Ok(Err)` a refusal (exit 2).
+fn env(name: &str, json: bool) -> Result<Result<String, String>, String> {
+    let a = kept(&Store::open()?, name)?;
+    Ok(login::env(&a)?.map(|vars| {
+        if !json {
+            return account::exports(&vars);
+        }
+        let env: serde_json::Map<_, _> = vars
+            .into_iter()
+            .map(|(k, v)| (k.into(), v.into()))
+            .collect();
+        format!(
+            "{}\n",
+            json!({ "name": a.name, "login": a.login(), "env": env })
+        )
+    }))
 }
 
 fn faults(f: Vec<String>) -> String {
@@ -205,10 +261,10 @@ fn kept(store: &Store, name: &str) -> Result<Account, String> {
     })
 }
 
-fn run(cmd: Cmd) -> Result<Value, String> {
+fn run(cmd: Register) -> Result<Value, String> {
     let store = Store::open()?;
     match cmd {
-        Cmd::Account { cmd } => match cmd {
+        Register::Account { cmd } => match cmd {
             AccountCmd::Add {
                 name,
                 engine,
@@ -276,7 +332,7 @@ fn run(cmd: Cmd) -> Result<Value, String> {
                 Ok(json!({ "name": name, "removed": removed }))
             }
         },
-        Cmd::Off { name, reason } => {
+        Register::Off { name, reason } => {
             let mut a = kept(&store, &name)?;
             if reason.trim().is_empty() {
                 return Err("--reason is empty: say why the account is off".into());
@@ -289,7 +345,7 @@ fn run(cmd: Cmd) -> Result<Value, String> {
             store.put(&a)?;
             Ok(shown(&a))
         }
-        Cmd::On { name } => {
+        Register::On { name } => {
             let mut a = kept(&store, &name)?;
             if a.off.take().is_some() {
                 store.put(&a)?;

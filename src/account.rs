@@ -57,6 +57,9 @@ impl Engine {
             home_var,
             bound,
             token,
+            // The others read a token from where their own login put it, as
+            // far as stablehand knows: their sessions start bound.
+            token_var: (self == ClaudeCode).then_some("CLAUDE_CODE_OAUTH_TOKEN"),
             usage_host,
         }
     }
@@ -71,6 +74,8 @@ pub struct Login {
     pub bound: &'static [&'static str],
     /// The command that prints a long-lived token, where the engine has one.
     pub token: Option<&'static [&'static str]>,
+    /// The variable a session reads a portable token from, where the engine has one.
+    pub token_var: Option<&'static str>,
     /// The host its usage is read from: the one host sesame sends its token to.
     pub usage_host: &'static str,
 }
@@ -114,14 +119,18 @@ pub struct Shown<'a> {
 
 impl Account {
     pub fn shown(&self) -> Shown<'_> {
-        let login = if self.machine.is_some() {
+        Shown {
+            account: self,
+            login: self.login(),
+        }
+    }
+
+    /// Its login's kind: `bound` to a machine, or `portable`.
+    pub fn login(&self) -> &'static str {
+        if self.machine.is_some() {
             "bound"
         } else {
             "portable"
-        };
-        Shown {
-            account: self,
-            login,
         }
     }
 }
@@ -334,6 +343,66 @@ pub fn status(account: &Account, logged_in: bool, today: i64) -> Status {
         days_left,
         warning,
     }
+}
+
+/// What a session on an account starts with, as far as the register knows.
+#[derive(Debug, PartialEq)]
+pub enum Session<'a> {
+    /// A portable token, in `var`: sesame holds its value.
+    Token { var: &'static str },
+    /// A bound login: `var` set to `home`, on `machine` only.
+    Home {
+        machine: &'a str,
+        var: &'static str,
+        home: &'a str,
+    },
+}
+
+/// What a session on `a` starts with, or why none may start on it, with its
+/// fix: an account off, an engine with no token variable, a bound login with
+/// no home or not logged in.
+pub fn session(a: &Account) -> Result<Session<'_>, String> {
+    let name = &a.name;
+    if let Some(off) = &a.off {
+        return Err(format!(
+            "account `{name}` is off ({} at {}: {}): start on another account, or `stablehand on {name}`",
+            off.by, off.at, off.reason
+        ));
+    }
+    let login = a.engine.login();
+    let Some(machine) = &a.machine else {
+        return login.token_var.map(|var| Session::Token { var }).ok_or_else(|| {
+            format!(
+                "{} takes no token from its environment: bind account `{name}` with `stablehand account edit {name} --machine <machine> --home <dir>`, then `stablehand account login {name}` there",
+                a.engine.name()
+            )
+        });
+    };
+    let Some(home) = &a.home else {
+        return Err(format!(
+            "account `{name}` has no home: `stablehand account edit {name} --home <dir>`, then `stablehand account login {name}` on {machine}"
+        ));
+    };
+    if a.logged_in_at.is_none() {
+        return Err(format!(
+            "account `{name}` is not logged in: run `stablehand account login {name}` on {machine}"
+        ));
+    }
+    Ok(Session::Home {
+        machine,
+        var: login.home_var,
+        home,
+    })
+}
+
+/// `vars` as a shell reads them: one `export NAME='value'` line each, the
+/// value one word whatever it holds; the text of factorium's secrets file
+/// (factorium_harness::secrets_file).
+pub fn exports(vars: &[(&str, String)]) -> String {
+    let line = |(name, value): &(&str, String)| {
+        format!("export {name}='{}'\n", value.replace('\'', "'\\''"))
+    };
+    vars.iter().map(line).collect()
 }
 
 /// `secs` after the Unix epoch as UTC RFC 3339 (`2026-11-24T08:30:00Z`).

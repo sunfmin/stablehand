@@ -53,8 +53,9 @@ impl Register {
         std::fs::read_to_string(self.root.join("sesame/fake/tokens").join(provider)).ok()
     }
 
-    /// The binary run on `args`, `stdin` piped in, with `env` beside the test's own.
-    pub fn run_with(&self, args: &[&str], env: &[(&str, &str)], stdin: &str) -> Out {
+    /// The binary run on `args`, `stdin` piped in, with `env` beside the test's own:
+    /// its exit code and stdout as it printed it.
+    pub fn raw(&self, args: &[&str], env: &[(&str, &str)], stdin: &str) -> (i32, String) {
         let mut child = Command::new(env!("CARGO_BIN_EXE_stablehand"))
             .args(args)
             .env("STABLEHAND_CONFIG_DIR", &self.dir)
@@ -80,9 +81,15 @@ impl Register {
             .unwrap();
         let out = child.wait_with_output().unwrap();
         let stdout = String::from_utf8(out.stdout).unwrap();
+        (out.status.code().unwrap(), stdout)
+    }
+
+    /// The binary run as [`Register::raw`] runs it, its stdout one JSON line.
+    pub fn run_with(&self, args: &[&str], env: &[(&str, &str)], stdin: &str) -> Out {
+        let (code, stdout) = self.raw(args, env, stdin);
         assert_eq!(stdout.lines().count(), 1, "one JSON line: {stdout}");
         Out {
-            code: out.status.code().unwrap(),
+            code,
             json: serde_json::from_str(&stdout).unwrap(),
         }
     }

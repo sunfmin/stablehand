@@ -67,6 +67,37 @@ stablehand account show claude-felix   # {"account": {…}, "logged_in": true, "
   login, a bound one with no `--home`, a token sesame refuses, an engine's
   login that fails.
 
+## A session's environment
+
+```sh
+stablehand env claude-felix          # export CLAUDE_CODE_OAUTH_TOKEN='sk-ant-…'
+stablehand env chatgpt               # on mini: export CODEX_HOME='/Users/agent/chatgpt'
+stablehand env chatgpt --json        # {"name": "chatgpt", "login": "bound", "env": {"CODEX_HOME": "…"}}
+```
+
+- `env` says what a session on an account starts with, so its caller starts
+  the engine without knowing how the account logs in. **Portable**: the
+  engine's token variable (claude-code: `CLAUDE_CODE_OAUTH_TOKEN`), its value
+  the token sesame keeps (`sesame token stablehand-<name> --json`). **Bound**:
+  the engine's home variable set to the account's home, on its machine only.
+- It prints one `export NAME='value'` line each, the value one shell word
+  whatever it holds, or with `--json` one object. The value is written to
+  stdout alone: no file is left behind, and no child is given it on its
+  command line.
+- It refuses, exit 2 with `{"error": "…"}` naming the fix, an account that is
+  off, not logged in, or bound to another machine; also one bound with no
+  home, and a portable one of an engine with no token variable (any but
+  claude-code: bind it). Exit 1 is an account not kept, or sesame that could
+  not be asked.
+- factorium can hand it to a session unchanged (factorium SPEC §1.7; its test
+  "an account secret stays off the command line"): `env`'s stdout is the very
+  text factorium writes to a secrets file (`export NAME='value'` lines,
+  `factorium_harness::secrets_file`). factorium writes that stdout as it is
+  into a new 0600 file under its secrets directory, in place of the text it
+  makes from mytokens' fields, and the session's start line reads and removes
+  it as now (`. <file> && rm -f <file> && …`); a non-zero exit is a session
+  not started, its `error` the reason.
+
 ## Install
 
 ```sh
