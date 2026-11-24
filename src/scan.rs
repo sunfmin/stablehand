@@ -146,12 +146,15 @@ fn logins(user_home: &Path, paths: &[PathBuf]) -> Vec<Found> {
     for path in paths {
         let mut here: Vec<_> = engines
             .iter()
-            .filter(|&&e| !all.iter().any(|f| f.engine == e && same(&f.home, path)))
             .filter_map(|&e| found(e, path.clone()))
             .collect();
         if here.iter().any(|f| f.identity.is_ok()) {
             here.retain(|f| f.identity.is_ok());
         }
+        here.retain(|h| {
+            !all.iter()
+                .any(|f| f.engine == h.engine && same(&f.home, path))
+        });
         all.extend(here);
     }
     all
@@ -209,16 +212,16 @@ fn judge(
             continue;
         }
         let f = &found[i];
-        status[i] = Some(match &f.identity {
-            Ok(id) => match owner.get(id) {
-                Some(name) => Status::Copy(name.clone()),
-                None => {
-                    let name = fresh(taken, &f.engine.name());
+        let id = f.identity.as_ref().ok();
+        status[i] = Some(match id.and_then(|id| owner.get(id)) {
+            Some(name) => Status::Copy(name.clone()),
+            None => {
+                let name = fresh(taken, &f.engine.name());
+                if let Some(id) = id {
                     owner.insert(id.clone(), name.clone());
-                    Status::New(name)
                 }
-            },
-            Err(_) => Status::New(fresh(taken, &f.engine.name())),
+                Status::New(name)
+            }
         });
     }
     status
@@ -331,22 +334,15 @@ pub fn scan(store: &Store, paths: &[String], add: bool) -> Result<Value, Refused
     let mut out_logins = Vec::new();
     for (f, status) in found.iter().zip(&judged) {
         let (status, name) = match status {
-            Status::New(n) if add => {
+            Status::New(n) => {
                 let terms = Terms {
                     machine: Some(machine.clone()),
                     home: Some(f.home.display().to_string()),
                     ..Terms::default()
                 };
-                let change = Change {
-                    terms,
-                    ..Change::default()
-                };
-                let mut a = account::new(n, f.engine, change).map_err(|e| e.join("; "))?;
-                a.identity = f.identity.clone().ok();
-                insert(store, &a)?;
-                ("added", n)
+                let id = f.identity.clone().ok();
+                (register(store, add, n, f.engine, terms, id)?, n)
             }
-            Status::New(n) => ("new", n),
             Status::Registered(n) => ("registered", n),
             Status::Copy(n) => ("copy", n),
         };
@@ -396,21 +392,11 @@ pub fn scan(store: &Store, paths: &[String], add: bool) -> Result<Value, Refused
             Some((a, _)) => ("registered", a.name.clone()),
             None => {
                 let name = fresh(&mut taken, &e.service[PREFIX.len()..]);
-                if add {
-                    let terms = Terms {
-                        token_command: Some(cmd.clone()),
-                        ..Terms::default()
-                    };
-                    let change = Change {
-                        terms,
-                        ..Change::default()
-                    };
-                    let a = account::new(&name, engine, change).map_err(|f| f.join("; "))?;
-                    insert(store, &a)?;
-                    ("added", name)
-                } else {
-                    ("new", name)
-                }
+                let terms = Terms {
+                    token_command: Some(cmd.clone()),
+                    ..Terms::default()
+                };
+                (register(store, add, &name, engine, terms, None)?, name)
             }
         };
         tokens.push(json!({
@@ -433,17 +419,30 @@ pub fn scan(store: &Store, paths: &[String], add: bool) -> Result<Value, Refused
     }))
 }
 
-/// Adds `a`, refused when another run kept its name meanwhile.
-fn insert(store: &Store, a: &Account) -> Result<(), Refused> {
-    if store.insert(a)? {
-        return Ok(());
+/// A `new` one's status: with `add`, the account `name` of `engine` with
+/// `terms` and `identity` added; refused when another run kept its name meanwhile.
+fn register(
+    store: &Store,
+    add: bool,
+    name: &str,
+    engine: Engine,
+    terms: Terms,
+    identity: Option<String>,
+) -> Result<&'static str, Refused> {
+    if !add {
+        return Ok("new");
+    }
+    let change = Change {
+        terms,
+        ..Change::default()
+    };
+    let a = account::new(name, engine, change).map_err(|f| f.join("; "))?;
+    if store.insert(&Account { identity, ..a })? {
+        return Ok("added");
     }
     Err(Refused::new(
         Code::NameTaken,
-        format!(
-            "account `{}` was kept meanwhile: run the scan again",
-            a.name
-        ),
+        format!("account `{name}` was kept meanwhile: run the scan again"),
     ))
 }
 

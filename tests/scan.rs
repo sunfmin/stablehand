@@ -260,3 +260,70 @@ fn a_path_that_is_no_directory_is_refused_and_no_mytokens_is_said() {
             .contains("not on PATH")
     );
 }
+
+#[test]
+fn a_kept_home_tells_its_identity_and_what_is_not_the_same_login_is_not_taken_for_it() {
+    let r = Register::new("scan-kept");
+    let home = r.path("home");
+    let codex = r#"{"tokens": {"account_id": "CHATGPT-SECRET"}}"#;
+    file(&home, ".codex/auth.json", codex, None);
+    // A home of factorium's, kept, holding the same ChatGPT account: read
+    // for the account it is, though scan does not look in it for logins.
+    let kept = r.path("agent-accounts/chatgpt");
+    file(&kept, "auth.json", codex, None);
+    let bound = ["--engine", "codex", "--machine", "mini", "--home", &kept];
+    r.ok(&[&["account", "add", "chatgpt"][..], &bound].concat());
+    // A Claude home of its own with no .claude.json does not borrow the
+    // one beside it.
+    file(
+        &home,
+        ".claude.json",
+        r#"{"oauthAccount": {"accountUuid": "U", "organizationUuid": "O"}}"#,
+        None,
+    );
+    file(&home, "alone/.credentials.json", "{}", None);
+    // A portable account naming another entry's token is not this one's.
+    let other = "mytokens get agent-account-other --field CLAUDE_CODE_OAUTH_TOKEN";
+    let portable = ["--engine", "claude-code", "--token-command", other];
+    r.ok(&[&["account", "add", "other"][..], &portable].concat());
+    r.mytokens_entry("agent-account-felix", &[("CLAUDE_CODE_OAUTH_TOKEN", TOKEN)]);
+
+    let env = [("HOME", home.as_str())];
+    let alone = format!("{home}/alone");
+    let codex_home = format!("{home}/.codex");
+    let args = ["account", "scan", "--path", &codex_home, "--path", &alone];
+    let out = r.run_with(&args, &env, "").json;
+    let (logins, tokens) = said(&out);
+    assert_eq!(
+        logins,
+        [
+            json!(["codex", codex_home, "copy", "chatgpt"]),
+            json!(["claude-code", alone, "new", "claude-code"]),
+        ]
+    );
+    let unknown = out["logins"][1]["identity_unknown"].as_str().unwrap();
+    assert!(unknown.contains(".claude.json"), "{unknown}");
+    assert_eq!(
+        tokens,
+        [json!(["agent-account-felix/default", "new", "felix"])]
+    );
+
+    // A mytokens that fails its list is said, and the logins still are.
+    let failing = r.path("failing");
+    file(
+        &failing,
+        "mytokens",
+        "#!/bin/sh\necho broken >&2\nexit 3\n",
+        None,
+    );
+    let script = Path::new(&failing).join("mytokens");
+    std::fs::set_permissions(&script, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+    let path = format!("{failing}:/usr/bin:/bin");
+    let env = [("HOME", home.as_str()), ("PATH", path.as_str())];
+    let out = r.run_with(&["account", "scan"], &env, "").json;
+    assert!(
+        out["mytokens_unread"].as_str().unwrap().contains("failed"),
+        "{out}"
+    );
+    assert_eq!(out["logins"][0]["status"], "copy");
+}
