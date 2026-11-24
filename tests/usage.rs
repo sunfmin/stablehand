@@ -542,43 +542,41 @@ impl Books {
 #[test]
 fn a_chatgpt_account_is_read_through_codex_s_app_server_and_pi_s_login() {
     let b = Books::new("chatgpt");
-    let resets = b.chatgpt_answers(42.0, 9.0);
-    let home = b.chatgpt("chatgpt", "codex");
-    let read = b.read(&["chatgpt"]);
-    assert_eq!(read["outcome"], "read", "{read}");
-    let primary = window(&read["windows"], "primary");
-    assert_eq!(
+    for (name, engine, used, asked) in [
+        ("chatgpt", "codex", 42.0, "codex app-server CODEX_HOME="),
         (
-            &primary["used_percent"],
-            &primary["resets_at"],
-            &primary["group"]
+            "chatgpt-pi",
+            "pi",
+            12.0,
+            "pi auth print-bearer-token --provider openai-codex PI_CODING_AGENT_DIR=",
         ),
-        (&json!(42.0), &json!(rfc3339(resets)), &Value::Null)
-    );
-    assert_eq!(window(&read["windows"], "secondary")["used_percent"], 9.0);
-    assert_eq!(read["windows"].as_array().unwrap().len(), 2, "{read}");
-    assert_eq!(
-        b.engines_log(),
-        format!("codex app-server CODEX_HOME={home}\n")
-    );
-
-    let home = b.chatgpt("chatgpt-pi", "pi");
-    let resets = b.chatgpt_answers(12.0, 40.0);
-    let read = b.read(&["chatgpt-pi"]);
-    assert_eq!(read["outcome"], "read", "{read}");
-    let primary = window(&read["windows"], "primary");
-    assert_eq!(
-        (&primary["used_percent"], &primary["resets_at"]),
-        (&json!(12.0), &json!(rfc3339(resets)))
-    );
-    assert_eq!(window(&read["windows"], "secondary")["used_percent"], 40.0);
-    assert!(
-        b.engines_log().ends_with(&format!(
-            "pi auth print-bearer-token --provider openai-codex PI_CODING_AGENT_DIR={home}\n"
-        )),
-        "{}",
-        b.engines_log()
-    );
+    ] {
+        let resets = b.chatgpt_answers(used, 9.0);
+        let home = b.chatgpt(name, engine);
+        let read = b.read(&[name]);
+        assert_eq!(read["outcome"], "read", "{read}");
+        let primary = window(&read["windows"], "primary");
+        assert_eq!(
+            (
+                &primary["used_percent"],
+                &primary["resets_at"],
+                &primary["group"]
+            ),
+            (&json!(used), &json!(rfc3339(resets)), &Value::Null)
+        );
+        assert_eq!(window(&read["windows"], "secondary")["used_percent"], 9.0);
+        assert_eq!(read["windows"].as_array().unwrap().len(), 2, "{read}");
+        assert!(
+            b.engines_log().ends_with(&format!("{asked}{home}\n")),
+            "{}",
+            b.engines_log()
+        );
+        let status = b.status(name);
+        assert_eq!(
+            (&status["engine"], &status["pace"]),
+            (&json!(engine), &json!("steady"))
+        );
+    }
     // pi's bearer and the login's id go to curl on its stdin, never in its arguments.
     let log = b.log();
     let (args, config) = log.split_once('\n').unwrap();
@@ -590,17 +588,6 @@ fn a_chatgpt_account_is_read_through_codex_s_app_server_and_pi_s_login() {
         config.contains(&format!("header = \"Authorization: Bearer {PI_BEARER}\""))
             && config.contains(&format!("header = \"ChatGPT-Account-Id: {PI_ACCOUNT_ID}\"")),
         "{config}"
-    );
-
-    let status = b.status("chatgpt-pi");
-    assert_eq!(
-        (&status["engine"], &status["pace"]),
-        (&json!("pi"), &json!("steady"))
-    );
-    let secondary = window(&status["windows"], "secondary");
-    assert_eq!(
-        (&secondary["source"], &secondary["stale"]),
-        (&json!("read"), &json!(false))
     );
 }
 

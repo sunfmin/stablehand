@@ -147,56 +147,58 @@ fn relog(account: &Account) -> String {
     )
 }
 
-/// A window of the engine's, where it says how much of it is used.
-fn window(name: &str, used: &Value, seconds: Option<u64>, resets_at: &Value) -> Option<Window> {
-    Some(Window {
-        name: name.into(),
-        group: None,
-        used_percent: used.as_f64()?,
-        resets_at: resets_at.as_u64(),
-        minutes: seconds.map(|s| s / 60),
-    })
-}
-
-fn none_said(engine: Engine) -> String {
-    format!(
-        "{} answered no window: its answer has changed; run `truefit contract --real {}` in stablehand's repo",
-        if engine == Engine::Codex {
-            "codex app-server"
-        } else {
-            USAGE
-        },
-        engine.name()
-    )
+/// The windows `primary` and `secondary` of `engine`'s `limits`, each keyed
+/// its name and `suffix`, where it says how much of it is used: the keys of
+/// its used %, its length (in units of `unit` seconds) and when it resets
+/// (Unix seconds). None: the answer has changed.
+fn found(
+    limits: &Value,
+    engine: Engine,
+    suffix: &str,
+    [used, length, resets_at]: [&str; 3],
+    unit: u64,
+) -> Result<Vec<Window>, String> {
+    let found: Vec<Window> = WINDOWS
+        .iter()
+        .filter_map(|w| {
+            let it = &limits[format!("{w}{suffix}")];
+            Some(Window {
+                name: w.to_string(),
+                group: None,
+                used_percent: it[used].as_f64()?,
+                resets_at: it[resets_at].as_u64(),
+                minutes: it[length].as_u64().map(|l| l * unit / 60),
+            })
+        })
+        .collect();
+    if found.is_empty() {
+        return Err(format!(
+            "{engine}'s usage answered no window: its answer has changed; run `truefit contract --real {engine}` in stablehand's repo",
+            engine = engine.name()
+        ));
+    }
+    Ok(found)
 }
 
 /// The windows of the app server's answer to `account/rateLimits/read`:
-/// its `rateLimits`' `primary` and `secondary`, each `usedPercent`,
-/// `windowDurationMins` and `resetsAt` (Unix seconds), a `null` one not had.
+/// its `rateLimits`' `primary` and `secondary`, a `null` one not had.
 fn codex_windows(answer: &Value, name: &str) -> Result<Vec<Window>, String> {
     if let Some(said) = answer["error"]["message"].as_str() {
         return Err(format!(
             "codex app-server: {said}: log it in with `stablehand account login {name}`"
         ));
     }
-    let limits = &answer["result"]["rateLimits"];
-    let found: Vec<Window> = WINDOWS
-        .iter()
-        .filter_map(|w| {
-            let it = &limits[w];
-            let seconds = it["windowDurationMins"].as_u64().map(|m| m * 60);
-            window(w, &it["usedPercent"], seconds, &it["resetsAt"])
-        })
-        .collect();
-    if found.is_empty() {
-        return Err(none_said(Engine::Codex));
-    }
-    Ok(found)
+    found(
+        &answer["result"]["rateLimits"],
+        Engine::Codex,
+        "",
+        ["usedPercent", "windowDurationMins", "resetsAt"],
+        60,
+    )
 }
 
 /// The windows of wham/usage's answer, `status` and `body`: its
-/// `rate_limit`'s `primary_window` and `secondary_window`, each
-/// `used_percent`, `limit_window_seconds` and `reset_at` (Unix seconds).
+/// `rate_limit`'s `primary_window` and `secondary_window`.
 fn wham_windows(status: u16, body: &str, relog: &str) -> Result<Vec<Window>, String> {
     let answer: Value = serde_json::from_str(body).unwrap_or_default();
     if status != 200 {
@@ -207,19 +209,13 @@ fn wham_windows(status: u16, body: &str, relog: &str) -> Result<Vec<Window>, Str
         };
         return Err(format!("{USAGE} answered HTTP {status}: {said}: {fix}"));
     }
-    let limits = &answer["rate_limit"];
-    let found: Vec<Window> = WINDOWS
-        .iter()
-        .filter_map(|w| {
-            let it = &limits[format!("{w}_window")];
-            let seconds = it["limit_window_seconds"].as_u64();
-            window(w, &it["used_percent"], seconds, &it["reset_at"])
-        })
-        .collect();
-    if found.is_empty() {
-        return Err(none_said(Engine::Pi));
-    }
-    Ok(found)
+    found(
+        &answer["rate_limit"],
+        Engine::Pi,
+        "_window",
+        ["used_percent", "limit_window_seconds", "reset_at"],
+        1,
+    )
 }
 
 #[cfg(test)]

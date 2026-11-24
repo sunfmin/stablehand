@@ -22,34 +22,27 @@ if [ "$FAKE_CURL_FAULT" = unreachable ]; then
     echo "curl: (6) Could not resolve host: $host" >&2
     exit 6
 fi
-case "$host" in
-chatgpt.com)
-    if [ "$FAKE_CURL_FAULT" = unauthorized ]; then
-        printf '%s\n401' '{"detail":"Could not parse your authentication token. Please try signing in again."}'
-        exit 0
-    fi
-    if [ -n "$FAKE_CURL_WHAM_BODY" ]; then
-        body=$(cat "$FAKE_CURL_WHAM_BODY")
-    else
-        body='{"user_id":"user-standin","account_id":"00000000-0000-0000-0000-000000000000","email":"someone@example.com","plan_type":"plus","rate_limit":{"allowed":true,"limit_reached":false,"primary_window":{"used_percent":12,"limit_window_seconds":18000,"reset_after_seconds":9000,"reset_at":1795516200},"secondary_window":{"used_percent":40,"limit_window_seconds":604800,"reset_after_seconds":300000,"reset_at":1795900000}},"code_review_rate_limit":null,"additional_rate_limits":null,"credits":{"has_credits":false,"unlimited":false,"balance":"0"},"rate_limit_reached_type":null}'
-    fi
-    printf '%s\n200' "$body"
+case "$host:$FAKE_CURL_FAULT" in
+chatgpt.com:unauthorized)
+    printf '%s\n401' '{"detail":"Could not parse your authentication token. Please try signing in again."}'
     exit 0
     ;;
-esac
-case "$FAKE_CURL_FAULT" in
-unauthorized)
+chatgpt.com:*)
+    file=$FAKE_CURL_WHAM_BODY
+    body='{"user_id":"user-standin","account_id":"00000000-0000-0000-0000-000000000000","email":"someone@example.com","plan_type":"plus","rate_limit":{"allowed":true,"limit_reached":false,"primary_window":{"used_percent":12,"limit_window_seconds":18000,"reset_after_seconds":9000,"reset_at":1795516200},"secondary_window":{"used_percent":40,"limit_window_seconds":604800,"reset_after_seconds":300000,"reset_at":1795900000}},"code_review_rate_limit":null,"additional_rate_limits":null,"credits":{"has_credits":false,"unlimited":false,"balance":"0"},"rate_limit_reached_type":null}'
+    ;;
+*:unauthorized)
     printf '%s\n401' '{"type":"error","error":{"type":"authentication_error","message":"Invalid bearer token"},"request_id":"req_011CStandin"}'
     exit 0
     ;;
-scope)
+*:scope)
     printf '%s\n403' '{"type":"error","error":{"type":"permission_error","message":"OAuth token does not meet scope requirement user:profile","details":{"required_scopes":["user:profile"],"match":"any","error_visibility":"user_facing","error_code":"oauth_scope_insufficient"}},"request_id":"req_011CStandin"}'
     exit 0
     ;;
-esac
-if [ -n "$FAKE_CURL_BODY" ]; then
-    body=$(cat "$FAKE_CURL_BODY")
-else
+*)
+    file=$FAKE_CURL_BODY
     body='{"five_hour":{"utilization":22.0,"resets_at":"2026-11-24T10:30:00.029137+00:00","limit_dollars":null,"used_dollars":null,"remaining_dollars":null,"locked_reason":null},"seven_day":{"utilization":52.0,"resets_at":"2026-11-29T11:00:00.029154+00:00","limit_dollars":null,"used_dollars":null,"remaining_dollars":null,"locked_reason":null},"seven_day_opus":null,"seven_day_sonnet":null,"extra_usage":{"is_enabled":false,"utilization":null}}'
-fi
+    ;;
+esac
+[ -n "$file" ] && body=$(cat "$file")
 printf '%s\n200' "$body"

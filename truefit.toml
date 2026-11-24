@@ -59,8 +59,8 @@ header = "anthropic-beta: oauth-2025-04-20"
 
 
 # codex's reader (src/readers/chatgpt.rs) asks `codex app-server`
-# `account/rateLimits/read` on its stdin, held open until it answers.
-# codex-shape keeps only what the reader reads: whether primary and
+# `account/rateLimits/read` on its stdin, held open until it answers;
+# codex-shape asks it so, and keeps only what the reader reads: whether primary and
 # secondary are each a window or none, or that an error says a message.
 [[standin]]
 name = "codex"
@@ -75,22 +75,12 @@ fault_env = "FAKE_CODEX_FAULT"
 [[standin.case]]
 name = "an-account-s-windows"
 args = ["app-server"]
-stdin = """
-{"id":0,"method":"initialize","params":{"clientInfo":{"name":"stablehand","version":"0"}}}
-{"method":"initialized"}
-{"id":1,"method":"account/rateLimits/read","params":{"excludeResetCreditDetails":true}}
-"""
 
 [[standin.case]]
 name = "a-home-logged-out"
 fault = "logged-out"
 env = { CODEX_HOME = "<empty>" }
 args = ["app-server"]
-stdin = """
-{"id":0,"method":"initialize","params":{"clientInfo":{"name":"stablehand","version":"0"}}}
-{"method":"initialized"}
-{"id":1,"method":"account/rateLimits/read","params":{"excludeResetCreditDetails":true}}
-"""
 
 # pi's reader (src/readers/chatgpt.rs) asks
 # chatgpt.com/backend-api/wham/usage through curl, pi's bearer and its
