@@ -552,10 +552,10 @@ fn run(cmd: Register) -> Result<Value, Refused> {
                 Some(m) => m,
                 None => login::this_machine()?,
             };
-            let of: Vec<Account> = all.into_iter().filter(|a| a.engine == engine).collect();
             Ok(usage::pick(
                 &store,
-                &of,
+                &all,
+                engine,
                 &running,
                 &machine,
                 stop_percent,

@@ -1,7 +1,7 @@
 //! `read`, `limit`, `status` and `pick`: an account's readings booked
 //! through its engine's reader, a caller's limit booked, what the books say
 //! now, and which account one more session may start on.
-use crate::account::Account;
+use crate::account::{Account, Engine};
 use crate::books::{self, Entry, Status, What};
 use crate::login;
 use crate::pick::{self, Candidate, Pick, Reason};
@@ -131,20 +131,21 @@ fn windows(s: &Status) -> Vec<Value> {
         .collect()
 }
 
-/// Which of `accounts`, one engine's, one more session may start on now on
+/// Which of `accounts` of `engine` one more session may start on now on
 /// `machine`: each is barred off, bound to another machine, or not logged
 /// in, then judged by its books with `running` sessions on it
 /// ([`pick::pick`]).
 pub fn pick(
     store: &Store,
     accounts: &[Account],
+    engine: Engine,
     running: &[(String, u32)],
     machine: &str,
     stop_percent: u8,
     now: u64,
 ) -> Result<Value, String> {
-    let mut judged = Vec::new();
-    for a in accounts {
+    let mut candidates = Vec::new();
+    for a in accounts.iter().filter(|a| a.engine == engine) {
         let barred = match (&a.off, &a.machine) {
             (Some(off), _) => Some((Reason::Off, format!("switched off: {}", off.reason))),
             (None, Some(bound)) if bound != machine => Some((
@@ -157,28 +158,18 @@ pub fn pick(
             )),
             _ => None,
         };
-        let count = running
-            .iter()
-            .filter(|(n, _)| n == &a.name)
-            .map(|(_, c)| c)
-            .sum();
-        judged.push((
-            a,
-            barred,
-            count,
-            books::status(&store.entries(&a.name)?, now),
-        ));
-    }
-    let candidates: Vec<Candidate> = judged
-        .iter()
-        .map(|(a, barred, running, status)| Candidate {
+        candidates.push(Candidate {
             name: &a.name,
-            barred: barred.clone(),
+            barred,
             sessions: a.sessions,
-            running: *running,
-            status,
-        })
-        .collect();
+            running: running
+                .iter()
+                .filter(|(n, _)| n == &a.name)
+                .map(|(_, c)| c)
+                .sum(),
+            status: books::status(&store.entries(&a.name)?, now),
+        });
+    }
     Ok(match pick::pick(&candidates, stop_percent, now) {
         Pick::Account(name) => json!({ "account": name }),
         Pick::None { until, why } => {

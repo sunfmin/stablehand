@@ -27,7 +27,7 @@ pub struct Candidate<'a> {
     pub sessions: Option<u32>,
     /// The sessions now running on it, as the caller counts them.
     pub running: u32,
-    pub status: &'a Status,
+    pub status: Status,
 }
 
 /// Why an account was passed over.
@@ -76,7 +76,8 @@ pub enum Pick {
 /// reading in force (or only stale) after every one with one; of equals,
 /// the first given.
 pub fn pick(candidates: &[Candidate], stop_percent: u8, now: u64) -> Pick {
-    let mut open: Vec<(&Candidate, Option<f64>)> = Vec::new();
+    // The most left so far; a later one replaces it only with more.
+    let mut best: Option<(&Candidate, Option<f64>)> = None;
     let mut why = Vec::new();
     for c in candidates {
         match passed(c, stop_percent, now) {
@@ -86,12 +87,15 @@ pub fn pick(candidates: &[Candidate], stop_percent: u8, now: u64) -> Pick {
                 why: text,
                 until,
             }),
-            None => open.push((c, left_percent(c.status))),
+            None => {
+                let left = left_percent(&c.status);
+                if best.is_none_or(|(_, most)| left > most) {
+                    best = Some((c, left));
+                }
+            }
         }
     }
-    // The most left first, none last: a stable sort keeps equals in order.
-    open.sort_by(|(_, a), (_, b)| b.partial_cmp(a).unwrap_or(std::cmp::Ordering::Equal));
-    match open.first() {
+    match best {
         Some((c, _)) => Pick::Account(c.name.to_string()),
         None => Pick::None {
             until: why.iter().filter_map(|p| p.until).min(),
@@ -116,7 +120,7 @@ fn passed(c: &Candidate, stop_percent: u8, now: u64) -> Option<(Reason, String, 
     if let Some((reason, text)) = &c.barred {
         return Some((*reason, text.clone(), None));
     }
-    let s = c.status;
+    let s = &c.status;
     if let Some(l) = &s.limit {
         let until = match &l.window {
             Some(name) => s

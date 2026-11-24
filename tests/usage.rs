@@ -485,7 +485,12 @@ fn picked(b: &Books, args: &[&str]) -> Result<String, Vec<(String, String)>> {
         return Ok(name.to_string());
     }
     assert_eq!(answer["none"], true, "{answer}");
-    Err(answer["why"]
+    Err(reasons(&answer))
+}
+
+/// Each account a none answer passed over, with its reason, in order.
+fn reasons(answer: &Value) -> Vec<(String, String)> {
+    answer["why"]
         .as_array()
         .unwrap()
         .iter()
@@ -493,7 +498,7 @@ fn picked(b: &Books, args: &[&str]) -> Result<String, Vec<(String, String)>> {
             let s = |k: &str| p[k].as_str().unwrap().to_string();
             (s("account"), s("reason"))
         })
-        .collect())
+        .collect()
 }
 
 #[test]
@@ -565,17 +570,8 @@ fn pick_takes_the_engine_s_usable_accounts_and_passes_over_each_by_guild_s_rules
         (&json!(true), &json!(lifts)),
         "{answer}"
     );
-    let why: Vec<(&str, &str)> = answer["why"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .map(|p| {
-            (
-                p["account"].as_str().unwrap(),
-                p["reason"].as_str().unwrap(),
-            )
-        })
-        .collect();
+    let why = reasons(&answer);
+    let why: Vec<(&str, &str)> = why.iter().map(|(a, r)| (a.as_str(), r.as_str())).collect();
     assert_eq!(
         why,
         [
