@@ -1,0 +1,6 @@
+{
+  "tree": "419b5155e9d4252889e0ab0607a47e20f9b655e6+d1fba762150c532c",
+  "picker": "codex:01a20d5d-743e-7693-8a73-bd46a20243f0:default",
+  "author": "claude-code:ec7ef192-2893-5564-b589-5d0acf706757:opus",
+  "none": "Both candidates replace the entire function with a successful return, which the new malformed-usage test would reject because it requires an error."
+}
