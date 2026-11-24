@@ -142,6 +142,7 @@ mod tests {
             home: None,
             off: None,
             token_command: Some("mytokens get kimi".into()),
+            identity: None,
         }
     }
 

@@ -16,8 +16,8 @@ pub enum Code {
     NoSession,
     /// `limit` given a `--resets-at` that is no RFC 3339 time or is past, or an empty `--window`.
     BadLimit,
-    /// `account import` found entries it cannot import, and imported none of them.
-    ImportRefused,
+    /// `account scan --path` names no directory.
+    BadPath,
     /// Something stablehand reads or runs failed (the register, mytokens, an engine's reader): the text says what, and how to fix it.
     Fault,
 }
