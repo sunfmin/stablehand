@@ -105,6 +105,8 @@ impl Books {
         let out = Command::new(env!("CARGO_BIN_EXE_stablehand"))
             .args(args)
             .env_clear()
+            // The coverage run's profile, so the binary's lines are counted.
+            .envs(std::env::vars().filter(|(k, _)| k == "LLVM_PROFILE_FILE"))
             .envs(self.env.borrow().iter().map(|(k, v)| (k, v)))
             .env("USER", "tester")
             .output()
@@ -603,4 +605,20 @@ fn an_agy_account_portable_or_bound_elsewhere_is_not_run() {
         "{elsewhere}"
     );
     assert!(!b.root.join("agy.log").exists());
+    // Bound here with no home, agy runs in the user's own.
+    b.ok(&[
+        "account",
+        "add",
+        "agy-own",
+        "--engine",
+        "agy",
+        "--machine",
+        "mini",
+    ]);
+    b.read(&["agy-own"]);
+    let log = std::fs::read_to_string(b.root.join("agy.log")).unwrap();
+    assert!(
+        log.ends_with(&format!("HOME={}\n", b.root.join("home").display())),
+        "{log}"
+    );
 }
