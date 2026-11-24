@@ -1,5 +1,5 @@
 //! A register of a test's own, run through the binary: its config dir, and a
-//! PATH whose `sesame` and engines are the stand-ins (tests/contract,
+//! PATH whose `sesame`, `mytokens` and engines are the stand-ins (tests/contract,
 //! tests/engines), each appending its argv to `argv.log`.
 #![allow(dead_code)]
 use serde_json::Value;
@@ -29,6 +29,7 @@ impl Register {
         let link =
             |to: &str, name: &str| std::os::unix::fs::symlink(tests.join(to), bin.join(name));
         link("contract/fake-sesame", "sesame").unwrap();
+        link("contract/fake-mytokens", "mytokens").unwrap();
         for engine in ["claude", "codex"] {
             link("engines/fake-engine", engine).unwrap();
         }
@@ -48,6 +49,15 @@ impl Register {
         std::fs::read_to_string(self.root.join("argv.log")).unwrap_or_default()
     }
 
+    /// An entry `service`/default in mytokens' stand-in, with its fields.
+    pub fn mytokens_entry(&self, service: &str, fields: &[(&str, &str)]) {
+        let entry = self.root.join("mytokens").join(service).join("default");
+        std::fs::create_dir_all(&entry).unwrap();
+        for (field, value) in fields {
+            std::fs::write(entry.join(field), value).unwrap();
+        }
+    }
+
     /// The token sesame's stand-in keeps for `provider`.
     pub fn sesame_token(&self, provider: &str) -> Option<String> {
         std::fs::read_to_string(self.root.join("sesame/fake/tokens").join(provider)).ok()
@@ -65,6 +75,7 @@ impl Register {
                 format!("{}:/usr/bin:/bin", self.root.join("bin").display()),
             )
             .env("SESAME_CONFIG_DIR", self.root.join("sesame"))
+            .env("FAKE_MYTOKENS_DIR", self.root.join("mytokens"))
             .env("FAKE_ARGV_LOG", self.root.join("argv.log"))
             .env("STABLEHAND_MACHINE", "mini")
             .envs(env.iter().copied())

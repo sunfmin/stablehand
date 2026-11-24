@@ -67,6 +67,26 @@ stablehand account show claude-felix   # {"account": {…}, "logged_in": true, "
   login, a bound one with no `--home`, a token sesame refuses, an engine's
   login that fails.
 
+## Importing from mytokens
+
+```sh
+stablehand account import --from-mytokens --dry-run   # what it would add, no token shown
+stablehand account import --from-mytokens
+```
+
+- Each `agent-account-<name>` entry of this host's mytokens (`mytokens list`)
+  becomes the account `<name>`: its engine from `HARNESS`, bound to `MACHINE`
+  where the entry has one, else portable, with its `CLAUDE_CODE_OAUTH_TOKEN`
+  kept in sesame as `account login` keeps one. The token goes from
+  `mytokens get` to sesame's stdin, on no command line and in no answer.
+- An account already kept is left as it is, answered `"already kept"`, so
+  running it again adds nothing. mytokens is only read: nothing in it is changed or removed.
+- `--dry-run` answers `"would add"` for each, reading no token and writing nothing.
+- It refuses, importing nothing, an entry whose `HARNESS` is no engine, one
+  with both a token and a `MACHINE`, and a field mytokens does not answer. A
+  token sesame refuses stops it there: the accounts before it are added, and
+  running it again adds the rest.
+
 ## A session's environment
 
 ```sh

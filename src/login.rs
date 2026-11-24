@@ -203,6 +203,39 @@ pub fn login(a: &Account, token: bool, now: String) -> Result<Account, String> {
 /// The account's sesame provider, made where missing, then the token: sesame
 /// asks for it on the terminal with hidden input, or reads stablehand's stdin.
 fn keep_token(a: &Account, host: &str) -> Result<(), String> {
+    let how = if std::io::stdin().is_terminal() {
+        "--token"
+    } else {
+        "--token-stdin"
+    };
+    keep_token_read(a, host, how, Stdio::inherit())
+}
+
+/// The account's sesame provider, made where missing, then the token `from`
+/// prints: its stdout is sesame's stdin, so the token is in no variable of
+/// stablehand's.
+pub fn keep_token_from(a: &Account, from: &[&str]) -> Result<(), String> {
+    let mut child = Command::new(from[0])
+        .args(&from[1..])
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .spawn()
+        .map_err(|e| format!("`{}` could not start: {e}", from.join(" ")))?;
+    let out = child.stdout.take().expect("stdout is piped");
+    let kept = keep_token_read(a, a.engine.login().usage_host, "--token-stdin", out.into());
+    if !child.wait().map_err(|e| e.to_string())?.success() {
+        return Err(format!(
+            "`{}` failed, as it said above: sesame kept no token for {}",
+            from.join(" "),
+            provider(a)
+        ));
+    }
+    kept
+}
+
+/// The provider, made where missing, then `sesame login <provider> <how>`
+/// with the token on `token`.
+fn keep_token_read(a: &Account, host: &str, how: &str, token: Stdio) -> Result<(), String> {
     let p = provider(a);
     if !sesame(&["provider", "show", &p], Stdio::null(), false)? {
         let url = format!("https://{host}");
@@ -232,12 +265,7 @@ fn keep_token(a: &Account, host: &str) -> Result<(), String> {
             ));
         }
     }
-    let how = if std::io::stdin().is_terminal() {
-        "--token"
-    } else {
-        "--token-stdin"
-    };
-    if sesame(&["login", &p, how], Stdio::inherit(), true)? {
+    if sesame(&["login", &p, how], token, true)? {
         Ok(())
     } else {
         Err(format!(

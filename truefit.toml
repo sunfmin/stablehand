@@ -41,6 +41,13 @@ says = '''the file is 0600, the directory 0700.'''
 source = "README.md:36"
 check = ["test"]
 
+# tests/import.rs imports_each_entry_its_token_into_sesame_and_keeps_what_is_kept
+[[promise]]
+name = "import-only-reads-mytokens"
+says = '''mytokens is only read: nothing in it is changed or removed.'''
+source = "README.md:83"
+check = ["test"]
+
 # sesame keeps a portable account's token (`account login`, `account show`):
 # the calls stablehand makes, each case a run of calls in a store of its own
 # (tests/contract/sesame-steps). stablehand reads their exit codes; of
@@ -143,4 +150,35 @@ fault = "add-refused"
 stdin = '''
 ? provider add stablehand-a --auth-url https://api.anthropic.com --token-url https://api.anthropic.com --api-base https://api.anthropic.com --host 'bad host'
 ? provider show stablehand-a
+'''
+
+# mytokens holds the agent-account-* entries `account import --from-mytokens`
+# moves into stablehand: `list`, then `get` of each entry's fields
+# (tests/contract/mytokens-steps). It only reads, and prints no value: a real
+# run reads this host's own entries, so it needs at least one portable entry
+# with a token and one bound to a machine.
+[[standin]]
+name = "mytokens"
+run = ["tests/contract/mytokens-steps", "tests/contract/fake-mytokens"]
+real = ["tests/contract/mytokens-steps", "mytokens"]
+needs = "mytokens on PATH holding agent-account-* entries: one with CLAUDE_CODE_OAUTH_TOKEN, one with MACHINE"
+ready = ["mytokens", "list"]
+version = ["sh", "-c", "mytokens list >/dev/null && echo mytokens"]
+faults = ["get-fails"]
+fault_env = "FAKE_MYTOKENS_FAULT"
+
+[[standin.case]]
+name = "entries-and-their-fields"
+stdin = '''
+list
+get HARNESS
+get MACHINE
+get CLAUDE_CODE_OAUTH_TOKEN
+'''
+
+[[standin.case]]
+name = "a-field-not-read"
+fault = "get-fails"
+stdin = '''
+get STABLEHAND_NO_SUCH_FIELD
 '''
