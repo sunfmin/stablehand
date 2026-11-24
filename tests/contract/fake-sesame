@@ -3,7 +3,8 @@
 # stablehand makes, `provider show|add`, `login --token|--token-stdin` and
 # `token --json`, kept in $SESAME_CONFIG_DIR/fake. With $FAKE_ARGV_LOG set,
 # each call's argv is appended to it, one line. FAKE_SESAME_FAULT=token-refused:
-# `login` refuses the token, as sesame refuses an empty one or one with a space.
+# `login` refuses the token, as sesame refuses an empty one or one with a space;
+# add-refused: `provider add` refuses the definition, as sesame a bad host.
 dir="${SESAME_CONFIG_DIR:?}/fake"
 mkdir -p "$dir/providers" "$dir/tokens"
 [ -n "$FAKE_ARGV_LOG" ] && echo "sesame $*" >>"$FAKE_ARGV_LOG"
@@ -14,7 +15,7 @@ case "$1 $2" in
     echo '{}' ;;
 "provider add")
     name=$3; shift 3
-    if [ -f "$dir/providers/$name" ]; then
+    if [ "$FAKE_SESAME_FAULT" = add-refused ] || [ -f "$dir/providers/$name" ]; then
         echo "sesame: provider \`$name\` exists" >&2; exit 1
     fi
     for f in --auth-url --token-url --api-base --host; do

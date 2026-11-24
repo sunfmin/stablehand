@@ -12,10 +12,13 @@ pub fn provider(a: &Account) -> String {
     format!("stablehand-{}", a.name)
 }
 
-/// This machine's name, as `--machine` names it: `$STABLEHAND_MACHINE`, else
-/// `hostname -s`.
+/// This machine's name, as `--machine` names it: `$STABLEHAND_MACHINE` (not
+/// empty), else `hostname -s`.
 fn this_machine() -> Result<String, String> {
-    if let Ok(m) = std::env::var("STABLEHAND_MACHINE") {
+    if let Some(m) = std::env::var("STABLEHAND_MACHINE")
+        .ok()
+        .filter(|m| !m.is_empty())
+    {
         return Ok(m);
     }
     let out = Command::new("hostname")

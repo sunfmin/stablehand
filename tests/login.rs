@@ -80,6 +80,7 @@ fn a_portable_token_reaches_sesame_on_stdin_and_no_argv() {
 fn a_refused_login_keeps_nothing() {
     let r = Register::new("refused");
     r.ok(&["account", "add", "kimi-1", "--engine", "kimi"]);
+    r.ok(&["account", "add", "kimi-2", "--engine", "kimi"]);
     r.ok(&[
         "account",
         "add",
@@ -112,6 +113,36 @@ fn a_refused_login_keeps_nothing() {
         "--home",
         &home,
     ]);
+    r.ok(&[
+        "account",
+        "add",
+        "kimi-b",
+        "--engine",
+        "kimi",
+        "--machine",
+        "mini",
+        "--home",
+        &r.path("homes/kimi-b"),
+    ]);
+    r.ok(&[
+        "account",
+        "add",
+        "grok-b",
+        "--engine",
+        "grok",
+        "--machine",
+        "mini",
+        "--home",
+        "/dev/null/h",
+    ]);
+    let host = std::process::Command::new("hostname")
+        .arg("-s")
+        .output()
+        .unwrap();
+    let here = format!(
+        "this machine is {}",
+        String::from_utf8(host.stdout).unwrap().trim()
+    );
     let none: &[(&str, &str)] = &[];
     // Each case: its arguments after `account login`, its environment, a part of its refusal.
     type Case<'a> = (&'a [&'a str], &'a [(&'a str, &'a str)], &'a str);
@@ -124,6 +155,19 @@ fn a_refused_login_keeps_nothing() {
         ),
         (&["chatgpt"], none, "stablehand account edit chatgpt --home"),
         (&["boxed"], none, "run the login on box"),
+        (&["boxed"], &[("STABLEHAND_MACHINE", "")], &here),
+        (&["kimi-b"], none, "install kimi, or put it on PATH"),
+        (&["grok-b"], none, "/dev/null/h"),
+        (
+            &["kimi-2", "--token"],
+            &[("FAKE_SESAME_FAULT", "add-refused")],
+            "`sesame provider add stablehand-kimi-2` failed",
+        ),
+        (
+            &["kimi-1", "--token"],
+            &[("PATH", "/usr/bin:/bin")],
+            "brew install sunfmin/tap/sesame",
+        ),
         (&["codex-1", "--token"], none, "drop --token"),
         (
             &["codex-1", "--expires", "2027-01-31"],

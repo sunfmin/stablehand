@@ -76,7 +76,7 @@ real = ["tests/contract/sesame-steps", "sesame"]
 needs = "sesame on PATH (brew install sunfmin/tap/sesame); it writes only the case's own store"
 ready = ["sesame", "--version"]
 version = ["sesame", "--version"]
-faults = ["token-refused"]
+faults = ["token-refused", "add-refused"]
 fault_env = "FAKE_SESAME_FAULT"
 
 [[standin.case]]
@@ -108,4 +108,12 @@ stdin = '''
 ? provider add stablehand-a --auth-url https://api.anthropic.com --token-url https://api.anthropic.com --api-base https://api.anthropic.com --host api.anthropic.com
 <two words| login stablehand-a --token-stdin
 token stablehand-a --json
+'''
+
+[[standin.case]]
+name = "provider-refused-made-nothing"
+fault = "add-refused"
+stdin = '''
+? provider add stablehand-a --auth-url https://api.anthropic.com --token-url https://api.anthropic.com --api-base https://api.anthropic.com --host 'bad host'
+? provider show stablehand-a
 '''
