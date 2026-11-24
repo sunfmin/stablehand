@@ -1,4 +1,4 @@
-//! The books: what each reading, failed try and limit said of one account,
+//! Th books: what each reading, failed try and limit said of one account,
 //! and what they say of it now (GLOSSARY.md "Reading", "Window", "Limit",
 //! "Pace"). No I/O: the store hands in an account's entries, the caller the
 //! clock.
@@ -28,7 +28,8 @@ pub struct Window {
 }
 
 /// What one entry of the books says.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum What {
     /// A reading: the windows the engine answered.
     Read(Vec<Window>),
@@ -161,10 +162,9 @@ pub fn status(entries: &[Entry], now: u64) -> Status {
     let limit = held(&book, now);
     let mut windows: Vec<WindowStatus> = reading
         .map(|(i, at, read)| {
-            let since = &book[i + 1..];
             let limit = limit.as_ref().filter(|(l, _)| *l > i).map(|(_, l)| l);
             read.iter()
-                .map(|w| window_status(w, at, since, &book, limit, now))
+                .map(|w| window_status(w, at, failed.is_some(), &book, limit, now))
                 .collect()
         })
         .unwrap_or_default();
@@ -229,17 +229,16 @@ fn held(book: &[&Entry], now: u64) -> Option<(usize, Held)> {
     ))
 }
 
-/// Window `w` of the reading booked at `at`, `since` the entries booked
+/// Window `w` of the reading booked at `at`, `failed` whether a try failed
 /// after it, `limit` the one booked after it, while it holds.
 fn window_status(
     w: &Window,
     at: u64,
-    since: &[&Entry],
+    failed: bool,
     book: &[&Entry],
     limit: Option<&Held>,
     now: u64,
 ) -> WindowStatus {
-    let failed_since = since.iter().any(|e| matches!(e.what, What::Failed(_)));
     let mut status = WindowStatus {
         name: w.name.clone(),
         group: w.group.clone(),
@@ -249,7 +248,7 @@ fn window_status(
         rate: None,
         source: Source::Read,
         at,
-        stale: failed_since,
+        stale: failed,
         pace: Pace::Steady,
     };
     if let Some(l) = limit

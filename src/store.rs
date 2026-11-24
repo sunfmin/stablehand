@@ -3,7 +3,7 @@
 //! as sesame keeps its own: the directory 0700, the file 0600. It holds no
 //! secret: a portable login's token is sesame's.
 use crate::account::{Account, Engine, Off};
-use crate::books::{Entry, What};
+use crate::books::Entry;
 use rusqlite::{Connection, OptionalExtension, Row, params};
 use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
@@ -25,16 +25,11 @@ const MIGRATIONS: &[&str] = &[
     );
 ",
     "
-    -- The books: one row per reading (its windows, JSON), failed try (why)
-    -- or limit (its window and reset, where said).
+    -- The books: one row per entry, what it says as JSON (books::What).
     CREATE TABLE books (
         account TEXT NOT NULL,
         at INTEGER NOT NULL,
-        kind TEXT NOT NULL CHECK (kind IN ('read', 'failed', 'limit')),
-        windows TEXT,
-        failed TEXT,
-        limit_window TEXT,
-        limit_resets_at INTEGER
+        what TEXT NOT NULL
     );
     CREATE INDEX books_by_account ON books (account, at);
 ",
@@ -220,23 +215,12 @@ impl Store {
 }
 
 fn entry_of(row: &Row) -> rusqlite::Result<Entry> {
-    let at: i64 = row.get(0)?;
-    let kind: String = row.get(1)?;
-    let what = match kind.as_str() {
-        "read" => {
-            let text: String = row.get(2)?;
-            What::Read(serde_json::from_str(&text).map_err(|e| {
-                rusqlite::Error::FromSqlConversionFailure(2, rusqlite::types::Type::Text, e.into())
-            })?)
-        }
-        "failed" => What::Failed(row.get(3)?),
-        _ => What::Limit {
-            window: row.get(4)?,
-            resets_at: row.get::<_, Option<i64>>(5)?.map(|r| r as u64),
-        },
-    };
+    let text: String = row.get(1)?;
+    let what = serde_json::from_str(&text).map_err(|e| {
+        rusqlite::Error::FromSqlConversionFailure(1, rusqlite::types::Type::Text, e.into())
+    })?;
     Ok(Entry {
-        at: at as u64,
+        at: row.get::<_, i64>(0)? as u64,
         what,
     })
 }
@@ -244,28 +228,11 @@ fn entry_of(row: &Row) -> rusqlite::Result<Entry> {
 impl Store {
     /// Books `entry` in `account`'s books.
     pub fn book(&self, account: &str, entry: &Entry) -> Result<(), String> {
-        let (kind, windows, failed, window, resets_at) = match &entry.what {
-            What::Read(w) => (
-                "read",
-                Some(serde_json::to_string(w).map_err(|e| e.to_string())?),
-                None,
-                None,
-                None,
-            ),
-            What::Failed(why) => ("failed", None, Some(why.as_str()), None, None),
-            What::Limit { window, resets_at } => (
-                "limit",
-                None,
-                None,
-                window.as_deref(),
-                resets_at.map(|r| r as i64),
-            ),
-        };
+        let what = serde_json::to_string(&entry.what).map_err(|e| e.to_string())?;
         self.conn
             .execute(
-                "INSERT INTO books (account, at, kind, windows, failed, limit_window, limit_resets_at)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
-                params![account, entry.at as i64, kind, windows, failed, window, resets_at],
+                "INSERT INTO books (account, at, what) VALUES (?1, ?2, ?3)",
+                params![account, entry.at as i64, what],
             )
             .map(|_| ())
             .map_err(|e| self.err(e))
@@ -275,10 +242,7 @@ impl Store {
     pub fn entries(&self, account: &str) -> Result<Vec<Entry>, String> {
         let mut stmt = self
             .conn
-            .prepare(
-                "SELECT at, kind, windows, failed, limit_window, limit_resets_at
-                 FROM books WHERE account = ?1 ORDER BY at, rowid",
-            )
+            .prepare("SELECT at, what FROM books WHERE account = ?1 ORDER BY at, rowid")
             .map_err(|e| self.err(e))?;
         stmt.query_map([account], entry_of)
             .and_then(|rows| rows.collect())

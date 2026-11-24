@@ -21,28 +21,14 @@ pub fn read(
         let (outcome, said) = match (readers::of(a.engine), books::read_next(&before, now)) {
             (None, _) => ("no_reader", None),
             (Some(_), Some(next)) if !now_anyway => ("waits", Some(("next_at", utc(next)))),
-            (Some(reader), _) => match reader(a) {
-                Ok(windows) => {
-                    store.book(
-                        &a.name,
-                        &Entry {
-                            at: now,
-                            what: What::Read(windows),
-                        },
-                    )?;
-                    ("read", None)
-                }
-                Err(why) => {
-                    store.book(
-                        &a.name,
-                        &Entry {
-                            at: now,
-                            what: What::Failed(why.clone()),
-                        },
-                    )?;
-                    ("failed", Some(("error", why)))
-                }
-            },
+            (Some(reader), _) => {
+                let (what, outcome) = match reader(a) {
+                    Ok(windows) => (What::Read(windows), ("read", None)),
+                    Err(why) => (What::Failed(why.clone()), ("failed", Some(("error", why)))),
+                };
+                store.book(&a.name, &Entry { at: now, what })?;
+                outcome
+            }
         };
         let after = books::status(&store.entries(&a.name)?, now);
         let mut shown =
