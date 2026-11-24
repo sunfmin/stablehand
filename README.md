@@ -1,8 +1,10 @@
 # stablehand
 
 One home for agent engine accounts: how each logs in, where it may run, and
-how much of its usage windows is left; and, from that (`pick`), which account one
-more session may start on now.
+how much of its usage windows is left; and, from that and the order of
+engines and models kept beside them (`pick`), what one more session may
+start on now: its engine, model and account. The session itself is the
+caller's.
 
 stablehand is being built: its commands land one ticket at a time, each
 described here as it lands. The design is
@@ -79,29 +81,49 @@ stablehand account show claude-felix   # {"account": {…}, "logged_in": true, "
   `days_left`, and from 30 days ahead its `warning`
   says to make a new one.
 
-## Importing from mytokens
+## Finding the logins on this machine
 
 ```sh
-stablehand account import --from-mytokens --dry-run   # what it would add, no token shown
-stablehand account import --from-mytokens
+stablehand account scan                  # what it finds, writing nothing
+stablehand account scan --add            # register the new ones
+stablehand account scan --path /Users/agent/chatgpt   # one more home to look in
 ```
 
-- Each `agent-account-<name>` entry of this host's mytokens (`mytokens list`)
-  becomes the account `<name>`: its engine from `HARNESS`, bound to `MACHINE`
-  where the entry has one, else portable, its `--token-command` the
-  `mytokens get <service> --account <label> --field CLAUDE_CODE_OAUTH_TOKEN`
-  that prints its token: the token stays in mytokens, and the import reads
-  none.
-- A bound account is given the home factorium's workers use,
-  `~/.agent-accounts/<name>` (`$HOME` of this host); nothing is made there.
-- An account already kept is left as it is, answered `"already kept"`, so
-  running it again adds nothing; but a kept bound account with no home is
-  given that one, answered `"given its home"`, and a kept portable one with
-  no token command its entry's, `"given its token command"`, so a run fills
-  in what an earlier import left out. mytokens is only read: nothing in it is changed or removed.
-- `--dry-run` answers `"would add"` (or `"would give its home"`, `"would give its token command"`) for each, writing nothing.
-- It refuses, importing nothing, an entry whose `HARNESS` is no engine, one
-  with both a token and a `MACHINE`, and a field mytokens does not answer.
+- scan looks in each engine's own default home (`~/.claude`, `~/.codex`,
+  `~/.pi/agent`, `~/.kimi-code`, agy's `$HOME`, `~/.grok`, `~/.dsh`) and
+  in each `--path`, never in a home another program keeps for its own use
+  (factorium's `~/.agent-accounts`, Guild's `~/.guild/engines`) unless a
+  `--path` names it. A home is a login when it holds its engine's login
+  file.
+- It reads mytokens too, when it is on PATH, from `mytokens list` alone,
+  which names each entry's fields and never prints a value: an
+  `agent-account-<name>` entry with an engine's token field
+  (`CLAUDE_CODE_OAUTH_TOKEN`) is a portable account `<name>`, its
+  `--token-command` `mytokens get agent-account-<name> --field <that
+  field>`; one with no token (a bound one, its `MACHINE`) is `skipped`. No
+  token is read.
+- **One account per subscription.** The same subscription is often in
+  several homes (pi's `openai-codex` and codex on one ChatGPT account).
+  scan tells them apart by the identity each login file holds (Claude's
+  account and organization, ChatGPT's account id, kimi's user id, agy's
+  id token's email, grok's user id), read and compared in memory, never
+  printed, logged or stored: it answers, and keeps on an account it adds,
+  the identity's hash. Of one identity's logins the account is the one an
+  account kept already is, else the most recently written; the others are
+  `copy`, with the warning that copies of one refresh token refresh each
+  other out. An identity it cannot read (a format it does not know; dsh's
+  file holds none) is said as such, `identity_unknown`, never guessed. A
+  portable token tells no identity, so whether it is a home login's
+  subscription is `unknown`.
+- Without `--add` it writes nothing: it answers each login found (engine,
+  home, logged in at, identity's hash, `new`, `registered` or `copy`, and
+  the account: the one it is, or is a copy of, or the name `--add` gives,
+  `<engine>`, or `<engine>-2` … when the name is kept). An account kept is
+  never renamed.
+- With `--add` it registers the `new` ones and nothing else: a login as a
+  bound account on this machine in its home (`account add --machine <this>
+  --home <dir>`), a token as a portable account with its token command.
+  Run again, it adds nothing.
 
 ## An account's credential
 
@@ -176,7 +198,10 @@ stablehand status                   # each account's windows and their pace
   home (`HOME` set to `--home`; the user's own without it), on its machine
   only: no model turn, no conversation made. Its windows are each model
   group's buckets (`gemini-5h`, `gemini-weekly`, …), the group its `group`;
-  a window reset in 1970 is one not yet used. A portable agy account is
+  a window reset in 1970 is one not yet used. Each window's `models` are
+  its group's, by the ids `agy models` (run after it, in the same home)
+  gives: a model named in the group's description, with any variant
+  (`Claude Opus 5.5` holds `claude-opus-5-5-high`). A portable agy account is
   refused: bind it. A home not signed in fails after agy has waited 60s for
   a browser sign-in; an API-key login (exit 2) has no account quota.
 - dsh's reader asks DeepSeek Platform
@@ -219,7 +244,8 @@ stablehand status                   # each account's windows and their pace
   `weekly` window with nothing used.
 - `limit` books a caller's report that a session met the account's limit: the window it names is used up until `--resets-at`, or until the next reading without it; without `--window`, the whole account is.
 - `status` answers each account's windows (each with its `group` where the
-  engine groups them), used %, resets at, source (`read` or `limit`),
+  engine groups them, and the `models` whose use it counts where the engine
+  names them), used %, resets at, source (`read` or `limit`),
   `stale`, and pace: `tight` (at its recent rate it runs out before it
   resets), `spare` (it resets within a quarter of its length with 20% or
   more left), `used_up`, or `steady`. The account's pace is its worst
@@ -245,16 +271,44 @@ stablehand status                   # each account's windows and their pace
 - It never refuses: an account not kept, or not claude-code's, books
   nothing, and the line says why (with `--then`, stderr does).
 
-## Picking an account
+## The order
 
 ```sh
-stablehand pick --engine claude-code --running claude-felix=1,claude-two=2
-# {"account": "claude-felix"}
-# {"none": true, "until": "2026-11-24T15:00:00Z", "why": [{"account", "reason", "why", "until"}, …]}
+stablehand order set claude-code@opus codex grok agy@gemini-4-neon-high,claude-opus-5-5-high
+stablehand order show   # {"order": [{"engine": "claude-code", "models": ["opus"]}, …]}
 ```
 
-- `pick` answers which account one more session of the engine may start on
-  now. It reads no engine: it judges the books as `status` shows them.
+- The engines, and of each the models, the next session starts on,
+  highest first; an engine with no model runs its own. One order per
+  machine, kept in the register's database; `set` replaces it.
+- An engine is one stablehand knows; agy's models are checked against the
+  ids `agy models` lists, run in the home of the first agy account bound
+  to this machine (the user's own without one). Other engines' models are
+  kept as given. A fault is refused (`bad_order`), writing nothing.
+- It is a preference only: the command an engine starts with, its flags,
+  its guard, and which checkout keeps to which engine stay the caller's
+  (factorium's kit commands and pins).
+
+## Picking what the next session starts on
+
+```sh
+stablehand pick --running claude-felix=1,claude-two=2
+stablehand pick --engine agy --model claude-opus-5-5-high
+# {"engine": "agy", "model": "claude-opus-5-5-high", "account": "agy", "why": […], "model_in_no_group": []}
+# {"none": true, "until": "2026-11-24T15:00:00Z", "why": [{"engine", "model", "account", "reason", "why", "until"}, …], "model_in_no_group": []}
+```
+
+- `pick` walks the order: each engine, and of each its models in turn;
+  at each (engine, model) the engine's accounts, judged as below. It
+  answers the first that takes one more session, with `why` each one
+  before it was passed over; or none, until the earliest any lifts.
+- An engine of the order with no account kept is skipped and said
+  (`no_account`): nothing starts on a login stablehand does not keep.
+- `--engine` (repeatable) and `--model` narrow the walk to them, in the
+  order's order; one not in the order may still be named and is tried
+  after the rest. With no order and no `--engine`, nothing is walked:
+  refused (`no_order`).
+- It reads no engine: it judges the books as `status` shows them.
 - The candidates are the engine's accounts usable on the machine
   (`--machine`, else this one): portable, or bound to it; logged in; not off.
 - The rules are Guild's ledger's quota. None is picked on an account a
@@ -271,9 +325,17 @@ stablehand pick --engine claude-code --running claude-felix=1,claude-two=2
   running on each account (factorium knows its workers); stablehand counts
   none itself, and counts across machines only as the caller does. A name in
   it that is no account kept is refused.
+- At a step with a model (agy's `claude-opus-5-5-high`, as `agy models`
+  lists it), an account whose windows are grouped by model is judged only by the
+  windows of the group holding it, and those in no group, so one agy
+  account is two pools: its Gemini group used up, the walk falls to its
+  Claude model. One no group of which holds the model is judged by
+  every window, and named in the answer's `model_in_no_group`; an engine
+  that groups no window is judged as without a model.
 - None answers `until`, the earliest any passed over lifts (null when none
-  says when: off, not logged in, full), and each one's `reason`: `off`,
-  `elsewhere`, `not_logged_in`, `limit`, `stopped`, `full` or `runs_out`.
+  says when: off, not logged in, full, no account), and each one's
+  `reason`: `no_account`, `off`, `elsewhere`, `not_logged_in`, `limit`,
+  `stopped`, `full` or `runs_out`.
 
 ## Install
 

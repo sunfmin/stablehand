@@ -125,6 +125,7 @@ fn stream(code: Option<i32>, stdout: &str, account: &Account) -> Result<Vec<Wind
             Some(Window {
                 name: name.clone(),
                 group: None,
+                models: Vec::new(),
                 // In percent, to a hundredth: 0.07 is 7, not 7.000000000000001.
                 used_percent: (w["utilization"].as_f64()? * 10_000.0).round() / 100.0,
                 resets_at: w["resetsAt"].as_f64().map(|at| at as u64),
@@ -201,6 +202,7 @@ pub fn statusline(stdin: &[u8]) -> Vec<Window> {
             Some(Window {
                 name: name.clone(),
                 group: None,
+                models: Vec::new(),
                 used_percent: w["used_percentage"].as_f64()?,
                 resets_at: w["resets_at"].as_u64(),
                 minutes: minutes(name),
@@ -244,6 +246,7 @@ fn windows(status: u16, answer: &serde_json::Value) -> Result<Vec<Window>, Strin
             Some(Window {
                 name: key.clone(),
                 group: None,
+                models: Vec::new(),
                 used_percent: w["utilization"].as_f64()?,
                 resets_at: w["resets_at"].as_str().and_then(time::parse),
                 minutes: minutes(key),
@@ -311,6 +314,7 @@ mod tests {
             home: None,
             off: None,
             token_command: None,
+            identity: None,
         }
     }
 

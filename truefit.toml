@@ -87,8 +87,10 @@ env = { CLAUDE_CODE_OAUTH_TOKEN = "sk-ant-oat01-not-a-token" }
 args = ["-p", "--model", "haiku", "--output-format", "stream-json", "--verbose", "--tools", "", "--strict-mcp-config", "--no-session-persistence", "--setting-sources", "", "--system-prompt", "Answer with one word.", "quota"]
 
 # agy's reader (src/readers/agy.rs) runs `agy -p /usage --output-format json`
-# in the account's home. Both sides answer through agy-shape, which keeps only
-# what the reader reads: the exit, the status, the error, each bucket's shape.
+# in the account's home, then `agy models` there. Both sides answer through
+# agy-shape, which keeps only what the reader reads: the exit, the status,
+# the error, each group's description's and bucket's shape; of `models`,
+# whether its lines are ids and names.
 # The real side is this user's own agy login; signed out, a new empty home
 # (agy waits 60s for a browser sign-in first).
 [[standin]]
@@ -109,6 +111,16 @@ args = ["-p", "/usage", "--output-format", "json"]
 name = "a-home-signed-out"
 fault = "signed-out"
 args = ["-p", "/usage", "--output-format", "json"]
+env = { AGY_SHAPE_HOME = "signed-out" }
+
+[[standin.case]]
+name = "a-login-s-models"
+args = ["models"]
+
+[[standin.case]]
+name = "a-home-signed-out-lists-no-model"
+fault = "signed-out"
+args = ["models"]
 env = { AGY_SHAPE_HOME = "signed-out" }
 # kimi's reader (src/readers/kimi.rs) asks api.kimi.com/coding/v1/usages
 # through curl (src/curl.rs), the bearer on curl's stdin. Both sides answer
@@ -345,11 +357,12 @@ says = '''The rules are Guild's ledger's: a reading over two hours old, or a win
 source = "README.md:66"
 check = ["test"]
 
-# tests/import.rs imports_each_entry_its_token_command_and_keeps_what_is_kept
+# tests/scan.rs scan_finds_one_account_per_subscription_and_add_registers_the_new_ones
 [[promise]]
-name = "import-only-reads-mytokens"
-says = '''mytokens is only read: nothing in it is changed or removed.'''
-source = "README.md:83"
+name = "scan-says-and-keeps-no-identity"
+says = '''read and compared in memory, never
+  printed, logged or stored'''
+source = "README.md:107"
 check = ["test"]
 
 # tests/statusline.rs then_hands_the_same_stdin_to_the_person_s_own_line
@@ -431,10 +444,9 @@ says = '''A credential the engine refused (dsh: HTTP 401 or code 40003; dsh drop
 source = "README.md:151"
 check = ["test"]
 
-# mytokens holds the agent-account-* entries `account import --from-mytokens`
-# moves into stablehand: `list`, then `get` of each entry's fields
-# (tests/contract/mytokens-steps); a portable account's token command is its
-# entry's `get` of CLAUDE_CODE_OAUTH_TOKEN. It only reads, and prints no value: a real
+# mytokens holds the agent-account-* entries `account scan` finds from its
+# `list` alone; a portable account's token command is its entry's `get` of
+# CLAUDE_CODE_OAUTH_TOKEN (tests/contract/mytokens-steps). It only reads, and prints no value: a real
 # run reads this host's own entries, so it needs at least one portable entry
 # with a token and one bound to a machine.
 [[standin]]

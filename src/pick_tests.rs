@@ -17,6 +17,7 @@ fn window(name: &str, used: f64, resets_at: u64) -> Window {
     Window {
         name: name.into(),
         group: None,
+        models: Vec::new(),
         used_percent: used,
         resets_at: Some(resets_at),
         minutes: Some(minutes),
@@ -469,4 +470,127 @@ fn a_window_flat_across_its_readings_runs_out_of_nothing_however_early_its_use_c
         said(1_794_830_770, &[("seven_day", 34.0, WEEK_RESETS)]),
     ];
     assert_eq!(passed_over(&book, 0, 1_794_830_770 + 10 * MINUTE), None);
+}
+
+// A session of a model, of an account whose windows are grouped (agy's).
+
+/// agy's books, read a minute ago: its Gemini group's 5h window `gemini`
+/// percent used, its Claude-and-GPT group's `third` percent; each resetting
+/// in three hours; and a window in no group, `other` percent used.
+fn agy(gemini: f64, third: f64, other: Option<f64>) -> Status {
+    let w = |name: &str, group: &str, models: &[&str], used| Window {
+        name: name.into(),
+        group: Some(group.into()),
+        models: models.iter().map(|m| m.to_string()).collect(),
+        used_percent: used,
+        resets_at: Some(NOW + 180 * MINUTE),
+        minutes: Some(300),
+        read_by: None,
+    };
+    let mut windows = vec![
+        w(
+            "gemini-5h",
+            "Gemini Models",
+            &["gemini-4-neon-high"],
+            gemini,
+        ),
+        w(
+            "3p-5h",
+            "Claude and GPT models",
+            &["claude-opus-5-5-high"],
+            third,
+        ),
+    ];
+    if let Some(used) = other {
+        windows.push(Window {
+            group: None,
+            models: Vec::new(),
+            ..window("five_hour", used, NOW + 180 * MINUTE)
+        });
+    }
+    status(
+        &[Entry {
+            at: NOW - MINUTE,
+            what: What::Read(windows),
+        }],
+        NOW,
+    )
+}
+
+fn agy_pick(s: Status, model: Option<&str>) -> Result<String, (Reason, String)> {
+    let s = match model {
+        Some(m) => spent(s, m).0,
+        None => s,
+    };
+    let a = Candidate {
+        name: "agy",
+        barred: None,
+        sessions: None,
+        running: 0,
+        status: s,
+    };
+    match pick(&[a], STOP_PERCENT, NOW) {
+        Pick::Account(name) => Ok(name),
+        Pick::None { why, .. } => Err((why[0].reason, why[0].why.clone())),
+    }
+}
+
+#[test]
+fn a_model_is_judged_by_its_group_s_windows_and_those_in_no_group() {
+    // The Gemini group used up: a Claude session may start, a Gemini one not.
+    assert_eq!(
+        agy_pick(agy(100.0, 0.0, None), Some("claude-opus-5-5-high")),
+        Ok("agy".into())
+    );
+    let (reason, why) = agy_pick(agy(100.0, 0.0, None), Some("gemini-4-neon-high")).unwrap_err();
+    assert_eq!(reason, Reason::Stopped);
+    assert!(why.contains("gemini-5h is 100% used"), "{why}");
+    // Without a model, or of one no group holds, every window decides.
+    for model in [None, Some("gpt-9")] {
+        assert_eq!(
+            agy_pick(agy(100.0, 0.0, None), model).unwrap_err().0,
+            Reason::Stopped
+        );
+    }
+    let in_no_group = |m| spent(agy(100.0, 0.0, None), m).1;
+    assert!(in_no_group("gpt-9") && !in_no_group("claude-opus-5-5-high"));
+    // A window in no group decides for every model.
+    let (_, why) = agy_pick(agy(0.0, 0.0, Some(95.0)), Some("claude-opus-5-5-high")).unwrap_err();
+    assert!(why.contains("five_hour is 95% used"), "{why}");
+    // Of the group's windows, its most used decides how much is left.
+    let left = |m| left_percent(&spent(agy(80.0, 30.0, None), m).0);
+    assert_eq!(
+        (left("claude-opus-5-5-high"), left("gemini-4-neon-high")),
+        (Some(70.0), Some(20.0))
+    );
+}
+
+#[test]
+fn a_model_s_windows_carry_a_limit_on_them_and_not_one_on_another_group() {
+    let limited = |window: Option<&str>| {
+        let mut s = agy(0.0, 0.0, None);
+        s.limit = Some(books::Held {
+            at: NOW,
+            window: window.map(Into::into),
+            resets_at: None,
+        });
+        s
+    };
+    let claude = Some("claude-opus-5-5-high");
+    assert_eq!(
+        agy_pick(limited(Some("gemini-5h")), claude),
+        Ok("agy".into())
+    );
+    for window in [Some("3p-5h"), None] {
+        assert_eq!(
+            agy_pick(limited(window), claude).unwrap_err().0,
+            Reason::Limit
+        );
+    }
+}
+
+#[test]
+fn ungrouped_windows_know_no_model_and_every_one_decides() {
+    let s = status(&five_hour(95.0, 100), NOW);
+    assert_eq!(spent(s.clone(), "claude-opus-5-5"), (s, false));
 }

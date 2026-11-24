@@ -113,6 +113,7 @@ fn windows(status: u16, body: &str, account: &Account) -> Result<Vec<Window>, St
             Some(Window {
                 name: key.clone(),
                 group: None,
+                models: Vec::new(),
                 used_percent: percent(&w["used_ratio"])?,
                 resets_at: w["reset_time"].as_str().and_then(time::parse),
                 minutes: minutes(key),
@@ -143,6 +144,7 @@ mod tests {
             home: None,
             off: None,
             token_command: Some("mytokens get kimi".into()),
+            identity: None,
         }
     }
 

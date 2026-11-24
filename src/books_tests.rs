@@ -17,6 +17,7 @@ fn window(name: &str, used: f64, resets_at: Option<u64>) -> Window {
     Window {
         name: name.into(),
         group: None,
+        models: Vec::new(),
         used_percent: used,
         resets_at,
         minutes: Some(minutes),

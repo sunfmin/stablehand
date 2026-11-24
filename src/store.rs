@@ -4,6 +4,7 @@
 //! login it keeps the command that prints its token, never the token.
 use crate::account::{Account, Engine, Off};
 use crate::books::Entry;
+use crate::order::Rank;
 use rusqlite::{Connection, OptionalExtension, Row, params};
 use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
@@ -40,13 +41,16 @@ const MIGRATIONS: &[&str] = &[
     ALTER TABLE accounts DROP COLUMN logged_in_at;
     ALTER TABLE accounts ADD COLUMN token_command TEXT;
 ",
+    // The hash of the identity `account scan` read in the account's login.
+    "ALTER TABLE accounts ADD COLUMN identity TEXT;",
+    // The order, one row: its ranks (order::Rank), highest first, as JSON.
+    "CREATE TABLE engine_order (id INTEGER PRIMARY KEY CHECK (id = 1), ranks TEXT NOT NULL);",
 ];
 
 /// How long a process waits for another's write.
 const BUSY_TIMEOUT: Duration = Duration::from_secs(30);
 
-const COLUMNS: &str =
-    "name, engine, machine, sessions, expires, home, off_by, off_at, off_reason, token_command";
+const COLUMNS: &str = "name, engine, machine, sessions, expires, home, off_by, off_at, off_reason, token_command, identity";
 
 pub struct Store {
     conn: Connection,
@@ -114,6 +118,7 @@ fn account_of(row: &Row) -> rusqlite::Result<Account> {
         home: row.get(5)?,
         off,
         token_command: row.get(9)?,
+        identity: row.get(10)?,
     })
 }
 
@@ -189,7 +194,7 @@ impl Store {
         self.conn
             .execute(
                 &format!(
-                    "{verb} accounts ({COLUMNS}) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)"
+                    "{verb} accounts ({COLUMNS}) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)"
                 ),
                 params![
                     a.name,
@@ -202,6 +207,7 @@ impl Store {
                     off.map(|o| &o.at),
                     off.map(|o| &o.reason),
                     a.token_command,
+                    a.identity,
                 ],
             )
             .map(|n| n == 1)
@@ -218,6 +224,32 @@ impl Store {
             .map_err(|e| self.err(e))?;
         tx.commit().map_err(|e| self.err(e))?;
         Ok(removed == 1)
+    }
+}
+
+impl Store {
+    /// The order, highest first; empty when none is set.
+    pub fn order(&self) -> Result<Vec<Rank>, String> {
+        let text: Option<String> = self
+            .conn
+            .query_row("SELECT ranks FROM engine_order", [], |r| r.get(0))
+            .optional()
+            .map_err(|e| self.err(e))?;
+        text.map_or(Ok(Vec::new()), |t| {
+            serde_json::from_str(&t).map_err(|e| format!("{}: the order: {e}", self.path.display()))
+        })
+    }
+
+    /// Replaces the order with `order`.
+    pub fn set_order(&self, order: &[Rank]) -> Result<(), String> {
+        let ranks = serde_json::to_string(order).map_err(|e| e.to_string())?;
+        self.conn
+            .execute(
+                "REPLACE INTO engine_order (id, ranks) VALUES (1, ?1)",
+                [ranks],
+            )
+            .map(|_| ())
+            .map_err(|e| self.err(e))
     }
 }
 

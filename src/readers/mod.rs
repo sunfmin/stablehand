@@ -7,7 +7,7 @@
 use crate::account::{Account, Engine};
 use crate::books::{Status, What, Window};
 
-mod agy;
+pub mod agy;
 mod chatgpt;
 pub mod claude_code;
 mod dsh;

@@ -1,18 +1,41 @@
 #!/bin/sh
 # Stand-in for agy as stablehand's reader runs it (src/readers/agy.rs):
 #   HOME=<home> agy -p /usage --output-format json   (stdin empty)
+#   HOME=<home> agy models                            (stdin empty)
 # It answers as agy 1.5.16 does (truefit.toml, standin "agy"): signed in
 # ($HOME/.gemini/antigravity-cli/antigravity-oauth-token there), the quota of
-# each model group, exit 0; signed out, after the browser sign-in it waited
-# for, an error, exit 1.
+# each model group, or each model's id and name, a tab between, exit 0;
+# signed out, after the browser sign-in it waited for (`/usage`), an error,
+# exit 1.
 #
 # FAKE_AGY_FAULT: signed-out (as a home with no login). FAKE_AGY_BODY: a file
-#   whose answer a signed-in home gets instead of the one below.
+#   whose answer a signed-in home gets instead of the `/usage` one below.
 #   FAKE_AGY_LOG: a file each call appends its arguments and HOME to.
+#   FAKE_AGY_MODELS=fails: `models` fails, signed in or not.
 if [ -n "$FAKE_AGY_LOG" ]; then
     echo "$* HOME=$HOME" >>"$FAKE_AGY_LOG"
 fi
+signed_in=yes
 if [ "$FAKE_AGY_FAULT" = signed-out ] || [ ! -f "$HOME/.gemini/antigravity-cli/antigravity-oauth-token" ]; then
+    signed_in=
+fi
+if [ "$1" = models ]; then
+    echo "Fetching available models..." >&2
+    if [ -z "$signed_in" ] || [ "$FAKE_AGY_MODELS" = fails ]; then
+        echo "Error: Please sign in to view available models. Launch the CLI without arguments to sign in." >&2
+        exit 1
+    fi
+    printf '%s\t%s\n' \
+        gemini-4-neon-high 'Gemini 4 Neon (High)' \
+        gemini-4-neon-low 'Gemini 4 Neon (Low)' \
+        gemini-pro-orchestrator-neon 'Orchestrator (Neon)' \
+        gemini-3.8-flash-high 'Gemini 3.8 Flash (High)' \
+        claude-opus-5-5-high 'Claude Opus 5.5 (High)' \
+        claude-sonnet-5-5-medium 'Claude Sonnet 5.5 (Medium)' \
+        gpt-oss-120b-medium 'GPT-OSS 120B (Medium)'
+    exit 0
+fi
+if [ -z "$signed_in" ]; then
     echo "Authentication required. Please visit the URL to log in:" >&2
     echo "error: authentication failed or timed out" >&2
     echo '{"conversation_id":"","status":"ERROR","response":"","error":"authentication failed or timed out","duration_seconds":0,"num_turns":0,"usage":{"input_tokens":0,"output_tokens":0,"thinking_tokens":0,"cache_read_tokens":0,"total_tokens":0},"finished_reason":"error"}'

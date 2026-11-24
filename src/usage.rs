@@ -1,9 +1,10 @@
 //! `read`, `limit`, `status` and `pick`: an account's readings booked
 //! through its engine's reader, a caller's limit booked, what the books say
 //! now, and which account one more session may start on.
-use crate::account::{Account, Engine};
+use crate::account::Account;
 use crate::books::{self, Entry, ReadBy, Status, What};
 use crate::login;
+use crate::order::Step;
 use crate::pick::{self, Candidate, Pick, Reason};
 use crate::readers;
 use crate::refusal::{Code, Refused};
@@ -144,6 +145,7 @@ fn windows(s: &Status) -> Vec<Value> {
             json!({
                 "name": w.name,
                 "group": w.group,
+                "models": w.models,
                 "used_percent": w.used_percent,
                 "resets_at": w.resets_at.map(utc),
                 "source": w.source,
@@ -170,60 +172,130 @@ fn balances(s: &Status) -> Vec<Value> {
         .collect()
 }
 
-/// Which of `accounts` of `engine` one more session may start on now on
-/// `machine`: each is barred off, bound to another machine, or not logged
-/// in, then judged by its books with `running` sessions on it
-/// ([`pick::pick`]).
+/// The session one more pick is for, as its caller says it.
+pub struct Session<'a> {
+    /// The sessions now running per account.
+    pub running: &'a [(String, u32)],
+    /// The machine it starts on.
+    pub machine: &'a str,
+}
+
+/// What the session starts on: for each step of `walk` in turn, the
+/// accounts of its engine, each barred off, bound to another machine, or
+/// not logged in, then judged by its books with the sessions running on it
+/// ([`pick::pick`]), of a model by the books it spends ([`pick::spent`]);
+/// the first (engine, model, account) that may, or none, until the
+/// earliest any passed over lifts. Either says why each step before it was
+/// passed over (an engine with no account kept, skipped) and the accounts
+/// judged by every window, no group of theirs holding the step's model.
 pub fn pick(
     store: &Store,
     accounts: &[Account],
-    engine: Engine,
-    running: &[(String, u32)],
-    machine: &str,
+    walk: &[Step],
+    session: &Session,
     stop_percent: u8,
     now: u64,
 ) -> Result<Value, String> {
-    let mut candidates = Vec::new();
-    for a in accounts.iter().filter(|a| a.engine == engine) {
-        let barred = match (&a.off, &a.machine) {
-            (Some(off), _) => Some((Reason::Off, format!("switched off: {}", off.reason))),
-            (None, Some(bound)) if bound != machine => Some((
-                Reason::Elsewhere,
-                format!("its login is bound to {bound}, not {machine}"),
-            )),
-            _ if !login::logged_in(a)? => Some((
-                Reason::NotLoggedIn,
-                format!("not logged in: log it in with {}", login::login_line(a)),
-            )),
-            _ => None,
+    let mut why = Vec::new();
+    let mut until: Option<u64> = None;
+    let mut in_no_group: Vec<&str> = Vec::new();
+    for step in walk {
+        let of: Vec<&Account> = accounts
+            .iter()
+            .filter(|a| a.engine == step.engine)
+            .collect();
+        let passed = |account: Option<&str>, reason: Reason, text: &str, until: Option<u64>| {
+            json!({
+                "engine": step.engine,
+                "model": step.model,
+                "account": account,
+                "reason": reason,
+                "why": text,
+                "until": until.map(utc),
+            })
         };
-        candidates.push(Candidate {
-            name: &a.name,
-            barred,
-            sessions: a.sessions,
-            running: running
-                .iter()
-                .filter(|(n, _)| n == &a.name)
-                .map(|(_, c)| c)
-                .sum(),
-            status: books::status(&book_of(store, a)?, now),
-        });
-    }
-    Ok(match pick::pick(&candidates, stop_percent, now) {
-        Pick::Account(name) => json!({ "account": name }),
-        Pick::None { until, why } => {
-            let why: Vec<Value> = why
-                .iter()
-                .map(|p| {
-                    json!({
-                        "account": p.account,
-                        "reason": p.reason,
-                        "why": p.why,
-                        "until": p.until.map(utc),
-                    })
-                })
-                .collect();
-            json!({ "none": true, "until": until.map(utc), "why": why })
+        if of.is_empty() {
+            let engine = step.engine.name();
+            why.push(passed(None, Reason::NoAccount, &format!(
+                "no {engine} account is kept: skipped; add one with `stablehand account add <name> --engine {engine}`, or `stablehand account scan --add`"
+            ), None));
+            continue;
         }
+        let mut candidates = Vec::new();
+        for a in of {
+            let (status, whole) = judged(store, a, step.model.as_deref(), now)?;
+            if whole && !in_no_group.contains(&a.name.as_str()) {
+                in_no_group.push(&a.name);
+            }
+            candidates.push(Candidate {
+                name: &a.name,
+                barred: barred(a, session.machine)?,
+                sessions: a.sessions,
+                running: session
+                    .running
+                    .iter()
+                    .filter(|(n, _)| n == &a.name)
+                    .map(|(_, c)| c)
+                    .sum(),
+                status,
+            });
+        }
+        match pick::pick(&candidates, stop_percent, now) {
+            Pick::Account(name) => {
+                return Ok(json!({
+                    "engine": step.engine,
+                    "model": step.model,
+                    "account": name,
+                    "why": why,
+                    "model_in_no_group": in_no_group,
+                }));
+            }
+            Pick::None {
+                why: each,
+                until: lifts,
+            } => {
+                until = until.into_iter().chain(lifts).min();
+                for p in each {
+                    why.push(passed(Some(&p.account), p.reason, &p.why, p.until));
+                }
+            }
+        }
+    }
+    Ok(json!({
+        "none": true,
+        "until": until.map(utc),
+        "why": why,
+        "model_in_no_group": in_no_group,
+    }))
+}
+
+/// Why no session may start on `a` on `machine`, whatever its books say.
+fn barred(a: &Account, machine: &str) -> Result<Option<(Reason, String)>, String> {
+    Ok(match (&a.off, &a.machine) {
+        (Some(off), _) => Some((Reason::Off, format!("switched off: {}", off.reason))),
+        (None, Some(bound)) if bound != machine => Some((
+            Reason::Elsewhere,
+            format!("its login is bound to {bound}, not {machine}"),
+        )),
+        _ if !login::logged_in(a)? => Some((
+            Reason::NotLoggedIn,
+            format!("not logged in: log it in with {}", login::login_line(a)),
+        )),
+        _ => None,
+    })
+}
+
+/// `a`'s books now, as a session of `model` spends them, and whether it
+/// is judged by every window, no group of its holding the model.
+fn judged(
+    store: &Store,
+    a: &Account,
+    model: Option<&str>,
+    now: u64,
+) -> Result<(Status, bool), String> {
+    let status = books::status(&book_of(store, a)?, now);
+    Ok(match model {
+        Some(model) => pick::spent(status, model),
+        None => (status, false),
     })
 }

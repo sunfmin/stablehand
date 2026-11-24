@@ -4,11 +4,12 @@ mod account;
 mod books;
 mod bounded;
 mod curl;
-mod import;
 mod login;
+mod order;
 mod pick;
 mod readers;
 mod refusal;
+mod scan;
 mod statusline;
 mod store;
 mod time;
@@ -39,7 +40,7 @@ const LEARN: &str = "Learn";
 ///
 /// stablehand runs no login and keeps no secret: a person logs an engine in by the engine itself, and stablehand finds the login where it is. A bound account is logged in when its home holds its engine's login file; a portable one when the command it names (`--token-command`) prints its token, the token kept where the person keeps secrets (the Keychain, 1Password, mytokens).
 ///
-/// `stablehand credential <name>` hands a session's caller an account's login (a token, or the login files to link into the session's own home); `stablehand read` asks an account's engine for its windows and books the reading, `stablehand limit` books a session's report that it met the account's limit, `stablehand status` says what the books say now, each window's pace with it, and `stablehand pick --engine <engine>` which account one more session may start on.
+/// `stablehand credential <name>` hands a session's caller an account's login (a token, or the login files to link into the session's own home); `stablehand read` asks an account's engine for its windows and books the reading, `stablehand limit` books a session's report that it met the account's limit, `stablehand status` says what the books say now, each window's pace with it, and `stablehand pick` what the next session starts on: the first engine, model and account of the order (`stablehand order`) one more session may start on. The session itself, its command, flags and home, is the caller's.
 ///
 /// Start with `stablehand account list`. Run `stablehand <command> --help` before a command's first run.
 ///
@@ -129,11 +130,17 @@ enum Cmd {
 /// The commands that read and change the register and the books.
 #[derive(Subcommand)]
 enum Register {
-    /// Add, list, show, change, import or remove an account.
+    /// Add, find (scan), list, show, change or remove an account.
     #[command(next_help_heading = REGISTER, verbatim_doc_comment)]
     Account {
         #[command(subcommand)]
         cmd: AccountCmd,
+    },
+    /// Set or show the order: the engines, and of each the models, the next session starts on, highest first (`stablehand pick` walks it).
+    #[command(next_help_heading = REGISTER, verbatim_doc_comment)]
+    Order {
+        #[command(subcommand)]
+        cmd: OrderCmd,
     },
     /// Switch an account off: nothing is picked on it until `stablehand on`.
     ///
@@ -166,7 +173,7 @@ enum Register {
     ///
     /// A claude-code account whose login is a `claude setup-token` token spends one smallest-model turn of its quota a reading (about 3s, under $0.0002): at most once an hour, unless `--now`, and each such read says `spent_turn: true`.
     ///
-    /// An agy account is read by running agy in its home, on its machine only: a portable one is refused (bind it), and a home not signed in fails only after agy has waited 60s for a browser sign-in.
+    /// An agy account is read by running agy in its home, on its machine only: a portable one is refused (bind it), and a home not signed in fails only after agy has waited 60s for a browser sign-in. After its quota, `agy models` names each group's models; where it fails, the windows are booked with none, and `pick --model` judges the account by every window.
     /// A codex or pi account is read through its engine's own login, bound: on its machine, in its home. A portable one, or one bound to another machine, fails with the fix.
     #[command(next_help_heading = SESSIONS, verbatim_doc_comment)]
     Read {
@@ -200,7 +207,7 @@ enum Register {
     ///
     /// ## What it answers
     ///
-    /// `{"accounts": [{"name", "engine", "off", "pace", "windows", "balances", "limit", "read_at", "read_by", "tried_at", "failed", "refused", "read_next"}]}`. `read_by` is how the latest reading was asked, where its engine asks two ways (claude-code): `usage` (no turn) or `question` (one smallest-model turn spent: a `claude setup-token` token); null otherwise. `refused` is true when the last try's credential was refused and the account has not logged in since: it is read again only after it logs in again (its home's login file written since, or `stablehand account edit --token-command`), whatever `read_next` says. Each balance (a pay-as-you-go account's, dsh's; such an account has no window) is `{"wallet" ("normal" or "bonus"), "currency", "amount", "at", "stale" (a later try failed)}`. Each window is `{"name", "group" (null where the engine groups none), "used_percent" (null once it has reset since it was read), "resets_at", "source" ("read" or "limit"), "at" (when that was booked), "stale" (a later try failed, or it has reset since), "pace"}`.
+    /// `{"accounts": [{"name", "engine", "off", "pace", "windows", "balances", "limit", "read_at", "read_by", "tried_at", "failed", "refused", "read_next"}]}`. `read_by` is how the latest reading was asked, where its engine asks two ways (claude-code): `usage` (no turn) or `question` (one smallest-model turn spent: a `claude setup-token` token); null otherwise. `refused` is true when the last try's credential was refused and the account has not logged in since: it is read again only after it logs in again (its home's login file written since, or `stablehand account edit --token-command`), whatever `read_next` says. Each balance (a pay-as-you-go account's, dsh's; such an account has no window) is `{"wallet" ("normal" or "bonus"), "currency", "amount", "at", "stale" (a later try failed)}`. Each window is `{"name", "group" (null where the engine groups none), "models" (the ids of the models whose use it counts, its group's: agy's; empty where the engine names none), "used_percent" (null once it has reset since it was read), "resets_at", "source" ("read" or "limit"), "at" (when that was booked), "stale" (a later try failed, or it has reset since), "pace"}`.
     ///
     /// ## Pace
     ///
@@ -211,9 +218,13 @@ enum Register {
         #[arg(verbatim_doc_comment)]
         name: Option<String>,
     },
-    /// Which account of an engine one more session may start on now.
+    /// What the next session starts on: the first engine, model and account of the order one more session may start on now.
     ///
-    /// Reads no engine: it judges the books as `stablehand status` shows them (run `stablehand read` first for fresh windows). The candidates are the engine's accounts usable on this machine (portable, or bound to it), logged in, and not off.
+    /// Reads no engine: it judges the books as `stablehand status` shows them (run `stablehand read` first for fresh windows). It walks the order (`stablehand order show`): each engine in turn, and of each its models in turn (the engine's own where the order lists none); at each (engine, model), the engine's accounts usable on this machine (portable, or bound to it), logged in, and not off, judged by the rules below. An engine of the order with no account kept is skipped, and said (`no_account`): nothing starts on a login stablehand does not keep.
+    ///
+    /// ## Narrowing the walk
+    ///
+    /// `--engine` (repeatable) and `--model` narrow the walk to them, in the order's order. An engine or a model not in the order may still be named: it is tried after the rest, an engine named without `--model` on its own model. With neither, and no order kept, there is nothing to walk: it refuses (`no_order`).
     ///
     /// ## The rules
     ///
@@ -226,18 +237,27 @@ enum Register {
     ///
     /// Of the rest, the one with the most left of its most used window; one with no reading in force, or only stale ones, after every one with one; of equals, the first by name.
     ///
+    /// ## A session's model
+    ///
+    /// At a step with a model, an account whose windows are grouped by model (agy: `Gemini Models`, `Claude and GPT models`) is judged only by the windows of the group holding that model (its windows' `models` in `stablehand status`), and those in no group: every rule above, a limit on a window of another group left out. So one agy account is two pools: its Gemini group used up, the walk falls to its Claude model. One no group of which holds the model is judged by every window, and named in the answer's `model_in_no_group`. An engine that groups no window is judged as without a model.
+    ///
     /// ## What it answers
     ///
-    /// `{"account": "<name>"}`, or `{"none": true, "until": <the earliest time any lifts, or null>, "why": [{"account", "reason", "why", "until"}]}`, `reason` one of `off`, `elsewhere`, `not_logged_in`, `limit`, `stopped`, `full`, `runs_out`. An engine with no account here answers none with an empty `why`. It refuses a `--running` name that is no account kept.
+    /// `{"engine", "model" (null: the engine's own), "account", "why", "model_in_no_group"}`, or `{"none": true, "until": <the earliest time any passed over lifts, or null>, "why", "model_in_no_group"}`. `why` is each (engine, model, account) passed over before the answer, in the walk's order: `[{"engine", "model", "account" (null for an engine skipped), "reason", "why", "until"}]`, `reason` one of `no_account`, `off`, `elsewhere`, `not_logged_in`, `limit`, `stopped`, `full`, `runs_out`. It refuses a `--running` name that is no account kept, and a walk with nothing in it.
+    ///
+    /// The order is a preference only: the command an engine starts with, its flags, and which caller keeps to which engine stay the caller's.
     ///
     /// ## What trips you up
     ///
     /// `--running` is the caller's count, on this machine or wherever it knows: stablehand counts no session itself. An account left out of it has none running.
     #[command(next_help_heading = SESSIONS, verbatim_doc_comment)]
     Pick {
-        /// The engine the session runs in.
+        /// Walk only this engine's steps; repeatable. One not in the order is tried after the rest.
         #[arg(long, value_enum, verbatim_doc_comment)]
-        engine: Engine,
+        engine: Vec<Engine>,
+        /// Walk only the steps of this model, by the id its engine starts it with (`agy models`: `claude-opus-5-5-high`); one not in the order is tried on each `--engine` after the rest.
+        #[arg(long, value_parser = clap::builder::NonEmptyStringValueParser::new(), verbatim_doc_comment)]
+        model: Option<String>,
         /// The sessions now running per account, `<account>=<n>`, comma-separated or repeated.
         #[arg(long, value_delimiter = ',', value_parser = running, verbatim_doc_comment)]
         running: Vec<(String, u32)>,
@@ -248,6 +268,35 @@ enum Register {
         #[arg(long, default_value_t = pick::STOP_PERCENT, value_parser = clap::value_parser!(u8).range(1..=100), verbatim_doc_comment)]
         stop_percent: u8,
     },
+}
+
+/// The order: which engines, and of each which models, the next session starts on.
+#[derive(Subcommand)]
+enum OrderCmd {
+    /// Set the order, highest first: each `<engine>[@<model>[,<model>…]]`.
+    ///
+    /// One order per machine, kept in the register's database; it replaces the one kept. An engine is one of stablehand's (below); its models are the ids its engine starts a session with, highest first (claude-code's `opus`), none naming the engine's own. agy's are checked against the ids `agy models` lists, run in the home of the first agy account bound to this machine (the user's own without one). The order is a preference only: the command an engine starts with, its flags and its guard stay the caller's.
+    ///
+    /// `stablehand order set claude-code@opus codex grok agy@gemini-4-neon-high,claude-opus-5-5-high`
+    ///
+    /// ## What it answers
+    ///
+    /// `{"order": [{"engine", "models": [...]}]}`, as `stablehand order show` does. It refuses, writing nothing (`bad_order`), an engine it does not know, one given twice, an empty model or one given twice, and an agy model `agy models` does not list, or `agy models` failing.
+    ///
+    /// ## Engines
+    ///
+    /// {const:ENGINES}
+    #[command(verbatim_doc_comment)]
+    Set {
+        /// `<engine>[@<model>[,<model>…]]`, highest first.
+        #[arg(required = true, verbatim_doc_comment)]
+        ranks: Vec<String>,
+    },
+    /// The order kept, highest first.
+    ///
+    /// Answers `{"order": [{"engine", "models": [...]}]}`, empty when none is set.
+    #[command(verbatim_doc_comment)]
+    Show,
 }
 
 /// One `--running` count, `<account>=<n>`.
@@ -266,7 +315,7 @@ fn running(s: &str) -> Result<(String, u32), String> {
 enum AccountCmd {
     /// Add an account.
     ///
-    /// Answers `{"account": {"name", "engine", "login" ("portable" or "bound"), "machine", "sessions", "expires", "home", "off", "token_command"}}`, a field it lacks null. Refuses, writing nothing, a name already kept, an unknown engine (exit {const:EXIT_USAGE}), a date that is no YYYY-MM-DD day, `--expires` or `--token-command` with `--machine` (a bound login is its engine's files, no token) and `--home` without `--machine`.
+    /// Answers `{"account": {"name", "engine", "login" ("portable" or "bound"), "machine", "sessions", "expires", "home", "off", "token_command", "identity" (the hash of the identity `stablehand account scan` read in its login)}}`, a field it lacks null. Refuses, writing nothing, a name already kept, an unknown engine (exit {const:EXIT_USAGE}), a date that is no YYYY-MM-DD day, `--expires` or `--token-command` with `--machine` (a bound login is its engine's files, no token) and `--home` without `--machine`.
     ///
     /// ## Logging in
     ///
@@ -315,19 +364,33 @@ enum AccountCmd {
         #[arg(long, value_enum, verbatim_doc_comment)]
         unset: Vec<Field>,
     },
-    /// Move this host's `agent-account-*` entries of mytokens into stablehand.
+    /// Find the engine logins and the portable tokens already on this machine; with `--add`, register them, one account per subscription.
     ///
-    /// Each entry `agent-account-<name>` (`mytokens list`) becomes the account `<name>`: its engine from its HARNESS, bound to its MACHINE if it has one, in the home factorium's workers use, `$HOME/.agent-accounts/<name>` (nothing is made there); an entry with a CLAUDE_CODE_OAUTH_TOKEN is portable, its `--token-command` the `mytokens get <service> --account <label> --field CLAUDE_CODE_OAUTH_TOKEN` that prints it: the token stays in mytokens, and the import reads none. An account already kept is left as it is, but for a bound one with no home, given that home, and a portable one with no token command, given its entry's: a run fills in what an earlier one left out. mytokens is only read: nothing in it is changed or removed.
+    /// It looks in each engine's own default home under `$HOME` ({const:DEFAULT_HOMES}), and in each `--path`; never in a home another program keeps for its own use (factorium's `~/.agent-accounts`, Guild's `~/.guild/engines`) unless a `--path` names it. A home is a login when it holds its engine's login file (below). It also reads `mytokens list`, when mytokens is on PATH: each `agent-account-<name>` entry with an engine's token field (`CLAUDE_CODE_OAUTH_TOKEN`) is a portable account, its `--token-command` `mytokens get agent-account-<name> --field <that field>`; one with no token (a bound one, its `MACHINE`) is skipped. No token is read.
     ///
-    /// Answers `{"dry_run": …, "accounts": [{"from": "agent-account-<name>/<label>", "result": "added"|"would add"|"given its home"|"would give its home"|"given its token command"|"would give its token command"|"already kept", "account": {…}}, …]}`. Refuses, importing nothing, an entry whose HARNESS is no engine, one with both a token and a MACHINE, and a field mytokens does not answer.
+    /// ## One account per subscription
+    ///
+    /// The same subscription is often logged in in several homes (pi's openai-codex and codex on one ChatGPT account). scan tells them apart by the identity each login file holds ({const:IDENTITIES}), read and compared in memory and never said: it answers, and keeps on an account it adds, the identity's hash. Of the logins of one identity, the account is the one an account already kept is (kept at that home, or holding that hash), else the most recently written; the others are copies of it. An identity it cannot read is said so (`identity_unknown`), and that login is never a copy. A portable token tells no identity (a setup token is refused `user:profile`): whether it is a home login's subscription is `unknown`.
+    ///
+    /// ## What it answers
+    ///
+    /// `{"add", "machine", "logins": [{"engine", "home", "logged_in_at", "identity", "identity_unknown", "status", "account", "warning"}], "tokens": [{"entry", "engine", "token_command", "status", "account", "same_as_a_login"}], "mytokens_unread"}`. `status` is `new` (`account` the name `--add` gives it: `<engine>`, or `<engine>-2` … when the name is kept; a token its entry's `<name>`), `added` (with `--add`), `registered` (`account` is it), `copy` (of `account`; `warning` says why to run sessions on that one only) or, for a token entry, `skipped` (with `why`). `mytokens_unread` says why mytokens was not read, null when it was.
+    ///
+    /// ## What it changes
+    ///
+    /// Without `--add`, nothing. With `--add`, it adds each `new` login as `stablehand account add <name> --engine <engine> --machine <this machine> --home <its home>` would, its identity's hash kept, and each `new` token as a portable account with its token command; nothing else: an account kept is never renamed or changed, nothing is written in a home, mytokens is only listed. Run again, it adds nothing more. It refuses a `--path` that is no directory.
+    ///
+    /// ## Engines
+    ///
+    /// {const:ENGINES}
     #[command(verbatim_doc_comment)]
-    Import {
-        /// Read the accounts from mytokens (the one source today).
-        #[arg(long, required = true, verbatim_doc_comment)]
-        from_mytokens: bool,
-        /// Say what it would import, writing nothing.
+    Scan {
+        /// Register each `new` login and token.
         #[arg(long, verbatim_doc_comment)]
-        dry_run: bool,
+        add: bool,
+        /// One more home to look in, for each engine whose login file it holds. Repeatable.
+        #[arg(long, verbatim_doc_comment)]
+        path: Vec<String>,
     },
     /// Remove an account and its books.
     ///
@@ -357,6 +420,22 @@ fn engines_help() -> String {
     lines.collect::<Vec<_>>().join("\n")
 }
 
+/// Each engine's default home, as `stablehand account scan --help` lists it.
+fn default_homes() -> String {
+    let homes = <Engine as clap::ValueEnum>::value_variants()
+        .iter()
+        .map(|e| {
+            let home = e.login().default_home;
+            let home = if home.is_empty() {
+                "~".into()
+            } else {
+                format!("~/{home}")
+            };
+            format!("{} `{home}`", e.name())
+        });
+    homes.collect::<Vec<_>>().join(", ")
+}
+
 /// The manual: clap's command tree, and the constants it places by name.
 fn manual() -> Help {
     Help::new(Cli::command())
@@ -364,6 +443,8 @@ fn manual() -> Help {
         .constant("EXIT_USAGE", Code::Usage.exit())
         .constant("ENGINES", engines_help())
         .constant("TOKEN_COMMANDS", login::TOKEN_COMMANDS)
+        .constant("DEFAULT_HOMES", default_homes())
+        .constant("IDENTITIES", scan::IDENTITIES)
         .constant("TOKEN_COMMAND_SECS", login::TOKEN_COMMAND_SECS)
 }
 
@@ -524,7 +605,7 @@ fn run(cmd: Register) -> Result<Value, Refused> {
                 }
                 Ok(shown(&a))
             }
-            AccountCmd::Import { dry_run, .. } => import::import(&store, dry_run),
+            AccountCmd::Scan { add, path } => scan::scan(&store, &path, add),
             AccountCmd::Rm { name } => {
                 let removed = store.remove(&name)?;
                 Ok(json!({ "name": name, "removed": removed }))
@@ -562,6 +643,7 @@ fn run(cmd: Register) -> Result<Value, Refused> {
         Register::Status { name } => Ok(usage::status(&store, &chosen(&store, name)?, now()?)?),
         Register::Pick {
             engine,
+            model,
             running,
             machine,
             stop_percent,
@@ -577,17 +659,76 @@ fn run(cmd: Register) -> Result<Value, Refused> {
                 Some(m) => m,
                 None => login::this_machine()?,
             };
+            let walk = order::walk(&store.order()?, &engine, model.as_deref());
+            if walk.is_empty() {
+                return Err(Refused::new(
+                    Code::NoOrder,
+                    format!(
+                        "nothing to walk: {}; set the order, `stablehand order set claude-code@opus codex`, or name `--engine <engine>`",
+                        model.map_or(
+                            "no order is kept and no --engine named".into(),
+                            |m| format!(
+                                "no engine of the order lists model `{m}` and no --engine is named"
+                            )
+                        )
+                    ),
+                ));
+            }
+            let session = usage::Session {
+                running: &running,
+                machine: &machine,
+            };
             Ok(usage::pick(
                 &store,
                 &all,
-                engine,
-                &running,
-                &machine,
+                &walk,
+                &session,
                 stop_percent,
                 now()?,
             )?)
         }
+        Register::Order { cmd } => {
+            if let OrderCmd::Set { ranks } = cmd {
+                let bad = |f: Vec<String>| Refused::new(Code::BadOrder, f.join("; "));
+                let order = order::parse(&ranks).map_err(bad)?;
+                if let Some(agy) = order
+                    .iter()
+                    .find(|r| r.engine == Engine::Agy && !r.models.is_empty())
+                {
+                    let listed =
+                        readers::agy::models(&agy_home(&store)?).map_err(|e| bad(vec![e]))?;
+                    let unknown: Vec<String> = agy
+                        .models
+                        .iter()
+                        .filter(|m| !listed.contains(m))
+                        .map(|m| {
+                            format!(
+                                "`agy models` lists no `{m}`: give one of {}",
+                                listed.join(", ")
+                            )
+                        })
+                        .collect();
+                    if !unknown.is_empty() {
+                        return Err(bad(unknown));
+                    }
+                }
+                store.set_order(&order)?;
+            }
+            Ok(json!({ "order": store.order()? }))
+        }
     }
+}
+
+/// Where `agy models` runs: the home of the first agy account bound to this
+/// machine, else the user's own.
+fn agy_home(store: &Store) -> Result<String, Refused> {
+    let here = login::this_machine()?;
+    let home = store
+        .list()?
+        .into_iter()
+        .find(|a| a.engine == Engine::Agy && a.machine.as_deref() == Some(here.as_str()))
+        .and_then(|a| a.home);
+    Ok(home.unwrap_or_else(|| std::env::var("HOME").unwrap_or_default()))
 }
 
 /// The account `name`, or every account where none is named.
