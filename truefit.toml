@@ -40,3 +40,80 @@ name = "db-file-0600-dir-0700"
 says = '''the file is 0600, the directory 0700.'''
 source = "README.md:36"
 check = ["test"]
+
+# sesame keeps a portable account's token (`account login`, `account show`):
+# the calls stablehand makes, each case a run of calls in a store of its own
+# (tests/contract/sesame-steps). stablehand reads their exit codes; of
+# `token --json`, its answer too.
+
+# tests/login.rs a_portable_token_reaches_sesame_on_stdin_and_no_argv
+[[promise]]
+name = "token-on-no-argv"
+says = '''The token is on no
+  child's command line, in no log and not in the register; sesame gets it on stdin.'''
+source = "README.md:53"
+check = ["test"]
+
+# tests/login.rs a_refused_login_keeps_nothing
+[[promise]]
+name = "a-refused-login-writes-nothing"
+says = '''A refused login exits 1 and writes nothing to the register'''
+source = "README.md:65"
+check = ["test"]
+
+# account::tests::status_counts_the_days_left_and_warns_30_ahead
+[[promise]]
+name = "warns-30-days-ahead"
+says = '''from 30 days ahead its `warning`
+  says to make a new one.'''
+source = "README.md:63"
+check = ["test"]
+
+[[standin]]
+name = "sesame"
+run = ["tests/contract/sesame-steps", "tests/contract/fake-sesame"]
+real = ["tests/contract/sesame-steps", "sesame"]
+needs = "sesame on PATH (brew install sunfmin/tap/sesame); it writes only the case's own store"
+ready = ["sesame", "--version"]
+version = ["sesame", "--version"]
+faults = ["token-refused", "add-refused"]
+fault_env = "FAKE_SESAME_FAULT"
+
+[[standin.case]]
+name = "provider-made-once-then-token-kept"
+stdin = '''
+? provider show stablehand-a
+? provider add stablehand-a --about x --auth-url https://api.anthropic.com --token-url https://api.anthropic.com --api-base https://api.anthropic.com --host api.anthropic.com
+? provider add stablehand-a --auth-url https://api.anthropic.com --token-url https://api.anthropic.com --api-base https://api.anthropic.com --host api.anthropic.com
+? provider show stablehand-a
+<sk-ant-oat01-stand-in| login stablehand-a --token-stdin
+token stablehand-a --json
+<sk-ant-oat01-renewed| login stablehand-a --token-stdin
+token stablehand-a --json
+'''
+
+[[standin.case]]
+name = "no-token-not-logged-in"
+stdin = '''
+token stablehand-nobody --json
+? provider add stablehand-a --auth-url https://chatgpt.com --token-url https://chatgpt.com --api-base https://chatgpt.com --host chatgpt.com
+token stablehand-a --json
+? login stablehand-nobody --token-stdin
+'''
+
+[[standin.case]]
+name = "token-refused-keeps-nothing"
+fault = "token-refused"
+stdin = '''
+? provider add stablehand-a --auth-url https://api.anthropic.com --token-url https://api.anthropic.com --api-base https://api.anthropic.com --host api.anthropic.com
+<two words| login stablehand-a --token-stdin
+token stablehand-a --json
+'''
+
+[[standin.case]]
+name = "provider-refused-made-nothing"
+fault = "add-refused"
+stdin = '''
+? provider add stablehand-a --auth-url https://api.anthropic.com --token-url https://api.anthropic.com --api-base https://api.anthropic.com --host 'bad host'
+? provider show stablehand-a
+'''

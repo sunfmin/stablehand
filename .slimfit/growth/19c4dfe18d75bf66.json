@@ -1,0 +1,10 @@
+{
+  "tree": "132328b7ad025d60f6cd18fec89891f0baa15919+d1fba762150c532c",
+  "lines": 818,
+  "serves": "stablehand#2",
+  "considered": "reusing store.rs's engine_name (moved to Engine::name, shared by store and login); clap's derived help for the engine table (derived from Engine::login, not hand-written); a crate for hidden input (none: sesame's own --token prompt reads it); scraping claude setup-token's output (not done: the person pastes into sesame's prompt)",
+  "reviewer": "codex:01a20cbf-a8a4-7ad3-bd21-7eba32a6b748:default",
+  "author": "claude-code:b0320b40-ddee-594c-a086-dfdb90f084df:opus",
+  "cut": "In src/login.rs, share command construction, execution, and startup-error formatting across engine login, sesame writes, and the token probe. Preserve each call’s stream routing and send probe stdout to the null device since only its exit status is used. Replace the recursive DirBuilder with create_dir_all. In tests/login.rs, run the provider-add refusal before the token refusal on kimi-1 and delete the kimi-2 fixture.",
+  "answer": "Done as named: one call() runs the engines, every sesame call and the token probe (stdout to null when not shown); create_dir_all; the add-refused case runs first on kimi-1 and kimi-2 is gone."
+}

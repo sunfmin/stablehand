@@ -35,6 +35,38 @@ stablehand on claude-felix
 - `account rm` of an account not kept answers `"removed": false`, so running it twice leaves the same register.
 - The register is one SQLite file, `$STABLEHAND_CONFIG_DIR/stablehand.db` (default `~/.config/stablehand`); the file is 0600, the directory 0700. It keeps no token: a portable login's token is sesame's.
 
+## Logging in
+
+```sh
+stablehand account login claude-felix --expires 2027-11-24   # claude setup-token, then the token into sesame
+stablehand account login kimi-1 --token < token.txt         # a token you have, pasted or piped
+stablehand account login chatgpt                             # on mini: codex login, CODEX_HOME=/Users/agent/chatgpt
+stablehand account show claude-felix   # {"account": {…}, "logged_in": true, "days_left": 365, "warning": null}
+```
+
+- A login is the engine's own (docs/adr/0001): stablehand runs the engine's
+  command, never a vendor's OAuth client.
+- **Portable**: `account login` runs the engine's token command (claude-code:
+  `claude setup-token`; with `--token`, none), then sesame asks for the token
+  with hidden input, or reads it from stdin when stdin is no terminal, and
+  keeps it as the provider `stablehand-<name>`, made with `sesame provider add`
+  the first time, its host the engine's usage host. The token is on no
+  child's command line, in no log and not in the register; sesame gets it on stdin.
+- **Bound**: on the account's machine (`$STABLEHAND_MACHINE`, else
+  `hostname -s`), `account login` runs the engine's login with the variable
+  it reads for its home set to `--home` (`CLAUDE_CONFIG_DIR`, `CODEX_HOME`,
+  `KIMI_CODE_HOME`, `GROK_HOME`, `HOME` for agy, `PI_CODING_AGENT_DIR`,
+  `DSH_HOME`), and records when, as `logged_in_at`. Changing the account's
+  engine, machine or home forgets it. It is refused on another machine.
+- `account show` says whether the account is logged in: a bound one as
+  recorded, a portable one when sesame holds its token. For a token with
+  `--expires` it counts `days_left`, and from 30 days ahead its `warning`
+  says to make a new one.
+- A refused login exits 1 and writes nothing to the register: an engine with
+  no token command without `--token`, `--token` or `--expires` on a bound
+  login, a bound one with no `--home`, a token sesame refuses, an engine's
+  login that fails.
+
 ## Install
 
 ```sh

@@ -1,0 +1,21 @@
+{
+  "tree": "faa0e3f9b15af4fb6711e67c3774696f11748840+afed39a9993b4c1b",
+  "picker": "codex:01a20cbc-5046-7930-8af1-b68758b2b815:default",
+  "author": "claude-code:b0320b40-ddee-594c-a086-dfdb90f084df:opus",
+  "picks": {
+    "rust": [
+      {
+        "name": "src/login.rs:41:8: delete ! in run",
+        "why": "The fake engines never read stdin, so the tests can miss a real engine consuming piped input meant for sesame.",
+        "outcome": "killed",
+        "first_outcome": "survived"
+      },
+      {
+        "name": "src/account.rs:272:38: replace || with && in day_of",
+        "why": "This accepts dates with exactly one wrong separator, such as 2027-01/31, which valid dates and inputs with two wrong separators cannot expose.",
+        "outcome": "killed",
+        "first_outcome": "survived"
+      }
+    ]
+  }
+}

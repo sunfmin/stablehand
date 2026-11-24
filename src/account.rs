@@ -23,6 +23,56 @@ impl Engine {
     pub fn default_sessions(self) -> Option<u32> {
         (self == Engine::ClaudeCode).then_some(2)
     }
+
+    /// Its name, as `--engine` takes it.
+    pub fn name(self) -> String {
+        let value = clap::ValueEnum::to_possible_value(&self).expect("every engine is a value");
+        value.get_name().to_string()
+    }
+
+    /// How the engine logs in, its own way (docs/adr/0001 "Logins are the
+    /// engine's own"): the one table of each engine's login facts.
+    pub fn login(self) -> Login {
+        use Engine::*;
+        let (home_var, bound, token, usage_host): (_, &[&str], Option<&[&str]>, _) = match self {
+            ClaudeCode => (
+                "CLAUDE_CONFIG_DIR",
+                &["claude", "auth", "login"],
+                Some(&["claude", "setup-token"]),
+                "api.anthropic.com",
+            ),
+            Codex => ("CODEX_HOME", &["codex", "login"], None, "chatgpt.com"),
+            Pi => ("PI_CODING_AGENT_DIR", &["pi"], None, "chatgpt.com"),
+            Kimi => ("KIMI_CODE_HOME", &["kimi", "login"], None, "api.kimi.com"),
+            Agy => ("HOME", &["agy"], None, "cloudcode-pa.googleapis.com"),
+            Grok => (
+                "GROK_HOME",
+                &["grok", "login"],
+                None,
+                "cli-chat-proxy.grok.com",
+            ),
+            Dsh => ("DSH_HOME", &["dsh", "tui"], None, "platform.deepseek.com"),
+        };
+        Login {
+            home_var,
+            bound,
+            token,
+            usage_host,
+        }
+    }
+}
+
+/// An engine's login facts. agy, pi and dsh have no login command: started
+/// bare in their home, they sign in on first use.
+pub struct Login {
+    /// The variable the engine reads for its home.
+    pub home_var: &'static str,
+    /// The command that logs a bound account in, run in its home.
+    pub bound: &'static [&'static str],
+    /// The command that prints a long-lived token, where the engine has one.
+    pub token: Option<&'static [&'static str]>,
+    /// The host its usage is read from: the one host sesame sends its token to.
+    pub usage_host: &'static str,
 }
 
 /// Who switched an account off, when (UTC, RFC 3339) and why
@@ -48,6 +98,9 @@ pub struct Account {
     /// Its bound login's home on `machine`.
     pub home: Option<String>,
     pub off: Option<Off>,
+    /// When its bound login last logged in, in `home` on `machine` (UTC,
+    /// RFC 3339); a portable login's token is sesame's to know.
+    pub logged_in_at: Option<String>,
 }
 
 /// An account as every command answers it: its terms, and its login
@@ -118,6 +171,7 @@ pub fn new(name: &str, engine: Engine, change: Change) -> Result<Account, Vec<St
         expires: None,
         home: None,
         off: None,
+        logged_in_at: None,
     };
     let named = check_name(name);
     match (apply(&blank, change), named) {
@@ -171,6 +225,11 @@ pub fn apply(account: &Account, change: Change) -> Result<Account, Vec<String>> 
             Field::Home => next.home = None,
         }
     }
+    // A login is of one engine in one home: moving either forgets it.
+    if (next.engine, &next.machine, &next.home) != (account.engine, &account.machine, &account.home)
+    {
+        next.logged_in_at = None;
+    }
     if next.machine.is_some() && next.expires.is_some() {
         faults.push("a bound login (--machine) is refreshed by its engine and has no --expires: drop --expires (`--unset expires`), or drop --machine for a portable token".into());
     }
@@ -202,10 +261,16 @@ fn check_name(name: &str) -> Result<(), String> {
 
 /// A calendar date, `YYYY-MM-DD`.
 pub fn check_date(s: &str) -> Result<(), String> {
-    let fault = || format!("`{s}` is not a date: give --expires as YYYY-MM-DD (2027-01-31)");
+    day_of(s)
+        .map(|_| ())
+        .ok_or_else(|| format!("`{s}` is not a date: give --expires as YYYY-MM-DD (2027-01-31)"))
+}
+
+/// A calendar date `YYYY-MM-DD` as days since 1970-01-01, if it is one.
+fn day_of(s: &str) -> Option<i64> {
     let b = s.as_bytes();
     if b.len() != 10 || b[4] != b'-' || b[7] != b'-' {
-        return Err(fault());
+        return None;
     }
     let num = |r: std::ops::Range<usize>| -> Option<u32> {
         s.get(r)
@@ -213,21 +278,61 @@ pub fn check_date(s: &str) -> Result<(), String> {
             .parse()
             .ok()
     };
-    let (Some(y), Some(m), Some(d)) = (num(0..4), num(5..7), num(8..10)) else {
-        return Err(fault());
-    };
+    let (y, m, d) = (num(0..4)?, num(5..7)?, num(8..10)?);
     let leap = (y % 4 == 0 && y % 100 != 0) || y % 400 == 0;
     let days = match m {
         1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
         4 | 6 | 9 | 11 => 30,
         2 if leap => 29,
         2 => 28,
-        _ => return Err(fault()),
+        _ => return None,
     };
-    if (1..=days).contains(&d) {
-        Ok(())
-    } else {
-        Err(fault())
+    if !(1..=days).contains(&d) {
+        return None;
+    }
+    // Howard Hinnant's days_from_civil.
+    let y = i64::from(y) - i64::from(m <= 2);
+    let era = y.div_euclid(400);
+    let yoe = y - era * 400;
+    let mp = (i64::from(m) + 9) % 12;
+    let doy = (153 * mp + 2) / 5 + i64::from(d) - 1;
+    Some(era * 146_097 + yoe * 365 + yoe / 4 - yoe / 100 + doy - 719_468)
+}
+
+/// How many days before a portable token expires it is warned of.
+pub const WARN_DAYS: i64 = 30;
+
+/// Whether an account is logged in, and for a portable token with an
+/// expiry, the days it has left and a warning from `WARN_DAYS` ahead.
+#[derive(Debug, PartialEq, Serialize)]
+pub struct Status {
+    pub logged_in: bool,
+    pub days_left: Option<i64>,
+    pub warning: Option<String>,
+}
+
+/// `account`'s status on day `today` (days since 1970-01-01), `logged_in` as
+/// its login's holder says: the register for a bound login, sesame for a
+/// portable one.
+pub fn status(account: &Account, logged_in: bool, today: i64) -> Status {
+    let expires = account.expires.as_deref();
+    let days_left = expires.and_then(day_of).map(|d| d - today);
+    let renew = format!(
+        "make a new token and run `stablehand account login {} --expires <its date>`",
+        account.name
+    );
+    let warning = match days_left {
+        Some(n) if n < 0 => Some(format!(
+            "its token expired on {}: {renew}",
+            expires.unwrap_or_default()
+        )),
+        Some(n) if n <= WARN_DAYS => Some(format!("its token expires in {n} days: {renew}")),
+        _ => None,
+    };
+    Status {
+        logged_in,
+        days_left,
+        warning,
     }
 }
 
@@ -278,12 +383,50 @@ mod tests {
             "2027-1-31",
             "27-01-31x",
             "2027/01/31",
+            "2027-01/31",
+            "2027/01-31",
             "2027-+1-31",
             "",
         ] {
             let fault = check_date(bad).unwrap_err();
             assert!(fault.contains("YYYY-MM-DD"), "{bad}: {fault}");
         }
+    }
+
+    #[test]
+    fn status_counts_the_days_left_and_warns_30_ahead() {
+        let today = day_of("2026-11-24").unwrap();
+        assert_eq!(today, 1_795_516_200 / 86_400);
+        let mut a = new("c", Engine::ClaudeCode, Change::default()).unwrap();
+        let none = Status {
+            logged_in: true,
+            days_left: None,
+            warning: None,
+        };
+        assert_eq!(status(&a, true, today), none);
+        for (expires, left, warned) in [
+            ("2026-12-25", 31, None),
+            ("2026-12-24", 30, Some("expires in 30 days")),
+            ("2026-11-24", 0, Some("expires in 0 days")),
+            ("2026-11-23", -1, Some("expired on 2026-11-23")),
+            ("2028-03-01", 463, None),
+        ] {
+            a.expires = Some(expires.into());
+            let s = status(&a, false, today);
+            assert_eq!((s.logged_in, s.days_left), (false, Some(left)), "{expires}");
+            match (warned, s.warning) {
+                (None, None) => {}
+                (Some(part), Some(w)) => {
+                    assert!(
+                        w.contains(part) && w.contains("stablehand account login c"),
+                        "{w}"
+                    )
+                }
+                (want, got) => panic!("{expires}: {want:?} {got:?}"),
+            }
+        }
+        assert_eq!(day_of("1970-01-01"), Some(0));
+        assert_eq!(day_of("2000-03-01"), Some(11_017));
     }
 
     #[test]
