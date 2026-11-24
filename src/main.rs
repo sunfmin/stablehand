@@ -110,27 +110,7 @@ enum Cmd {
     ///
     /// Nothing started, `{"error", "code"}` on stdout: none picked (`none_picked`, exit 1, with `pick`'s `until` and `why`); arguments with no command (`stablehand run -- -p hi`: they mean something else to each engine), a command of no engine without `--engine`, engines that differ, `--home` for a bound claude-code account (Claude Code replaces a linked login with a copy when it refreshes it, docs/adr/0002), a `--home` holding a login file that is no link to the account's (`bad_run`, exit 1); an account no session may start on (`no_session`, exit {const:EXIT_USAGE}).
     #[command(next_help_heading = SESSIONS, verbatim_doc_comment)]
-    Run {
-        /// The engine, where the command is not its program.
-        #[arg(long, value_enum, verbatim_doc_comment)]
-        engine: Option<Engine>,
-        /// Start on this account only.
-        #[arg(long, verbatim_doc_comment)]
-        account: Option<String>,
-        /// Start on this model only, by the id its engine starts it with.
-        #[arg(long, value_parser = clap::builder::NonEmptyStringValueParser::new(), verbatim_doc_comment)]
-        model: Option<String>,
-        /// The engine's home: its home variable set to it, a bound account's login files linked into it; made if missing.
-        #[arg(long, verbatim_doc_comment)]
-        home: Option<String>,
-        /// The engine's command and its arguments, after `--` where they start with `-`.
-        #[arg(
-            trailing_var_arg = true,
-            allow_hyphen_values = true,
-            verbatim_doc_comment
-        )]
-        command: Vec<String>,
-    },
+    Run(run::Asked),
     /// Claude Code's status line command: books the session's rate limits as a reading of the account.
     ///
     /// Claude Code runs it with its session's JSON on stdin; its `rate_limits` (`five_hour`, `seven_day`: `used_percentage`, `resets_at`) are booked as a reading of `--account`, as `stablehand read` books one, when they differ from the books' latest entry. It asks no engine and reaches no network. Set it in `~/.claude/settings.json`:
@@ -506,20 +486,7 @@ fn main() -> ExitCode {
     };
     match cli.cmd {
         Cmd::Credential { name, json } => answer(credential(&name, json)),
-        Cmd::Run {
-            engine,
-            account,
-            model,
-            home,
-            command,
-        } => {
-            let asked = run::Asked {
-                command,
-                engine,
-                account,
-                model,
-                home,
-            };
+        Cmd::Run(asked) => {
             match now()
                 .map_err(Refused::from)
                 .and_then(|now| run::run(asked, now))

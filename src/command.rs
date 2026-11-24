@@ -79,7 +79,7 @@ pub fn named_model(engine: Engine, args: &[String]) -> Option<String> {
 
 /// The line `run` starts: `command`, or the engine's own start line where
 /// none is given, with the engine's model flag and `model` added where the
-/// line names no model and the engine takes one.
+/// engine takes one (the caller adds none to a line naming its own).
 pub fn line(engine: Engine, command: &[String], model: Option<&str>) -> Vec<String> {
     let mut line: Vec<String> = if command.is_empty() {
         engine.start().iter().map(|s| s.to_string()).collect()
@@ -87,9 +87,7 @@ pub fn line(engine: Engine, command: &[String], model: Option<&str>) -> Vec<Stri
         command.to_vec()
     };
     let flag = engine.model_flags().first();
-    if let (Some(model), Some(flag)) = (model, flag)
-        && named_model(engine, &line[1..]).is_none()
-    {
+    if let (Some(model), Some(flag)) = (model, flag) {
         line.insert(1, model.to_string());
         line.insert(1, flag.to_string());
     }
@@ -154,7 +152,6 @@ mod tests {
             &["kimi", "--model=k2"],
             &["kimi", "--model", "k2"],
         ] {
-            assert_eq!(line(Kimi, &s(named), Some("other")), s(named));
             assert_eq!(named_model(Kimi, &s(&named[1..])).as_deref(), Some("k2"));
         }
         // `-m` is not claude's: its line names no model.

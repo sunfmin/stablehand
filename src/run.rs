@@ -15,12 +15,27 @@ use std::process::{Command, ExitCode, ExitStatus};
 use std::sync::atomic::{AtomicI32, Ordering};
 
 /// What `run` was asked.
+#[derive(clap::Args)]
 pub struct Asked {
-    pub command: Vec<String>,
+    /// The engine, where the command is not its program.
+    #[arg(long, value_enum, verbatim_doc_comment)]
     pub engine: Option<Engine>,
+    /// Start on this account only.
+    #[arg(long, verbatim_doc_comment)]
     pub account: Option<String>,
+    /// Start on this model only, by the id its engine starts it with.
+    #[arg(long, value_parser = clap::builder::NonEmptyStringValueParser::new(), verbatim_doc_comment)]
     pub model: Option<String>,
+    /// The engine's home: its home variable set to it, a bound account's login files linked into it; made if missing.
+    #[arg(long, verbatim_doc_comment)]
     pub home: Option<String>,
+    /// The engine's command and its arguments, after `--` where they start with `-`.
+    #[arg(
+        trailing_var_arg = true,
+        allow_hyphen_values = true,
+        verbatim_doc_comment
+    )]
+    pub command: Vec<String>,
 }
 
 fn bad(text: impl Into<String>) -> Refused {
@@ -42,7 +57,7 @@ pub fn run(asked: Asked, now: u64) -> Result<ExitCode, Refused> {
         (Some(e), Some(args)) => command::named_model(e, args),
         _ => None,
     };
-    let model = match (asked.model, in_command) {
+    let model = match (asked.model, in_command.clone()) {
         (Some(m), Some(c)) if m != c => {
             return Err(bad(format!(
                 "--model {m} and the command's model {c} differ: name one"
@@ -58,7 +73,7 @@ pub fn run(asked: Asked, now: u64) -> Result<ExitCode, Refused> {
             e.name()
         )));
     }
-    let accounts = match account {
+    let mut accounts = match account {
         Some(a) => vec![a],
         None => store.list()?,
     };
@@ -73,12 +88,15 @@ pub fn run(asked: Asked, now: u64) -> Result<ExitCode, Refused> {
     if picked.get("none").is_some() {
         return Ok(none(picked));
     }
-    let engine: Engine =
-        serde_json::from_value(picked["engine"].clone()).map_err(|e| e.to_string())?;
-    let model = picked["model"].as_str().map(str::to_string);
-    let name = picked["account"].as_str().unwrap_or_default();
-    let a = crate::kept(&store, name)?;
-    let line = command::line(engine, &asked.command, model.as_deref());
+    let model = picked["model"].as_str();
+    let at = accounts
+        .iter()
+        .position(|a| picked["account"] == a.name.as_str());
+    let a = accounts.swap_remove(at.ok_or("pick answered no account it was given".to_string())?);
+    let engine = a.engine;
+    // A model the command names is left as it is.
+    let added = model.filter(|_| in_command.is_none());
+    let line = command::line(engine, &asked.command, added);
     let mut child = Command::new(&line[0]);
     child.args(&line[1..]);
     hand_login(&mut child, &a, asked.home.as_deref())?;

@@ -102,7 +102,22 @@ fn no_command_starts_the_order_s_pick_its_model_flag_added_or_left() {
         "{}",
         started(&r)
     );
-    // A model the command names is left, and narrows the pick to it.
+    // A model the command names is left, and narrows the pick to it; the
+    // same model named by --model too is one.
+    assert_eq!(
+        run(
+            &r,
+            &["--model", "haiku", "claude", "-m", "x", "--model", "haiku"],
+            &[]
+        )
+        .0,
+        0
+    );
+    assert!(
+        started(&r).starts_with("claude -m x --model haiku "),
+        "{}",
+        started(&r)
+    );
     assert_eq!(run(&r, &["claude", "-p", "x", "--model=sonnet"], &[]).0, 0);
     assert!(
         started(&r).starts_with("claude -p x --model=sonnet "),
@@ -134,6 +149,11 @@ fn what_it_refuses_starts_nothing() {
             "name one engine",
         ),
         (&["--model", "a", "dsh"], "bad_run", "takes no model"),
+        (
+            &["--model", "a", "claude", "--model", "b"],
+            "bad_run",
+            "differ",
+        ),
         (&["--account", "nope"], "no_account", "no account `nope`"),
     ] {
         let (exit, out) = run(&r, args, &[]);
@@ -183,6 +203,15 @@ fn home_links_a_bound_login_into_it_but_not_claude_code_s() {
     std::fs::create_dir_all(&other).unwrap();
     std::fs::write(format!("{other}/auth.json"), "{}").unwrap();
     let (exit, out) = run(&r, &["--home", &other, "codex"], &[]);
+    assert!(
+        exit == 1 && out.contains("already holds auth.json"),
+        "{out}"
+    );
+    // A link to another login is no link to the account's.
+    let third = r.path("sessions/three");
+    std::fs::create_dir_all(&third).unwrap();
+    std::os::unix::fs::symlink(format!("{other}/auth.json"), format!("{third}/auth.json")).unwrap();
+    let (exit, out) = run(&r, &["--home", &third, "codex"], &[]);
     assert!(
         exit == 1 && out.contains("already holds auth.json"),
         "{out}"
@@ -260,7 +289,12 @@ fn a_session_is_counted_while_it_runs_and_signals_pass_through() {
     let status = it.wait().unwrap();
     assert_eq!(status.signal(), Some(libc::SIGTERM), "{status:?}");
     assert_ne!(unsafe { libc::kill(child, 0) }, 0, "the child is gone");
-    assert!(takes(&r), "its session was dropped");
+    assert_eq!(
+        sessions_kept(&r),
+        0,
+        "its session was dropped when it ended"
+    );
+    assert!(takes(&r));
 
     // A run killed outright leaves its session kept while the child lives,
     // dropped once its pid is found dead.
@@ -276,5 +310,26 @@ fn a_session_is_counted_while_it_runs_and_signals_pass_through() {
         std::thread::sleep(Duration::from_millis(20));
     }
     assert!(takes(&r), "a dead session is not counted");
+    assert_eq!(sessions_kept(&r), 0, "and dropped");
     std::fs::remove_file(&hold).unwrap();
+}
+
+/// The sessions the register keeps.
+fn sessions_kept(r: &Register) -> i64 {
+    let db = rusqlite::Connection::open(r.dir.join("stablehand.db")).unwrap();
+    db.query_row("SELECT count(*) FROM sessions", [], |row| row.get(0))
+        .unwrap()
+}
+
+#[test]
+fn a_signal_the_child_sends_stablehand_is_not_sent_back() {
+    let r = kept()("run-child-signal");
+    // The stand-in sends USR1 to its parent, stablehand, then exits 4: a
+    // USR1 sent back to it would end it by that signal instead.
+    let (code, _) = run(
+        &r,
+        &["claude"],
+        &[("FAKE_SIGNAL_PARENT", "USR1"), ("FAKE_EXIT", "4")],
+    );
+    assert_eq!(code, 4);
 }

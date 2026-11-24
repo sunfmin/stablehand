@@ -78,21 +78,10 @@ impl Register {
     /// The binary run on `args`, `stdin` piped in, with `env` beside the test's own:
     /// its exit code and stdout as it printed it.
     pub fn raw(&self, args: &[&str], env: &[(&str, &str)], stdin: &str) -> (i32, String) {
-        let mut child = Command::new(env!("CARGO_BIN_EXE_stablehand"))
-            .args(args)
-            .env("STABLEHAND_CONFIG_DIR", &self.dir)
-            .env("USER", "tester")
-            .env(
-                "PATH",
-                format!("{}:/usr/bin:/bin", self.root.join("bin").display()),
-            )
-            .env("FAKE_MYTOKENS_DIR", self.root.join("mytokens"))
-            .env("FAKE_ARGV_LOG", self.root.join("argv.log"))
-            .env("STABLEHAND_MACHINE", "mini")
-            .envs(env.iter().copied())
+        let path = format!("{}:/usr/bin:/bin", self.root.join("bin").display());
+        let mut child = self
+            .command(args, &[&[("PATH", path.as_str())][..], env].concat())
             .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(stderr_log(&self.root))
             .spawn()
             .unwrap();
         child
@@ -194,19 +183,26 @@ impl Register {
     /// The binary started on `args` with `env` as [`Register::raw`] runs it,
     /// not waited for; its stdout piped.
     pub fn spawn(&self, args: &[&str], env: &[(&str, &str)]) -> std::process::Child {
-        Command::new(env!("CARGO_BIN_EXE_stablehand"))
+        let path = self.session_path();
+        let env = [&[("PATH", path.as_str())][..], env].concat();
+        let mut command = self.command(args, &env);
+        command.stdin(Stdio::null()).spawn().unwrap()
+    }
+
+    /// The binary on `args`, with the test's register, stand-ins and `env`
+    /// (its PATH among them), its stdout piped and its stderr kept.
+    fn command(&self, args: &[&str], env: &[(&str, &str)]) -> Command {
+        let mut command = Command::new(env!("CARGO_BIN_EXE_stablehand"));
+        command
             .args(args)
             .env("STABLEHAND_CONFIG_DIR", &self.dir)
             .env("USER", "tester")
             .env("FAKE_MYTOKENS_DIR", self.root.join("mytokens"))
             .env("FAKE_ARGV_LOG", self.root.join("argv.log"))
             .env("STABLEHAND_MACHINE", "mini")
-            .env("PATH", self.session_path())
             .envs(env.iter().copied())
-            .stdin(Stdio::null())
             .stdout(Stdio::piped())
-            .stderr(stderr_log(&self.root))
-            .spawn()
-            .unwrap()
+            .stderr(stderr_log(&self.root));
+        command
     }
 }

@@ -3,8 +3,9 @@
 # engine's program: appends to $FAKE_ARGV_LOG one line, its argv, the home
 # variables it was given, its token variable's sha256 (never the token), and
 # where its home's login file links to; writes its pid to $FAKE_PID_FILE when
-# set. Then waits until $FAKE_HOLD names no file (or holds there, killed),
-# and exits $FAKE_EXIT (default 0).
+# set, and sends its parent the signal $FAKE_SIGNAL_PARENT names when set.
+# Then waits until $FAKE_HOLD names no file (or holds there, killed), and
+# exits $FAKE_EXIT (default 0).
 line="$(basename "$0") $*"
 for v in CLAUDE_CONFIG_DIR CODEX_HOME KIMI_CODE_HOME GROK_HOME PI_CODING_AGENT_DIR DSH_HOME HOME; do
     eval "x=\${$v:-}"
@@ -18,6 +19,10 @@ if [ -n "$FAKE_LOGIN_FILE" ]; then
 fi
 echo "$line" >>"${FAKE_ARGV_LOG:?}"
 [ -n "$FAKE_PID_FILE" ] && echo $$ >"$FAKE_PID_FILE"
+if [ -n "$FAKE_SIGNAL_PARENT" ]; then
+    kill -"$FAKE_SIGNAL_PARENT" "$PPID"
+    sleep 0.3
+fi
 echo "session on stdout"
 while [ -n "$FAKE_HOLD" ] && [ -e "$FAKE_HOLD" ]; do sleep 0.05; done
 exit "${FAKE_EXIT:-0}"
