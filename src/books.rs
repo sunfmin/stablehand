@@ -52,8 +52,10 @@ pub enum What {
     /// A try the engine refused the account's credential on, and why: the
     /// account is not read again until it logs in again ([`What::LoggedIn`]).
     Refused(String),
-    /// The account logged in again (`stablehand account login`): a
-    /// credential refused before it is asked again.
+    /// The account logged in again: its home's login file written (when
+    /// read, not booked), or a portable account given a token command
+    /// (`stablehand account edit --token-command`). A credential refused
+    /// before it is asked again.
     LoggedIn,
     /// A caller's report that a session met the account's limit: of the
     /// window it names, lifting when it says, where it knows.

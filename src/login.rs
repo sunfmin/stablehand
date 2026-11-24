@@ -1,20 +1,16 @@
-//! An account's login, by its engine's own (docs/adr/0001 "Logins are the
-//! engine's own"): the programs it runs, the engine's and sesame's. A token
-//! never passes through stablehand: sesame reads it from the terminal or the
-//! stdin stablehand was given, and no child is given it on its command line.
+//! Where an account's login is, as stablehand finds it (docs/adr/0001
+//! "stablehand runs no login and keeps no secret"): a bound login is its
+//! engine's login file in its home, a portable one's token is what the
+//! command it names prints. stablehand runs no engine's login and writes no
+//! token: the person logs the engine in by the engine itself, and keeps a
+//! token where they keep secrets.
 use crate::account::Account;
+use crate::bounded::{self, Ran};
 use crate::refusal::{Code, Refused};
 use serde::Serialize;
-use std::io::IsTerminal;
-use std::os::fd::AsFd;
 use std::path::Path;
 use std::process::{Command, Stdio};
-use std::time::UNIX_EPOCH;
-
-/// The sesame provider that holds a portable account's token.
-pub fn provider(a: &Account) -> String {
-    format!("stablehand-{}", a.name)
-}
+use std::time::{Duration, UNIX_EPOCH};
 
 /// This machine's name, as `--machine` names it: `$STABLEHAND_MACHINE` (not
 /// empty), else `hostname -s`.
@@ -32,72 +28,53 @@ pub fn this_machine() -> Result<String, String> {
     Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
 }
 
-/// Runs `argv`, reading `stdin`, with `env` set. `shown`: what it prints
-/// goes to stablehand's stderr (its stdout is the answer's alone); else nowhere.
-fn call(
-    argv: &[&str],
-    env: Option<(&str, &str)>,
-    stdin: Stdio,
-    shown: bool,
-) -> Result<bool, String> {
-    let mut cmd = Command::new(argv[0]);
-    cmd.args(&argv[1..]).stdin(stdin).envs(env);
-    if shown {
-        let fd = std::io::stderr().as_fd().try_clone_to_owned();
-        cmd.stdout(fd.map_err(|e| format!("stderr: {e}"))?);
-    } else {
-        cmd.stdout(Stdio::null()).stderr(Stdio::null());
-    }
-    let status = cmd.status().map_err(|e| could_not_start(argv, e))?;
-    Ok(status.success())
-}
+/// Commands that print a token kept where people keep secrets, as the
+/// help and each refusal for a portable account not logged in name them.
+pub const TOKEN_COMMANDS: &str = "the Keychain's `security find-generic-password -s <service> -w`, 1Password's `op read op://<vault>/<item>/<field>`, or mytokens' `mytokens get <entry> --field <field>`";
 
-/// Why `argv` did not start, and how to make it.
-fn could_not_start(argv: &[&str], e: std::io::Error) -> String {
-    let fix = match argv[0] {
-        "sesame" => "install it: `brew install sunfmin/tap/sesame`".to_string(),
-        program => format!("install {program}, or put it on PATH"),
+/// The line that logs `a` in, as a fix names it: bound, its engine's own
+/// login with its home variable set to the account's home, run on its
+/// machine; portable, the `account edit` that names its token's command.
+pub fn login_line(a: &Account) -> String {
+    let login = a.engine.login();
+    let Some(machine) = &a.machine else {
+        let make = login.token.map_or(String::new(), |t| {
+            format!(
+                "make a token with `{}`, keep it where you keep secrets, then ",
+                t.join(" ")
+            )
+        });
+        return format!(
+            "{make}`stablehand account edit {} --token-command '<cmd>'`, <cmd> printing the token: {TOKEN_COMMANDS}",
+            a.name
+        );
     };
-    format!("`{}` could not start: {e}: {fix}", argv.join(" "))
-}
-
-/// Runs the engine's `argv` as the person's own: on their terminal, or with
-/// no stdin without one, so it cannot read a token meant for sesame.
-fn engine(argv: &[&str], env: Option<(&str, &str)>) -> Result<(), String> {
-    let stdin = if std::io::stdin().is_terminal() {
-        Stdio::inherit()
-    } else {
-        Stdio::null()
+    let cmd = login.bound.join(" ");
+    let line = match &a.home {
+        Some(home) => format!("{}={home} {cmd}", login.home_var),
+        None => cmd,
     };
-    if call(argv, env, stdin, true)? {
-        return Ok(());
-    }
-    Err(format!(
-        "`{}` failed, as it said above: nothing was kept; run the login again",
-        argv.join(" ")
-    ))
+    format!("`{line}` on {machine}")
 }
 
-fn sesame(args: &[&str], stdin: Stdio, shown: bool) -> Result<bool, String> {
-    call(&[&["sesame"], args].concat(), None, stdin, shown)
-}
-
-/// Whether `a` is logged in: a bound login as the register recorded it, or
-/// its home on this machine holding its engine's login file ([`login_file`]);
-/// a portable one as sesame says ([`token`]).
+/// Whether `a` is logged in: a bound login when its home on this machine
+/// holds its engine's login file ([`login_file`]), a portable one when its
+/// token command answers a token ([`token`]).
 pub fn logged_in(a: &Account) -> Result<bool, String> {
     if a.machine.is_some() {
-        return Ok(a.logged_in_at.is_some() || login_file(a)?.is_some());
+        return Ok(login_file(a)?.is_some());
     }
-    token(a).map(|t| t.is_some())
+    Ok(a.token_command.is_some() && token(a).is_ok())
 }
 
 /// A bound login's file, as its engine's login wrote it in its home.
 #[derive(Debug, Serialize)]
 pub struct LoginFile {
     pub path: String,
-    /// When it was last written (UTC, RFC 3339).
+    /// When it was last written (UTC, RFC 3339): when the account logged in.
     pub written_at: String,
+    #[serde(skip)]
+    pub written: u64,
 }
 
 /// The engine's login file in `a`'s home, where `a` is bound to this machine
@@ -117,12 +94,13 @@ pub fn login_file(a: &Account) -> Result<Option<LoginFile>, String> {
     else {
         return Ok(None);
     };
-    let secs = written
+    let written = written
         .duration_since(UNIX_EPOCH)
         .map_or(0, |d| d.as_secs());
     Ok(Some(LoginFile {
         path: path.display().to_string(),
-        written_at: crate::time::utc(secs),
+        written_at: crate::time::utc(written),
+        written,
     }))
 }
 
@@ -133,27 +111,61 @@ fn in_home(a: &Account, home: &str) -> std::path::PathBuf {
     Path::new(home).join(a.engine.login().file)
 }
 
-/// The token sesame keeps for `a`, if it keeps one: `sesame token <provider>
-/// --json` answers it as `access_token`, on its stdout, read here and no
-/// further.
-pub fn token(a: &Account) -> Result<Option<String>, String> {
-    let p = provider(a);
-    let argv = ["sesame", "token", &p, "--json"];
-    let out = Command::new(argv[0])
-        .args(&argv[1..])
+/// How long a token command may run, in seconds:
+/// `$STABLEHAND_TOKEN_COMMAND_SECS`, else this.
+pub const TOKEN_COMMAND_SECS: u64 = 20;
+
+fn token_bound() -> Duration {
+    let secs = std::env::var("STABLEHAND_TOKEN_COMMAND_SECS")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(TOKEN_COMMAND_SECS);
+    Duration::from_secs(secs)
+}
+
+/// `a`'s portable token: the first line its token command prints, run by
+/// `sh -c` with no input, its stderr dropped, bounded by [`token_bound`]
+/// ([`bounded::run`]).
+/// Refused, naming the command and never what it printed: no command, one
+/// that did not start, exited non-zero, printed no token or ran past the
+/// bound (it is killed, and whatever it started with it).
+pub fn token(a: &Account) -> Result<String, String> {
+    let name = &a.name;
+    let Some(cmd) = &a.token_command else {
+        return Err(format!(
+            "account `{name}` is not logged in: it names no command that prints its token: {}",
+            login_line(a)
+        ));
+    };
+    let fault = |why: String| {
+        format!(
+            "account `{name}`'s token command `{cmd}` {why}: run it yourself to see why, or name another with `stablehand account edit {name} --token-command '<cmd>'`"
+        )
+    };
+    let mut sh = Command::new("sh");
+    sh.args(["-c", cmd])
         .stdin(Stdio::null())
-        .stderr(Stdio::null())
-        .output()
-        .map_err(|e| could_not_start(&argv, e))?;
-    if !out.status.success() {
-        return Ok(None);
+        .stderr(Stdio::null());
+    let bound = token_bound();
+    let (code, printed) = match bounded::run(sh, bound) {
+        Err(e) => return Err(fault(format!("could not start ({e})"))),
+        Ok(Ran::RanPast) => {
+            return Err(fault(format!(
+                "ran past {}s and was stopped",
+                bound.as_secs()
+            )));
+        }
+        Ok(Ran::Exited(code, printed)) => (code, printed),
+    };
+    match code {
+        Some(0) => {}
+        Some(c) => return Err(fault(format!("exited {c}"))),
+        None => return Err(fault("was killed".into())),
     }
-    let answer: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap_or_default();
-    match answer["access_token"].as_str() {
-        Some(t) => Ok(Some(t.to_string())),
-        None => Err(format!(
-            "`sesame token {p} --json` answered no access_token: upgrade sesame (`brew upgrade sunfmin/tap/sesame`)"
-        )),
+    let text = String::from_utf8_lossy(&printed);
+    match text.lines().next().map(str::trim).filter(|t| !t.is_empty()) {
+        Some(t) => Ok(t.to_string()),
+        None => Err(fault("printed no token on its first line".into())),
     }
 }
 
@@ -179,7 +191,8 @@ pub struct Link {
 
 /// `a`'s credential on this machine; refused `no_session`, with its fix, an
 /// account no session may start on here: off, of an engine with no token
-/// variable, not logged in, with no home, or bound to another machine.
+/// variable, not logged in (its token command answers none, its home holds
+/// no login file), with no home, or bound to another machine.
 pub fn credential(a: &Account) -> Result<Credential, Refused> {
     let no_session = |text: String| Err(Refused::new(Code::NoSession, text));
     let name = &a.name;
@@ -193,21 +206,20 @@ pub fn credential(a: &Account) -> Result<Credential, Refused> {
     let Some(machine) = &a.machine else {
         let Some(var) = login.token_var else {
             return no_session(format!(
-                "{} takes no token from its environment: bind account `{name}` with `stablehand account edit {name} --machine <machine> --home <dir>`, then `stablehand account login {name}` there",
-                a.engine.name()
+                "{} takes no token from its environment: bind account `{name}` with `stablehand account edit {name} --machine <machine> --home <dir>`, then log it in there with `{}`",
+                a.engine.name(),
+                login.bound.join(" ")
             ));
         };
-        return match token(a)? {
-            Some(token) => Ok(Credential::Token { var, token }),
-            None => no_session(format!(
-                "account `{name}` is not logged in: sesame holds no token for {}: `stablehand account login {name}`",
-                provider(a)
-            )),
+        return match token(a) {
+            Ok(token) => Ok(Credential::Token { var, token }),
+            Err(why) => no_session(why),
         };
     };
     let Some(home) = &a.home else {
         return no_session(format!(
-            "account `{name}` has no home: `stablehand account edit {name} --home <dir>`, then `stablehand account login {name}` on {machine}"
+            "account `{name}` has no home: `stablehand account edit {name} --home <dir>`, then log it in with {}",
+            login_line(a)
         ));
     };
     let here = this_machine()?;
@@ -218,131 +230,13 @@ pub fn credential(a: &Account) -> Result<Credential, Refused> {
     }
     if !logged_in(a)? {
         return no_session(format!(
-            "account `{name}` is not logged in: run `stablehand account login {name}` on {machine}"
+            "account `{name}` is not logged in: its home holds no {}: log it in with {}",
+            login.file,
+            login_line(a)
         ));
     }
     Ok(Credential::Files(vec![Link {
         path: in_home(a, home).display().to_string(),
         as_: login.file,
     }]))
-}
-
-/// Logs `a` in by its engine's own login: a portable token into sesame
-/// (`token`: pasted, not made by the engine's command), or a bound login in
-/// its home on this machine. Answers the account as the register keeps it now.
-pub fn login(a: &Account, token: bool, now: String) -> Result<Account, Refused> {
-    let refused = |text: String| Err(Refused::new(Code::LoginRefused, text));
-    let login = a.engine.login();
-    let name = &a.name;
-    let Some(machine) = &a.machine else {
-        if !token {
-            let Some(argv) = login.token else {
-                return refused(format!(
-                    "{} makes no long-lived token: paste one with `stablehand account login {name} --token`",
-                    a.engine.name()
-                ));
-            };
-            engine(argv, None)?;
-        }
-        return keep_token(a, login.usage_host)
-            .map(|()| a.clone())
-            .map_err(Into::into);
-    };
-    if token {
-        return refused(format!(
-            "account `{name}` is bound to {machine}: its engine logs in there, with no --token; drop --token, or `stablehand account edit {name} --unset machine --unset home` for a portable token"
-        ));
-    }
-    let here = this_machine()?;
-    if &here != machine {
-        return refused(format!(
-            "account `{name}` is bound to {machine} and this machine is {here} ($STABLEHAND_MACHINE, else `hostname -s`): run the login on {machine}"
-        ));
-    }
-    let Some(home) = &a.home else {
-        return refused(format!(
-            "account `{name}` has no home to log in to: `stablehand account edit {name} --home <dir>`"
-        ));
-    };
-    std::fs::create_dir_all(home).map_err(|e| format!("{home}: {e}"))?;
-    engine(login.bound, Some((login.home_var, home)))?;
-    Ok(Account {
-        logged_in_at: Some(now),
-        ..a.clone()
-    })
-}
-
-/// The account's sesame provider, made where missing, then the token: sesame
-/// asks for it on the terminal with hidden input, or reads stablehand's stdin.
-fn keep_token(a: &Account, host: &str) -> Result<(), String> {
-    let how = if std::io::stdin().is_terminal() {
-        "--token"
-    } else {
-        "--token-stdin"
-    };
-    keep_token_read(a, host, how, Stdio::inherit())
-}
-
-/// The account's sesame provider, made where missing, then the token `from`
-/// prints: its stdout is sesame's stdin, so the token is in no variable of
-/// stablehand's.
-pub fn keep_token_from(a: &Account, from: &[&str]) -> Result<(), String> {
-    let mut child = Command::new(from[0])
-        .args(&from[1..])
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .spawn()
-        .map_err(|e| format!("`{}` could not start: {e}", from.join(" ")))?;
-    let out = child.stdout.take().expect("stdout is piped");
-    let kept = keep_token_read(a, a.engine.login().usage_host, "--token-stdin", out.into());
-    if !child.wait().map_err(|e| e.to_string())?.success() {
-        return Err(format!(
-            "`{}` failed, as it said above: sesame kept no token for {}",
-            from.join(" "),
-            provider(a)
-        ));
-    }
-    kept
-}
-
-/// The provider, made where missing, then `sesame login <provider> <how>`
-/// with the token on `token`.
-fn keep_token_read(a: &Account, host: &str, how: &str, token: Stdio) -> Result<(), String> {
-    let p = provider(a);
-    if !sesame(&["provider", "show", &p], Stdio::null(), false)? {
-        let url = format!("https://{host}");
-        let about = format!(
-            "stablehand account {}: a pasted {} token, no OAuth login",
-            a.name,
-            a.engine.name()
-        );
-        let args = [
-            "provider",
-            "add",
-            &p,
-            "--about",
-            &about,
-            "--auth-url",
-            &url,
-            "--token-url",
-            &url,
-            "--api-base",
-            &url,
-            "--host",
-            host,
-        ];
-        if !sesame(&args, Stdio::null(), true)? {
-            return Err(format!(
-                "`sesame provider add {p}` failed: see `sesame provider show {p}`, then run the login again"
-            ));
-        }
-    }
-    if sesame(&["login", &p, how], token, true)? {
-        Ok(())
-    } else {
-        Err(format!(
-            "sesame kept no token for {p}, as it said above: run `stablehand account login {} --token` again with the token",
-            a.name
-        ))
-    }
 }

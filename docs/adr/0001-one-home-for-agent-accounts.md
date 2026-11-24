@@ -31,18 +31,30 @@ None of these endpoints is documented for outside use.
 - **An account is a subscription, not an engine.** Engines that spend one
   account (pi and codex on one ChatGPT account) read and book into the same
   account.
-- **Logins are the engine's own.** stablehand runs the engine's login
-  command (`claude setup-token`, `codex login`, `grok login`, …) in that
-  account's home; it never runs a vendor's OAuth client itself. A portable
-  token is kept in sesame, reached through sesame's command line (`sesame
-  login <p> --token`, `sesame token <p> --json`), not linked as a crate.
+- **stablehand runs no login and keeps no secret** (stablehand#20, Felix,
+  2026-11-24). The register is stablehand's: an account's engine, where it
+  runs, its terms. A secret stays where the person keeps it, and stablehand
+  keeps the command that reads it. A person logs an engine in by the engine
+  itself (`codex login`, `claude setup-token`, …); stablehand never runs a
+  login or a vendor's OAuth client. A bound account is logged in when its
+  home holds its engine's login file, as of when that was written; a
+  portable one when the command it names (`--token-command`: the Keychain's
+  `security`, 1Password's `op read`, `mytokens get`) prints its token, run
+  each time it is needed, bounded in time, the token written nowhere. What
+  each engine's login is stays in stablehand as help: a refusal of an
+  account not logged in names the line that logs it in.
+  Before, a portable token was kept in sesame (`stablehand-<name>`); its
+  only portable accounts were claude-code `setup-token` tokens, which
+  neither refresh nor read usage, so sesame was only a second copy of what
+  mytokens already held, and is gone.
 - **One reader per engine**, the only code that knows its endpoint or
   command, each held to the real engine by a truefit contract. A reader that
   fails leaves the account's windows as last read, stale, and a caller's
   `limit` stands in until it reads again.
 - **Reading is bounded**: at most once an hour per account unless a caller
   asks, never again on a credential the engine refused (dsh deletes its grant
-  on a 401).
+  on a 401) until a login after it: a bound home's login file written since,
+  or a portable account given its token command again.
 - **stablehand the login, the caller the session.** `stablehand credential`
   answers an account's login and nothing else of it: a portable token, or a
   bound account's engine login files with where the engine's home holds them.

@@ -1,6 +1,7 @@
 //! A register of a test's own, run through the binary: its config dir, and a
-//! PATH whose `sesame`, `mytokens` and engines are the stand-ins (tests/contract,
-//! tests/engines), each appending its argv to `argv.log`.
+//! PATH whose `mytokens` and engines are the stand-ins (tests/contract,
+//! tests/engines), each appending its argv to `argv.log`; stablehand's
+//! stderr is kept in `stderr.log`.
 #![allow(dead_code)]
 use serde_json::Value;
 use std::io::Write;
@@ -28,7 +29,6 @@ impl Register {
         let tests = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests");
         let link =
             |to: &str, name: &str| std::os::unix::fs::symlink(tests.join(to), bin.join(name));
-        link("contract/fake-sesame", "sesame").unwrap();
         link("contract/fake-mytokens", "mytokens").unwrap();
         for engine in ["claude", "codex"] {
             link("engines/fake-engine", engine).unwrap();
@@ -58,9 +58,21 @@ impl Register {
         }
     }
 
-    /// The token sesame's stand-in keeps for `provider`.
-    pub fn sesame_token(&self, provider: &str) -> Option<String> {
-        std::fs::read_to_string(self.root.join("sesame/fake/tokens").join(provider)).ok()
+    /// `token` kept in mytokens' stand-in as `service`'s
+    /// CLAUDE_CODE_OAUTH_TOKEN, and the token command that prints it.
+    pub fn kept_token(&self, service: &str, token: &str) -> String {
+        self.mytokens_entry(service, &[("CLAUDE_CODE_OAUTH_TOKEN", token)]);
+        format!("mytokens get {service} --account default --field CLAUDE_CODE_OAUTH_TOKEN")
+    }
+
+    /// What stablehand wrote to its stderr, every run of it.
+    pub fn stderr(&self) -> String {
+        std::fs::read_to_string(self.root.join("stderr.log")).unwrap_or_default()
+    }
+
+    /// Every file under the test's own paths whose bytes hold `secret`.
+    pub fn holding(&self, secret: &str) -> Vec<String> {
+        holding(&self.root, secret)
     }
 
     /// The binary run on `args`, `stdin` piped in, with `env` beside the test's own:
@@ -74,14 +86,13 @@ impl Register {
                 "PATH",
                 format!("{}:/usr/bin:/bin", self.root.join("bin").display()),
             )
-            .env("SESAME_CONFIG_DIR", self.root.join("sesame"))
             .env("FAKE_MYTOKENS_DIR", self.root.join("mytokens"))
             .env("FAKE_ARGV_LOG", self.root.join("argv.log"))
             .env("STABLEHAND_MACHINE", "mini")
             .envs(env.iter().copied())
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
-            .stderr(Stdio::null())
+            .stderr(stderr_log(&self.root))
             .spawn()
             .unwrap();
         child
@@ -133,4 +144,29 @@ impl Register {
         assert_eq!(self.ok(&["account", "list"]), before, "{args:?} wrote");
         out.json["error"].as_str().unwrap().to_string()
     }
+}
+
+/// `stderr.log` under `root`, opened to append.
+fn stderr_log(root: &std::path::Path) -> std::fs::File {
+    std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(root.join("stderr.log"))
+        .unwrap()
+}
+
+/// Every file under `dir` whose bytes hold `secret`.
+fn holding(dir: &std::path::Path, secret: &str) -> Vec<String> {
+    let mut found = Vec::new();
+    for entry in std::fs::read_dir(dir).unwrap() {
+        let path = entry.unwrap().path();
+        if path.is_dir() {
+            found.extend(holding(&path, secret));
+        } else if let Ok(bytes) = std::fs::read(&path)
+            && bytes.windows(secret.len()).any(|w| w == secret.as_bytes())
+        {
+            found.push(path.display().to_string());
+        }
+    }
+    found
 }

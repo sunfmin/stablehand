@@ -1,14 +1,15 @@
 //! `read`, `limit` and `status`, run through the binary against the
-//! stand-ins of curl and sesame (tests/contract/fake-*), first on PATH.
+//! stand-ins of curl and the engines (tests/contract/fake-*), first on PATH;
+//! a portable token is the first line of a file its token command prints.
 use serde_json::{Value, json};
 use std::cell::RefCell;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-/// The bound login's token, and the portable one sesame hands over: stand-ins.
+/// The bound login's token, and the portable one its token command prints: stand-ins.
 const LOGIN_TOKEN: &str = "sk-ant-oat01-standin-login";
-const SESAME_TOKEN: &str = "sk-ant-oat01-standin-portable";
+const PORTABLE_TOKEN: &str = "sk-ant-oat01-standin-portable";
 
 struct Books {
     root: PathBuf,
@@ -40,17 +41,12 @@ impl Books {
         let bin = root.join("bin");
         std::fs::create_dir_all(&bin).unwrap();
         let contract = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/contract");
-        for tool in ["curl", "sesame", "codex", "pi", "agy"] {
+        for tool in ["curl", "codex", "pi", "agy"] {
             std::os::unix::fs::symlink(contract.join(format!("fake-{tool}")), bin.join(tool))
                 .unwrap();
         }
-        // The sesame stand-in's store: claude-felix logged in, as `account login` leaves it.
-        let sesame = root.join("sesame/fake");
-        for kept in ["providers", "tokens"] {
-            std::fs::create_dir_all(sesame.join(kept)).unwrap();
-        }
-        std::fs::write(sesame.join("providers/stablehand-claude-felix"), "").unwrap();
-        std::fs::write(sesame.join("tokens/stablehand-claude-felix"), SESAME_TOKEN).unwrap();
+        // Where the person keeps the portable token: a file of its own.
+        std::fs::write(root.join("portable-token"), format!("{PORTABLE_TOKEN}\n")).unwrap();
         let home = root.join("home");
         std::fs::create_dir_all(home.join(".claude")).unwrap();
         std::fs::write(
@@ -75,10 +71,6 @@ impl Books {
                 root.join("engines.log").display().to_string(),
             ),
             ("STABLEHAND_MACHINE", "mini".to_string()),
-            (
-                "SESAME_CONFIG_DIR",
-                root.join("sesame").display().to_string(),
-            ),
         ];
         let books = Books {
             env: RefCell::new(env.into_iter().map(|(k, v)| (k.to_string(), v)).collect()),
@@ -102,6 +94,25 @@ impl Books {
         std::fs::write(&file, body.to_string()).unwrap();
         self.set("FAKE_CURL_BODY", &file.display().to_string());
         five_resets
+    }
+
+    /// The token command that prints the portable token.
+    fn token_command(&self) -> String {
+        format!("cat {}", self.root.join("portable-token").display())
+    }
+
+    /// The portable claude-code account `name`, its token from [`Books::token_command`].
+    fn portable(&self, name: &str) {
+        let cmd = self.token_command();
+        self.ok(&[
+            "account",
+            "add",
+            name,
+            "--engine",
+            "claude-code",
+            "--token-command",
+            &cmd,
+        ]);
     }
 
     fn set(&self, key: &str, value: &str) {
@@ -279,18 +290,24 @@ fn a_reader_s_failure_is_booked_and_said_and_the_last_windows_kept_stale() {
     let error = read["error"].as_str().unwrap();
     assert!(
         error.contains(".credentials.json")
-            && error.contains("stablehand account login claude-mini"),
+            && error.contains("log it in with `claude auth login` on mini"),
         "{error}"
     );
 }
 
 #[test]
-fn a_portable_login_is_read_with_sesame_s_token_and_a_setup_token_gets_a_limit() {
+fn a_portable_login_is_read_with_its_command_s_token_and_a_setup_token_gets_a_limit() {
     let b = Books::new("portable");
-    b.ok(&["account", "add", "claude-felix", "--engine", "claude-code"]);
+    b.portable("claude-felix");
     let read = b.read(&["claude-felix"]);
     assert_eq!(read["outcome"], "read", "{read}");
-    assert!(b.log().contains(&format!("Bearer {SESAME_TOKEN}")));
+    // On curl's stdin, never a command line: the curl stand-in logs both.
+    assert!(b.log().contains(&format!("Bearer {PORTABLE_TOKEN}")));
+    assert!(
+        !b.log()
+            .lines()
+            .any(|l| l.starts_with("--silent") && l.contains(PORTABLE_TOKEN))
+    );
 
     // A `claude setup-token` token is given no usage: the fix is a limit.
     b.set("FAKE_CURL_FAULT", "scope");
@@ -336,13 +353,13 @@ fn a_portable_login_is_read_with_sesame_s_token_and_a_setup_token_gets_a_limit()
     // The window the limit does not name stays as read.
     assert_eq!(window(&status["windows"], "seven_day")["source"], "read");
 
-    // A token sesame does not keep is a failed try naming the login.
-    std::fs::remove_file(b.root.join("sesame/fake/tokens/stablehand-claude-felix")).unwrap();
+    // A token its command cannot print is a failed try naming the command.
+    std::fs::remove_file(b.root.join("portable-token")).unwrap();
     let read = b.read(&["claude-felix", "--now"]);
     let error = read["error"].as_str().unwrap();
     assert!(
-        error.contains("sesame keeps no token")
-            && error.contains("stablehand account login claude-felix"),
+        error.contains(&format!("`{}` exited 1", b.token_command()))
+            && error.contains("stablehand account edit claude-felix --token-command"),
         "{error}"
     );
 }
@@ -514,20 +531,11 @@ fn reasons(answer: &Value) -> Vec<(String, String)> {
 #[test]
 fn pick_takes_the_engine_s_usable_accounts_and_passes_over_each_by_guild_s_rules() {
     let b = Books::new("pick");
-    let sesame = b.root.join("sesame/fake");
-    for name in ["claude-off", "claude-two"] {
-        std::fs::write(sesame.join(format!("providers/stablehand-{name}")), "").unwrap();
-        std::fs::write(
-            sesame.join(format!("tokens/stablehand-{name}")),
-            SESAME_TOKEN,
-        )
-        .unwrap();
+    for name in ["claude-felix", "claude-off", "claude-two"] {
+        b.portable(name);
     }
     for args in [
-        &["claude-felix", "--engine", "claude-code"][..],
-        &["claude-off", "--engine", "claude-code"],
-        &["claude-two", "--engine", "claude-code"],
-        &["claude-gone", "--engine", "claude-code"],
+        &["claude-gone", "--engine", "claude-code"][..],
         &[
             "claude-mini",
             "--engine",
@@ -605,7 +613,7 @@ fn pick_takes_the_engine_s_usable_accounts_and_passes_over_each_by_guild_s_rules
 #[test]
 fn pick_stops_an_account_at_its_stop_percent_and_one_whose_window_would_run_out() {
     let b = Books::new("pick-stop");
-    b.ok(&["account", "add", "claude-felix", "--engine", "claude-code"]);
+    b.portable("claude-felix");
     // 95% of seven_day used: stopped, until it resets.
     b.answers(10.0, 95.0);
     b.read(&["claude-felix"]);
@@ -642,7 +650,7 @@ fn pick_stops_an_account_at_its_stop_percent_and_one_whose_window_would_run_out(
 #[test]
 fn pick_refuses_a_count_it_cannot_read_and_an_account_not_kept() {
     let b = Books::new("pick-refusals");
-    b.ok(&["account", "add", "claude-felix", "--engine", "claude-code"]);
+    b.portable("claude-felix");
     for (args, exit, part) in [
         (vec!["--running", "nobody=1"], 1, "no account `nobody`"),
         (
@@ -811,7 +819,8 @@ fn a_chatgpt_read_refused_leaves_the_last_windows_stale_and_is_not_retried_in_th
         let error = read["error"].as_str().unwrap();
         assert!(
             error.contains(said)
-                && error.contains(&format!("stablehand account login {name}"))
+                && error.contains("log it in with `")
+                && error.contains("` on mini")
                 && !error.contains(PI_BEARER),
             "{error}"
         );
@@ -932,7 +941,9 @@ fn grok_s_credits_are_booked_its_weekly_window_and_one_per_product() {
     let error = read["error"].as_str().unwrap();
     assert!(
         error.contains("HTTP 401: Invalid or expired credentials")
-            && error.contains("stablehand account login grok-mini"),
+            && error.contains(&format!(
+                "log it in again with `GROK_HOME={h} grok login` on mini"
+            )),
         "{error}"
     );
     assert!(!error.contains(GROK_TOKEN), "{error}");
@@ -1067,7 +1078,7 @@ fn an_agy_account_is_read_in_its_home_a_window_per_model_group() {
     let error = read["error"].as_str().unwrap();
     assert!(
         error.contains("authentication failed")
-            && error.contains("stablehand account login agy-mini"),
+            && error.contains(&format!("log it in with `HOME={home} agy` on mini")),
         "{error}"
     );
     let gemini = window(&read["windows"], "gemini-5h");

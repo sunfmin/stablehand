@@ -266,7 +266,7 @@ sources = ["README.md"]
 # tests/register.rs add_list_show_edit_and_rm
 [[promise]]
 name = "edit-changes-only-the-terms-given"
-says = '''`account edit` changes only the terms given; `--unset machine|sessions|expires|home` clears one.'''
+says = '''`account edit` changes only the terms given; `--unset machine|sessions|expires|home|token-command` clears one.'''
 source = "README.md:31"
 check = ["test"]
 
@@ -300,7 +300,7 @@ source = "README.md:56"
 check = ["test"]
 
 # tests/usage.rs read_books_a_bound_login_s_windows_once_an_hour_unless_now,
-# a_portable_login_is_read_with_sesame_s_token_and_a_setup_token_gets_a_limit;
+# a_portable_login_is_read_with_its_command_s_token_and_a_setup_token_gets_a_limit;
 # src/books_tests.rs the_account_s_pace_is_its_worst_window_s and the pace tests
 [[promise]]
 name = "status-windows-and-pace"
@@ -316,7 +316,7 @@ says = '''The rules are Guild's ledger's: a reading over two hours old, or a win
 source = "README.md:66"
 check = ["test"]
 
-# tests/import.rs imports_each_entry_its_token_into_sesame_and_keeps_what_is_kept
+# tests/import.rs imports_each_entry_its_token_command_and_keeps_what_is_kept
 [[promise]]
 name = "import-only-reads-mytokens"
 says = '''mytokens is only read: nothing in it is changed or removed.'''
@@ -331,24 +331,28 @@ says = '''With
 source = "README.md:166"
 check = ["test"]
 
-# sesame keeps a portable account's token (`account login`, `account show`):
-# the calls stablehand makes, each case a run of calls in a store of its own
-# (tests/contract/sesame-steps). stablehand reads their exit codes; of
-# `token --json`, its answer too.
-
-# tests/login.rs a_portable_token_reaches_sesame_on_stdin_and_no_argv
+# tests/login.rs a_portable_token_is_its_command_s_first_line_and_written_nowhere;
+# tests/usage.rs a_portable_login_is_read_with_its_command_s_token_and_a_setup_token_gets_a_limit
 [[promise]]
 name = "token-on-no-argv"
-says = '''The token is on no
-  child's command line, in no log and not in the register; sesame gets it on stdin.'''
-source = "README.md:53"
+says = '''it is on no child's command line, in no log and not in the register.'''
+source = "README.md:70"
 check = ["test"]
 
-# tests/login.rs a_refused_login_keeps_nothing
+# tests/login.rs a_token_command_that_fails_prints_nothing_or_hangs_is_refused_naming_it
 [[promise]]
-name = "a-refused-login-writes-nothing"
-says = '''A refused login exits 1 and writes nothing to the register'''
-source = "README.md:65"
+name = "a-token-command-refused-names-only-the-command"
+says = '''A command that exits non-zero, prints no first line or runs past its
+  bound is refused naming the command, never what it printed.'''
+source = "README.md:71"
+check = ["test"]
+
+# tests/login.rs each_not_logged_in_refusal_names_its_engine_s_login_line
+[[promise]]
+name = "not-logged-in-names-its-login-line"
+says = '''Every refusal of an account not logged in names the line that logs it
+  in'''
+source = "README.md:73"
 check = ["test"]
 
 # account::tests::status_counts_the_days_left_and_warns_30_ahead
@@ -359,17 +363,16 @@ says = '''from 30 days ahead its `warning`
 source = "README.md:63"
 check = ["test"]
 
-# tests/env.rs a_portable_account_starts_with_its_token_from_sesame, a_bound_account_starts_in_its_home_on_its_machine
+# tests/credential.rs a_portable_account_starts_with_its_token_from_its_command
 [[promise]]
-name = "env-portable-token-bound-home"
-says = '''**Portable**: the
-  engine's token variable (claude-code: `CLAUDE_CODE_OAUTH_TOKEN`), its value
-  the token sesame keeps (`sesame token stablehand-<name> --json`). **Bound**:
-  the engine's home variable set to the account's home, on its machine only.'''
-source = "README.md:79"
+name = "credential-portable-token"
+says = '''**Portable**: the engine's token variable (claude-code:
+  `CLAUDE_CODE_OAUTH_TOKEN`), its value the token its `--token-command`
+  prints'''
+source = "README.md:119"
 check = ["test"]
 
-# tests/env.rs a_portable_account_starts_with_its_token_from_sesame
+# tests/credential.rs a_portable_account_starts_with_its_token_from_its_command
 [[promise]]
 name = "env-value-on-stdout-alone"
 says = '''The value is written to
@@ -386,68 +389,23 @@ says = '''It refuses, exit 2 with `{"error": "…"}` naming the fix, an account 
 source = "README.md:87"
 check = ["test"]
 
-# tests/dsh.rs a_refused_grant_is_not_asked_again_until_a_login;
+# tests/dsh.rs a_refused_grant_is_not_asked_again_until_a_login,
+# a_portable_login_is_read_with_its_command_s_token_and_a_bound_one_without_its_grant_fails;
 # src/books_tests.rs a_refused_credential_is_held_until_a_login_after_it
 [[promise]]
 name = "a-refused-credential-is-not-asked-again"
 says = '''A credential the engine refused (dsh: HTTP 401 or code 40003; dsh drops
   its grant then) is booked `"outcome": "refused"` and never asked again,
-  `--now` or not, until `account login`; `status` says `"refused": true`.'''
+  `--now` or not, until it logs in again: its home's login file written
+  after it, or a portable one given its `--token-command` again (`account
+  edit`); `status` says `"refused": true`.'''
 source = "README.md:151"
 check = ["test"]
 
-[[standin]]
-name = "sesame"
-run = ["tests/contract/sesame-steps", "tests/contract/fake-sesame"]
-real = ["tests/contract/sesame-steps", "sesame"]
-needs = "sesame on PATH (brew install sunfmin/tap/sesame); it writes only the case's own store"
-ready = ["sesame", "--version"]
-version = ["sesame", "--version"]
-faults = ["token-refused", "add-refused"]
-fault_env = "FAKE_SESAME_FAULT"
-
-[[standin.case]]
-name = "provider-made-once-then-token-kept"
-stdin = '''
-? provider show stablehand-a
-? provider add stablehand-a --about x --auth-url https://api.anthropic.com --token-url https://api.anthropic.com --api-base https://api.anthropic.com --host api.anthropic.com
-? provider add stablehand-a --auth-url https://api.anthropic.com --token-url https://api.anthropic.com --api-base https://api.anthropic.com --host api.anthropic.com
-? provider show stablehand-a
-<sk-ant-oat01-stand-in| login stablehand-a --token-stdin
-token stablehand-a --json
-<sk-ant-oat01-renewed| login stablehand-a --token-stdin
-token stablehand-a --json
-'''
-
-[[standin.case]]
-name = "no-token-not-logged-in"
-stdin = '''
-token stablehand-nobody --json
-? provider add stablehand-a --auth-url https://chatgpt.com --token-url https://chatgpt.com --api-base https://chatgpt.com --host chatgpt.com
-token stablehand-a --json
-? login stablehand-nobody --token-stdin
-'''
-
-[[standin.case]]
-name = "token-refused-keeps-nothing"
-fault = "token-refused"
-stdin = '''
-? provider add stablehand-a --auth-url https://api.anthropic.com --token-url https://api.anthropic.com --api-base https://api.anthropic.com --host api.anthropic.com
-<two words| login stablehand-a --token-stdin
-token stablehand-a --json
-'''
-
-[[standin.case]]
-name = "provider-refused-made-nothing"
-fault = "add-refused"
-stdin = '''
-? provider add stablehand-a --auth-url https://api.anthropic.com --token-url https://api.anthropic.com --api-base https://api.anthropic.com --host 'bad host'
-? provider show stablehand-a
-'''
-
 # mytokens holds the agent-account-* entries `account import --from-mytokens`
 # moves into stablehand: `list`, then `get` of each entry's fields
-# (tests/contract/mytokens-steps). It only reads, and prints no value: a real
+# (tests/contract/mytokens-steps); a portable account's token command is its
+# entry's `get` of CLAUDE_CODE_OAUTH_TOKEN. It only reads, and prints no value: a real
 # run reads this host's own entries, so it needs at least one portable entry
 # with a token and one bound to a machine.
 [[standin]]

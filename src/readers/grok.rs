@@ -9,7 +9,7 @@
 //! cannot show a plan's usage outside a session: it is not used.
 use crate::account::Account;
 use crate::books::Window;
-use crate::{curl, time};
+use crate::{curl, login, time};
 use serde_json::Value;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -19,17 +19,16 @@ const ISSUER: &str = "https://auth.x.ai::";
 
 pub fn read(account: &Account) -> Result<Vec<Window>, String> {
     let name = &account.name;
-    let Some(machine) = &account.machine else {
+    if account.machine.is_none() {
         return Err(format!(
             "a grok login lasts hours, and grok refreshes it in its home: bind `{name}` with `stablehand account edit {name} --machine <machine> --home <its GROK_HOME>`"
         ));
-    };
+    }
     let home = match &account.home {
         Some(home) => PathBuf::from(home),
         None => PathBuf::from(std::env::var("HOME").unwrap_or_default()).join(".grok"),
     };
-    let login_again =
-        format!("log it in again on {machine} with `stablehand account login {name}`");
+    let login_again = format!("log it in again with {}", login::login_line(account));
     let now = crate::now()?;
     let load = || {
         let login = Login::of(&home).map_err(|why| format!("{why}: {login_again}"))?;

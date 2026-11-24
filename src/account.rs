@@ -34,24 +34,18 @@ impl Engine {
     /// engine's own"): the one table of each engine's login facts.
     pub fn login(self) -> Login {
         use Engine::*;
-        let (home_var, bound, token, usage_host): (_, &[&str], Option<&[&str]>, _) = match self {
+        let (home_var, bound, token): (_, &[&str], Option<&[&str]>) = match self {
             ClaudeCode => (
                 "CLAUDE_CONFIG_DIR",
                 &["claude", "auth", "login"],
                 Some(&["claude", "setup-token"]),
-                "api.anthropic.com",
             ),
-            Codex => ("CODEX_HOME", &["codex", "login"], None, "chatgpt.com"),
-            Pi => ("PI_CODING_AGENT_DIR", &["pi"], None, "chatgpt.com"),
-            Kimi => ("KIMI_CODE_HOME", &["kimi", "login"], None, "api.kimi.com"),
-            Agy => ("HOME", &["agy"], None, "cloudcode-pa.googleapis.com"),
-            Grok => (
-                "GROK_HOME",
-                &["grok", "login"],
-                None,
-                "cli-chat-proxy.grok.com",
-            ),
-            Dsh => ("DSH_HOME", &["dsh", "tui"], None, "platform.deepseek.com"),
+            Codex => ("CODEX_HOME", &["codex", "login"], None),
+            Pi => ("PI_CODING_AGENT_DIR", &["pi"], None),
+            Kimi => ("KIMI_CODE_HOME", &["kimi", "login"], None),
+            Agy => ("HOME", &["agy"], None),
+            Grok => ("GROK_HOME", &["grok", "login"], None),
+            Dsh => ("DSH_HOME", &["dsh", "tui"], None),
         };
         let file = match self {
             ClaudeCode => ".credentials.json",
@@ -68,7 +62,6 @@ impl Engine {
             // The others read a token from where their own login put it, as
             // far as stablehand knows: their sessions start bound.
             token_var: (self == ClaudeCode).then_some("CLAUDE_CODE_OAUTH_TOKEN"),
-            usage_host,
         }
     }
 }
@@ -83,12 +76,11 @@ pub struct Login {
     /// The file its login writes in its home: a bound home holding it is
     /// logged in.
     pub file: &'static str,
-    /// The command that prints a long-lived token, where the engine has one.
+    /// The command that makes a long-lived token, where the engine has one:
+    /// the person runs it and keeps the token where they keep secrets.
     pub token: Option<&'static [&'static str]>,
     /// The variable a session reads a portable token from, where the engine has one.
     pub token_var: Option<&'static str>,
-    /// The host its usage is read from: the one host sesame sends its token to.
-    pub usage_host: &'static str,
 }
 
 /// Who switched an account off, when (UTC, RFC 3339) and why
@@ -114,9 +106,10 @@ pub struct Account {
     /// Its bound login's home on `machine`.
     pub home: Option<String>,
     pub off: Option<Off>,
-    /// When its bound login last logged in, in `home` on `machine` (UTC,
-    /// RFC 3339); a portable login's token is sesame's to know.
-    pub logged_in_at: Option<String>,
+    /// The command whose first line printed is its portable login's token
+    /// (`mytokens get …`): the token stays where the person keeps it, and
+    /// stablehand keeps only how to read it (docs/adr/0001).
+    pub token_command: Option<String>,
 }
 
 /// An account as every command answers it: its terms, and its login
@@ -161,6 +154,9 @@ pub struct Terms {
     /// Its bound login's home on --machine (a bound login only).
     #[arg(long)]
     pub home: Option<String>,
+    /// The command that prints its portable token, the token its first line (a portable login only): `mytokens get agent-account-claude-felix --field CLAUDE_CODE_OAUTH_TOKEN`. Run by `sh -c` with no input, each time a token is needed.
+    #[arg(long)]
+    pub token_command: Option<String>,
 }
 
 /// What the person asked to change of an account (`add` gives all of it,
@@ -179,6 +175,7 @@ pub enum Field {
     Sessions,
     Expires,
     Home,
+    TokenCommand,
 }
 
 /// A new account `name` of `engine` with `change`'s terms, or every fault at once.
@@ -191,7 +188,7 @@ pub fn new(name: &str, engine: Engine, change: Change) -> Result<Account, Vec<St
         expires: None,
         home: None,
         off: None,
-        logged_in_at: None,
+        token_command: None,
     };
     let named = check_name(name);
     match (apply(&blank, change), named) {
@@ -237,21 +234,26 @@ pub fn apply(account: &Account, change: Change) -> Result<Account, Vec<String>> 
         }
         next.home = Some(home);
     }
+    if let Some(command) = change.terms.token_command {
+        if command.trim().is_empty() {
+            faults.push("--token-command is empty: give the command that prints the token (`mytokens get <entry> --field <field>`)".into());
+        }
+        next.token_command = Some(command);
+    }
     for field in change.unset {
         match field {
             Field::Machine => next.machine = None,
             Field::Sessions => next.sessions = None,
             Field::Expires => next.expires = None,
             Field::Home => next.home = None,
+            Field::TokenCommand => next.token_command = None,
         }
-    }
-    // A login is of one engine in one home: moving either forgets it.
-    if (next.engine, &next.machine, &next.home) != (account.engine, &account.machine, &account.home)
-    {
-        next.logged_in_at = None;
     }
     if next.machine.is_some() && next.expires.is_some() {
         faults.push("a bound login (--machine) is refreshed by its engine and has no --expires: drop --expires (`--unset expires`), or drop --machine for a portable token".into());
+    }
+    if next.machine.is_some() && next.token_command.is_some() {
+        faults.push("a bound login (--machine) is its engine's login files in its home and has no --token-command: drop --token-command (`--unset token-command`), or drop --machine for a portable token".into());
     }
     if next.machine.is_none() && next.home.is_some() {
         faults.push("--home is a bound login's home and needs --machine: give the machine it is on, or drop --home (`--unset home`)".into());
@@ -332,13 +334,12 @@ pub struct Status {
 }
 
 /// `account`'s status on day `today` (days since 1970-01-01), `logged_in` as
-/// its login's holder says: the register for a bound login, sesame for a
-/// portable one.
+/// [`crate::login::logged_in`] says.
 pub fn status(account: &Account, logged_in: bool, today: i64) -> Status {
     let expires = account.expires.as_deref();
     let days_left = expires.and_then(day_of).map(|d| d - today);
     let renew = format!(
-        "make a new token and run `stablehand account login {} --expires <its date>`",
+        "make a new token, keep it where its --token-command reads it, and `stablehand account edit {} --expires <its date>`",
         account.name
     );
     let warning = match days_left {
@@ -417,7 +418,7 @@ mod tests {
                 (None, None) => {}
                 (Some(part), Some(w)) => {
                     assert!(
-                        w.contains(part) && w.contains("stablehand account login c"),
+                        w.contains(part) && w.contains("stablehand account edit c --expires"),
                         "{w}"
                     )
                 }

@@ -1,11 +1,14 @@
 //! `account import --from-mytokens`, through the binary, against the stand-ins
-//! of mytokens and sesame.
+//! of mytokens.
 mod support;
 
 use serde_json::json;
 use support::Register;
 
 const TOKEN: &str = "sk-ant-oat01-imported-secret";
+/// The token command a portable entry's account is given.
+const FELIX: &str =
+    "mytokens get agent-account-claude-felix --account default --field CLAUDE_CODE_OAUTH_TOKEN";
 
 fn host_entries(r: &Register) {
     r.mytokens_entry(
@@ -23,7 +26,7 @@ fn host_entries(r: &Register) {
 }
 
 #[test]
-fn imports_each_entry_its_token_into_sesame_and_keeps_what_is_kept() {
+fn imports_each_entry_its_token_command_and_keeps_what_is_kept() {
     let r = Register::new("import");
     host_entries(&r);
     r.ok(&[
@@ -36,7 +39,7 @@ fn imports_each_entry_its_token_into_sesame_and_keeps_what_is_kept() {
         "1",
     ]);
 
-    // A dry run says what it would do, reads no token and writes nothing.
+    // A dry run says what it would do and writes nothing.
     let before = r.ok(&["account", "list"]);
     let dry = r.ok(&["account", "import", "--from-mytokens", "--dry-run"]);
     assert_eq!(dry["dry_run"], true);
@@ -48,23 +51,19 @@ fn imports_each_entry_its_token_into_sesame_and_keeps_what_is_kept() {
             (
                 a["account"]["name"].clone(),
                 a["result"].clone(),
-                a["token"].clone(),
+                a["account"]["token_command"].clone(),
             )
         })
         .collect();
     assert_eq!(
         done,
         [
-            (json!("claude-felix"), json!("would add"), json!(true)),
-            (json!("codex"), json!("already kept"), json!(false)),
+            (json!("claude-felix"), json!("would add"), json!(FELIX)),
+            (json!("codex"), json!("already kept"), json!(null)),
         ]
     );
     assert_eq!(r.ok(&["account", "list"]), before);
-    assert!(
-        !r.argv().contains("--field CLAUDE_CODE_OAUTH_TOKEN"),
-        "{}",
-        r.argv()
-    );
+    assert!(!r.argv().contains(FELIX), "{}", r.argv());
     assert!(!dry.to_string().contains(TOKEN));
 
     let out = r.ok(&["account", "import", "--from-mytokens"]);
@@ -79,20 +78,16 @@ fn imports_each_entry_its_token_into_sesame_and_keeps_what_is_kept() {
     assert_eq!(out["accounts"][1]["account"]["login"], "portable");
     assert_eq!(out["accounts"][1]["account"]["sessions"], 1);
     assert!(!out.to_string().contains(TOKEN));
-
-    assert_eq!(r.sesame_token("stablehand-claude-felix").unwrap(), TOKEN);
-    assert_eq!(
-        r.ok(&["account", "show", "claude-felix"])["logged_in"],
-        true
-    );
+    // Its token is not read: it stays in mytokens, read when it is needed.
+    assert_eq!(felix["account"]["token_command"], FELIX);
+    assert!(!r.argv().contains(FELIX), "{}", r.argv());
+    let credential = r.ok(&["credential", "claude-felix", "--json"]);
+    assert_eq!(credential["env"]["CLAUDE_CODE_OAUTH_TOKEN"], TOKEN);
     let argv = r.argv();
     assert!(!argv.contains(TOKEN), "{argv}");
-    assert!(
-        argv.contains("sesame login stablehand-claude-felix --token-stdin"),
-        "{argv}"
-    );
-    let db = std::fs::read(r.dir.join("stablehand.db")).unwrap();
-    assert!(!db.windows(TOKEN.len()).any(|w| w == TOKEN.as_bytes()));
+    let held = r.holding(TOKEN);
+    assert_eq!(held.len(), 1, "{held:?}");
+    assert!(held[0].contains("/mytokens/"), "{held:?}");
 
     // Again: everything is kept, nothing more is read or written.
     let calls = argv.lines().count();
@@ -112,10 +107,29 @@ fn imports_each_entry_its_token_into_sesame_and_keeps_what_is_kept() {
             "{call}"
         );
     }
-    assert!(
-        !after.lines().skip(calls).any(|l| l.starts_with("sesame")),
-        "{after}"
-    );
+    assert!(!after.lines().skip(calls).any(|l| l == FELIX), "{after}");
+
+    // An account added by hand with no token command is given its entry's.
+    let r = Register::new("import-command");
+    host_entries(&r);
+    r.ok(&["account", "add", "claude-felix", "--engine", "claude-code"]);
+    let args = ["account", "import", "--from-mytokens"];
+    let dry = r.ok(&[&args[..], &["--dry-run"]].concat());
+    assert_eq!(dry["accounts"][0]["result"], "would give its token command");
+    let out = r.ok(&args);
+    assert_eq!(out["accounts"][0]["result"], "given its token command");
+    let show = r.ok(&["account", "show", "claude-felix"]);
+    assert_eq!(show["account"]["token_command"], FELIX);
+    assert_eq!(show["logged_in"], true);
+    // One named by hand is kept.
+    r.ok(&[
+        "account",
+        "edit",
+        "claude-felix",
+        "--token-command",
+        "op read op://v/i/f",
+    ]);
+    assert_eq!(r.ok(&args)["accounts"][0]["result"], "already kept");
 }
 
 #[test]
@@ -127,8 +141,7 @@ fn a_bound_entry_is_imported_bound_to_its_machine() {
     assert_eq!(codex["name"], "codex");
     assert_eq!(codex["login"], "bound");
     assert_eq!(codex["machine"], "mini");
-    assert_eq!(out["accounts"][1]["token"], false);
-    assert!(!r.argv().contains("stablehand-codex"), "{}", r.argv());
+    assert_eq!(codex["token_command"], json!(null));
 }
 
 #[test]
@@ -153,7 +166,7 @@ fn an_entry_it_cannot_import_refuses_all_and_writes_nothing() {
         e.contains("agent-account-both/default: a token and a MACHINE"),
         "{e}"
     );
-    assert!(r.sesame_token("stablehand-claude-felix").is_none());
+    assert_eq!(r.ok(&["account", "list"])["accounts"], json!([]));
 
     // mytokens failing to answer a field: nothing is imported.
     let r = Register::new("import-get-fails");
@@ -164,23 +177,6 @@ fn an_entry_it_cannot_import_refuses_all_and_writes_nothing() {
         e.contains("mytokens get agent-account-claude-felix --account default --field HARNESS"),
         "{e}"
     );
-}
-
-#[test]
-fn a_token_sesame_refuses_imports_that_account_on_the_next_run() {
-    let r = Register::new("import-sesame-refuses");
-    host_entries(&r);
-    let args = ["account", "import", "--from-mytokens"];
-    let e = r.refused_with(&args, &[("FAKE_SESAME_FAULT", "token-refused")], "", 1);
-    assert!(
-        e.contains("sesame kept no token for stablehand-claude-felix"),
-        "{e}"
-    );
-    assert!(e.contains("account import --from-mytokens"), "{e}");
-
-    let out = r.ok(&args);
-    assert_eq!(out["accounts"][0]["result"], "added");
-    assert_eq!(r.sesame_token("stablehand-claude-felix").unwrap(), TOKEN);
 }
 
 #[test]
@@ -199,17 +195,15 @@ fn what_mytokens_cannot_answer_is_named_with_its_fix() {
         "{e}"
     );
 
-    // A token mytokens lists and does not give: that account is not added.
+    // A token mytokens lists and does not give: the account is added, the
+    // import reads no token, and its credential is refused naming the command.
     let r = Register::new("import-token-unread");
     r.mytokens_entry("agent-account-claude-felix", &[("HARNESS", "claude-code")]);
     let unread = r.path("mytokens/agent-account-claude-felix/default/CLAUDE_CODE_OAUTH_TOKEN");
     std::fs::create_dir(unread).unwrap();
-    let e = r.refused(&args, 1);
-    assert!(
-        e.contains("`mytokens get agent-account-claude-felix --account default --field CLAUDE_CODE_OAUTH_TOKEN` failed"),
-        "{e}"
-    );
-    assert!(r.sesame_token("stablehand-claude-felix").is_none());
+    assert_eq!(r.ok(&args)["accounts"][0]["result"], "added");
+    let e = r.refused(&["credential", "claude-felix"], 2);
+    assert!(e.contains(&format!("`{FELIX}` exited 1")), "{e}");
 }
 
 #[test]

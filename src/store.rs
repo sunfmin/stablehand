@@ -1,7 +1,7 @@
 //! The register's and the books' one store: a SQLite database, `<config dir>/stablehand.db`,
 //! the config dir `$STABLEHAND_CONFIG_DIR` or `~/.config/stablehand`, guarded
-//! as sesame keeps its own: the directory 0700, the file 0600. It holds no
-//! secret: a portable login's token is sesame's.
+//! the directory 0700, the file 0600. It holds no secret: of a portable
+//! login it keeps the command that prints its token, never the token.
 use crate::account::{Account, Engine, Off};
 use crate::books::Entry;
 use rusqlite::{Connection, OptionalExtension, Row, params};
@@ -34,13 +34,19 @@ const MIGRATIONS: &[&str] = &[
     );
     CREATE INDEX books_by_account ON books (account, at);
 ",
+    // A bound login is its home's login file, a portable one its token
+    // command's answer (docs/adr/0001): the register records no login.
+    "
+    ALTER TABLE accounts DROP COLUMN logged_in_at;
+    ALTER TABLE accounts ADD COLUMN token_command TEXT;
+",
 ];
 
 /// How long a process waits for another's write.
 const BUSY_TIMEOUT: Duration = Duration::from_secs(30);
 
 const COLUMNS: &str =
-    "name, engine, machine, sessions, expires, home, off_by, off_at, off_reason, logged_in_at";
+    "name, engine, machine, sessions, expires, home, off_by, off_at, off_reason, token_command";
 
 pub struct Store {
     conn: Connection,
@@ -107,7 +113,7 @@ fn account_of(row: &Row) -> rusqlite::Result<Account> {
         expires: row.get(4)?,
         home: row.get(5)?,
         off,
-        logged_in_at: row.get(9)?,
+        token_command: row.get(9)?,
     })
 }
 
@@ -195,7 +201,7 @@ impl Store {
                     off.map(|o| &o.by),
                     off.map(|o| &o.at),
                     off.map(|o| &o.reason),
-                    a.logged_in_at,
+                    a.token_command,
                 ],
             )
             .map(|n| n == 1)
