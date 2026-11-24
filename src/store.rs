@@ -440,7 +440,10 @@ mod tests {
         conn.execute_batch("DROP TABLE schema_steps; CREATE TABLE books (x);")
             .unwrap();
         let fault = migrate(&conn, MIGRATIONS).unwrap_err();
-        assert!(fault.starts_with("schema step 3 "), "{fault}");
+        assert!(
+            fault.starts_with("schema step 3 (`CREATE TABLE books (`)"),
+            "{fault}"
+        );
         let tables: i64 = conn
             .query_row(
                 "SELECT count(*) FROM sqlite_master WHERE name = 'schema_steps'",
