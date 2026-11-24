@@ -39,14 +39,7 @@ pub fn read(account: &Account) -> Result<Vec<Window>, String> {
         Some(home) => home.clone(),
         None => std::env::var("HOME").unwrap_or_default(),
     };
-    let agy = |args: &[&str]| {
-        let mut agy = Command::new("agy");
-        agy.args(args)
-            .env("HOME", &home)
-            .stdin(Stdio::null())
-            .stderr(Stdio::null());
-        agy
-    };
+    let agy = |args: &[&str]| agy(&home, args);
     let (code, stdout) = run(
         agy(&["-p", "/usage", "--output-format", "json"]),
         TIME_LIMIT,
@@ -58,6 +51,28 @@ pub fn read(account: &Account) -> Result<Vec<Window>, String> {
         _ => Vec::new(),
     };
     windows(code, &stdout, &login::login_line(account), catalog)
+}
+
+/// The ids `agy models` lists, run in `home` (`HOME`), or why it gave none,
+/// with the fix.
+pub fn models(home: &str) -> Result<Vec<String>, String> {
+    match run(agy(home, &["models"]), MODELS_TIME_LIMIT)? {
+        (Some(0), list) => Ok(catalog(&list).into_iter().map(|(id, _)| id).collect()),
+        (code, _) => Err(format!(
+            "`HOME={home} agy models` {}: sign agy in there (`HOME={home} agy`), then try again",
+            code.map_or("was killed".into(), |c| format!("exited {c}"))
+        )),
+    }
+}
+
+/// agy run on `args` in `home` (`HOME`), no input, its stderr dropped.
+fn agy(home: &str, args: &[&str]) -> Command {
+    let mut agy = Command::new("agy");
+    agy.args(args)
+        .env("HOME", home)
+        .stdin(Stdio::null())
+        .stderr(Stdio::null());
+    agy
 }
 
 /// Each model `agy models` lists, `(id, name)`, one a line, tab between.

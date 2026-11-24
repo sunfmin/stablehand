@@ -1,8 +1,10 @@
 # stablehand
 
 One home for agent engine accounts: how each logs in, where it may run, and
-how much of its usage windows is left; and, from that (`pick`), which account one
-more session may start on now.
+how much of its usage windows is left; and, from that and the order of
+engines and models kept beside them (`pick`), what one more session may
+start on now: its engine, model and account. The session itself is the
+caller's.
 
 stablehand is being built: its commands land one ticket at a time, each
 described here as it lands. The design is
@@ -258,17 +260,44 @@ stablehand status                   # each account's windows and their pace
 - It never refuses: an account not kept, or not claude-code's, books
   nothing, and the line says why (with `--then`, stderr does).
 
-## Picking an account
+## The order
 
 ```sh
-stablehand pick --engine claude-code --running claude-felix=1,claude-two=2
-stablehand pick --engine agy --model claude-opus-5-5-high
-# {"account": "claude-felix"}
-# {"none": true, "until": "2026-11-24T15:00:00Z", "why": [{"account", "reason", "why", "until"}, …]}
+stablehand order set claude-code@opus codex grok agy@gemini-4-neon-high,claude-opus-5-5-high
+stablehand order show   # {"order": [{"engine": "claude-code", "models": ["opus"]}, …]}
 ```
 
-- `pick` answers which account one more session of the engine may start on
-  now. It reads no engine: it judges the books as `status` shows them.
+- The engines, and of each the models, the next session starts on,
+  highest first; an engine with no model runs its own. One order per
+  machine, kept in the register's database; `set` replaces it.
+- An engine is one stablehand knows; agy's models are checked against the
+  ids `agy models` lists, run in the home of the first agy account bound
+  to this machine (the user's own without one). Other engines' models are
+  kept as given. A fault is refused (`bad_order`), writing nothing.
+- It is a preference only: the command an engine starts with, its flags,
+  its guard, and which checkout keeps to which engine stay the caller's
+  (factorium's kit commands and pins).
+
+## Picking what the next session starts on
+
+```sh
+stablehand pick --running claude-felix=1,claude-two=2
+stablehand pick --engine agy --model claude-opus-5-5-high
+# {"engine": "agy", "model": "claude-opus-5-5-high", "account": "agy", "why": […], "model_in_no_group": []}
+# {"none": true, "until": "2026-11-24T15:00:00Z", "why": [{"engine", "model", "account", "reason", "why", "until"}, …], "model_in_no_group": []}
+```
+
+- `pick` walks the order: each engine, and of each its models in turn;
+  at each (engine, model) the engine's accounts, judged as below. It
+  answers the first that takes one more session, with `why` each one
+  before it was passed over; or none, until the earliest any lifts.
+- An engine of the order with no account kept is skipped and said
+  (`no_account`): nothing starts on a login stablehand does not keep.
+- `--engine` (repeatable) and `--model` narrow the walk to them, in the
+  order's order; one not in the order may still be named and is tried
+  after the rest. With no order and no `--engine`, nothing is walked:
+  refused (`no_order`).
+- It reads no engine: it judges the books as `status` shows them.
 - The candidates are the engine's accounts usable on the machine
   (`--machine`, else this one): portable, or bound to it; logged in; not off.
 - The rules are Guild's ledger's quota. None is picked on an account a
@@ -286,16 +315,17 @@ stablehand pick --engine agy --model claude-opus-5-5-high
   running on each account (factorium knows its workers); stablehand counts
   none itself, and counts across machines only as the caller does. A name in
   it that is no account kept is refused.
-- `--model <id>` (agy's `claude-opus-5-5-high`, as `agy models` lists
-  it): an account whose windows are grouped by model is judged only by the
+- At a step with a model (agy's `claude-opus-5-5-high`, as `agy models`
+  lists it), an account whose windows are grouped by model is judged only by the
   windows of the group holding it, and those in no group, so one agy
-  account is two pools: its Gemini group used up, a Claude session may
-  still start on it. One no group of which holds the model is judged by
+  account is two pools: its Gemini group used up, the walk falls to its
+  Claude model. One no group of which holds the model is judged by
   every window, and named in the answer's `model_in_no_group`; an engine
-  that groups no window is judged as without `--model`.
+  that groups no window is judged as without a model.
 - None answers `until`, the earliest any passed over lifts (null when none
-  says when: off, not logged in), and each one's `reason`: `off`,
-  `elsewhere`, `not_logged_in`, `limit`, `stopped` or `runs_out`.
+  says when: off, not logged in, no account), and each one's
+  `reason`: `no_account`, `off`, `elsewhere`, `not_logged_in`, `limit`,
+  `stopped` or `runs_out`.
 
 ## Install
 

@@ -1,0 +1,21 @@
+{
+  "tree": "88ace896b6319caa0933e7c19120bf5df29aa5dc+d1fba762150c532c",
+  "picker": "codex:01a20dbc-bb9d-73d3-8200-f6d4f8cb45ca:default",
+  "author": "claude-code:8373b1fb-d363-5803-a09c-a5dbf96809d5:opus",
+  "picks": {
+    "rust": [
+      {
+        "name": "src/main.rs:729:43: replace && with || in agy_home",
+        "why": "The successful order test checks HOME without a competing bound account, while the refusal test adds competing accounts but never checks which HOME was used.",
+        "outcome": "killed",
+        "first_outcome": "killed"
+      },
+      {
+        "name": "src/usage.rs:275:14: replace match guard !login::logged_in(a)? with false in barred",
+        "why": "The shown login test picks only after creating the login file, so it may miss a local account being picked before it logs in.",
+        "outcome": "killed",
+        "first_outcome": "killed"
+      }
+    ]
+  }
+}
