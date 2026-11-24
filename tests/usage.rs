@@ -348,8 +348,9 @@ fn a_portable_login_is_read_with_sesame_s_token_and_a_setup_token_gets_a_limit()
 }
 
 #[test]
-fn read_without_a_name_reads_every_account_and_one_with_no_reader_is_said() {
+fn read_without_a_name_reads_every_account_and_each_outcome_is_said() {
     let b = Books::new("all");
+    b.set("STABLEHAND_MACHINE", "mini");
     b.ok(&[
         "account",
         "add",
@@ -362,11 +363,11 @@ fn read_without_a_name_reads_every_account_and_one_with_no_reader_is_said() {
     b.ok(&[
         "account",
         "add",
-        "dsh-1",
+        "agy-air",
         "--engine",
-        "dsh",
+        "agy",
         "--machine",
-        "mini",
+        "air",
     ]);
     let answer = b.ok(&["read"]);
     let outcomes: Vec<_> = answer["reads"]
@@ -380,13 +381,14 @@ fn read_without_a_name_reads_every_account_and_one_with_no_reader_is_said() {
             )
         })
         .collect();
-    assert_eq!(outcomes, [("claude-mini", "read"), ("dsh-1", "no_reader")]);
+    assert_eq!(outcomes, [("agy-air", "failed"), ("claude-mini", "read")]);
     let status = b.ok(&["status"]);
-    let dsh = &status["accounts"][1];
+    let agy = &status["accounts"][0];
     assert_eq!(
-        (&dsh["name"], &dsh["windows"], &dsh["tried_at"]),
-        (&json!("dsh-1"), &json!([]), &Value::Null)
+        (&agy["name"], &agy["windows"]),
+        (&json!("agy-air"), &json!([]))
     );
+    assert!(agy["tried_at"].is_string(), "{agy}");
     assert_eq!(status["accounts"].as_array().unwrap().len(), 2);
 }
 

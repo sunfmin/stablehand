@@ -1,0 +1,6 @@
+#!/bin/sh
+# Ready for `truefit contract --real dsh`: curl and jq on PATH, and a dsh
+# login (`dsh` signed in to DeepSeek Platform) in ~/.dsh/.credentials.yaml,
+# or $DSH_HOME's (see real-curl-dsh).
+command -v curl >/dev/null && command -v jq >/dev/null &&
+    grep -q '^  deepseek-account-platform/default:' "${DSH_HOME:-$HOME/.dsh}/.credentials.yaml" 2>/dev/null

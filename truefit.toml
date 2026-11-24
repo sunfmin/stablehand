@@ -374,6 +374,16 @@ says = '''It refuses, exit 2 with `{"error": "…"}` naming the fix, an account 
 source = "README.md:87"
 check = ["test"]
 
+# tests/dsh.rs a_refused_grant_is_not_asked_again_until_a_login;
+# src/books_tests.rs a_refused_credential_is_held_until_a_login_after_it
+[[promise]]
+name = "a-refused-credential-is-not-asked-again"
+says = '''A credential the engine refused (dsh: HTTP 401 or code 40003; dsh drops
+  its grant then) is booked `"outcome": "refused"` and never asked again,
+  `--now` or not, until `account login`; `status` says `"refused": true`.'''
+source = "README.md:151"
+check = ["test"]
+
 [[standin]]
 name = "sesame"
 run = ["tests/contract/sesame-steps", "tests/contract/fake-sesame"]
@@ -453,3 +463,63 @@ fault = "get-fails"
 stdin = '''
 get STABLEHAND_NO_SUCH_FIELD
 '''
+
+# dsh's reader (src/readers/dsh.rs) asks DeepSeek Platform's
+# get_user_summary through curl (src/curl.rs), the grant and dsh's client
+# headers on curl's stdin. Both sides answer through balance-shape, which
+# keeps only what the reader reads: curl's exit, the HTTP status, the
+# answer's codes and the wallets' shape, never a balance. The real side
+# swaps the stand-in grant for this user's dsh login. dsh drops its grant on
+# HTTP 401 as on code 40003; the endpoint answers an unknown grant 40003,
+# so only that is a case.
+[[standin]]
+name = "dsh"
+run = ["tests/contract/balance-shape", "fake-curl-dsh"]
+real = ["tests/contract/balance-shape", "real-curl-dsh"]
+needs = "curl and jq on PATH, and a dsh login (DeepSeek Platform) in ~/.dsh/.credentials.yaml or $DSH_HOME's"
+ready = ["tests/contract/real-curl-dsh-ready"]
+version = ["sh", "-c", "curl --version | head -n 1"]
+faults = ["refused", "unreachable"]
+fault_env = "FAKE_CURL_FAULT"
+
+[[standin.case]]
+name = "a-login-s-wallets"
+args = ["--silent", "--show-error", "--max-time", "20", "--config", "-", "--write-out", "\n%{http_code}", "https://platform.deepseek.com/api/v0/users/get_user_summary"]
+stdin = """
+header = "x-dsh-auth-token: <grant>"
+header = "x-client-bundle-id;"
+header = "x-client-platform: web"
+header = "x-client-version: 0.2.2-rc.1"
+header = "x-client-locale: en_US"
+header = "x-client-timezone-offset: 0"
+"""
+
+[[standin.case]]
+name = "a-refused-grant"
+fault = "refused"
+args = ["--silent", "--show-error", "--max-time", "20", "--config", "-", "--write-out", "\n%{http_code}", "https://platform.deepseek.com/api/v0/users/get_user_summary"]
+stdin = """
+header = "x-dsh-auth-token: not-a-grant"
+header = "x-client-bundle-id;"
+header = "x-client-platform: web"
+header = "x-client-version: 0.2.2-rc.1"
+header = "x-client-locale: en_US"
+header = "x-client-timezone-offset: 0"
+"""
+
+[[standin.case]]
+name = "no-grant-sent"
+args = ["--silent", "--show-error", "--max-time", "20", "--config", "-", "--write-out", "\n%{http_code}", "https://platform.deepseek.com/api/v0/users/get_user_summary"]
+stdin = """
+header = "x-client-bundle-id;"
+header = "x-client-platform: web"
+"""
+
+[[standin.case]]
+name = "a-host-not-reached"
+fault = "unreachable"
+args = ["--silent", "--show-error", "--max-time", "20", "--config", "-", "--write-out", "\n%{http_code}", "https://platform.deepseek.invalid/api/v0/users/get_user_summary"]
+stdin = """
+header = "x-dsh-auth-token: <grant>"
+header = "x-client-platform: web"
+"""
