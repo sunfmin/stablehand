@@ -309,7 +309,6 @@ mod tests {
             name: "claude-jp".into(),
             engine: crate::account::Engine::ClaudeCode,
             machine: None,
-            sessions: None,
             expires: None,
             home: None,
             off: None,
