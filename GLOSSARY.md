@@ -7,6 +7,9 @@
   spend, named by the person (`claude-felix`). Not an engine: two engines may
   spend one account (pi and codex on one ChatGPT account), and one engine may
   have several accounts.
+- **Register**: the accounts stablehand keeps, with their terms (sessions
+  at once, a portable token's expiry) and whether each is off; one SQLite
+  file, holding no token.
 - **Login**: how an account's credential is held. **Portable**: a long-lived
   token (`claude setup-token`) kept in sesame, usable on any machine that
   reaches sesame's store. **Bound**: the engine's own login files in a home of

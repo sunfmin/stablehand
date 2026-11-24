@@ -11,3 +11,32 @@ standins = ["tests/contract/fake-*"]
 # run could break, with the tests that keep it named in the comment above it.
 [promises]
 sources = ["README.md"]
+
+# tests/register.rs add_list_show_edit_and_rm
+[[promise]]
+name = "edit-changes-only-the-terms-given"
+says = '''`account edit` changes only the terms given; `--unset machine|sessions|expires|home` clears one.'''
+source = "README.md:31"
+check = ["test"]
+
+# tests/register.rs refusals_name_the_fix_and_write_nothing
+[[promise]]
+name = "a-refusal-writes-nothing"
+says = '''A refusal prints `{"error": "…"}`, naming each fault with its fix, exits non-zero and writes nothing'''
+source = "README.md:34"
+check = ["test"]
+
+# tests/register.rs add_list_show_edit_and_rm
+[[promise]]
+name = "rm-twice-same-register"
+says = '''`account rm` of an account not kept answers `"removed": false`, so running it twice leaves the same register.'''
+source = "README.md:35"
+check = ["test"]
+why = "twice one after the other, not at once: one rm is one DELETE, and the test runs it twice and reads the register"
+
+# tests/register.rs the_store_is_0600_in_a_0700_directory
+[[promise]]
+name = "db-file-0600-dir-0700"
+says = '''the file is 0600, the directory 0700.'''
+source = "README.md:36"
+check = ["test"]
