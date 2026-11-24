@@ -1,0 +1,44 @@
+{
+  "cases": [
+    {
+      "case": "a-refused-bearer",
+      "differ": [
+        "stdout"
+      ],
+      "real": {
+        "exit": 0,
+        "files": {},
+        "stderr": "",
+        "stdout": "exit 0\nstatus 429\nerror.type rate_limit_error\nerror.message string\nerror_code null\n"
+      },
+      "result": "differ",
+      "standin": {
+        "exit": 0,
+        "files": {},
+        "stderr": "",
+        "stdout": "exit 0\nstatus 401\nerror.type authentication_error\nerror.message string\nerror_code null\n"
+      }
+    },
+    {
+      "case": "a-setup-token-is-given-no-usage",
+      "differ": [
+        "stdout"
+      ],
+      "real": {
+        "exit": 0,
+        "files": {},
+        "stderr": "",
+        "stdout": "exit 0\nstatus 429\nerror.type rate_limit_error\nerror.message string\nerror_code null\n"
+      },
+      "result": "differ",
+      "standin": {
+        "exit": 0,
+        "files": {},
+        "stderr": "",
+        "stdout": "exit 0\nstatus 403\nerror.type permission_error\nerror.message string\nerror_code oauth_scope_insufficient\n"
+      }
+    }
+  ],
+  "date": "2026-11-24",
+  "version": "curl 8.7.1 (x86_64-apple-darwin26.0) libcurl/8.7.1 (SecureTransport) LibreSSL/3.3.6 zlib/1.2.12 nghttp2/1.69.0"
+}

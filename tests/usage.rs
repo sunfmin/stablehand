@@ -71,10 +71,11 @@ impl Books {
     }
 
     /// The endpoint's answer from now on: five_hour and seven_day this
-    /// much used, resetting in 3 hours and 3 days.
-    fn answers(&self, five: f64, seven: f64) {
+    /// much used, resetting in 3 hours and 3 days; when five_hour resets.
+    fn answers(&self, five: f64, seven: f64) -> String {
+        let five_resets = rfc3339(now() + 3 * 3600);
         let body = json!({
-            "five_hour": { "utilization": five, "resets_at": rfc3339(now() + 3 * 3600), "limit_dollars": null },
+            "five_hour": { "utilization": five, "resets_at": five_resets, "limit_dollars": null },
             "seven_day": { "utilization": seven, "resets_at": rfc3339(now() + 3 * 86_400) },
             "seven_day_opus": null,
             "extra_usage": { "is_enabled": false },
@@ -82,6 +83,7 @@ impl Books {
         let file = self.root.join("body.json");
         std::fs::write(&file, body.to_string()).unwrap();
         self.set("FAKE_CURL_BODY", &file.display().to_string());
+        five_resets
     }
 
     fn set(&self, key: &str, value: &str) {
@@ -141,6 +143,7 @@ fn window<'a>(windows: &'a Value, name: &str) -> &'a Value {
 #[test]
 fn read_books_a_bound_login_s_windows_once_an_hour_unless_now() {
     let b = Books::new("bound");
+    let resets = b.answers(22.0, 52.0);
     b.ok(&[
         "account",
         "add",
@@ -157,7 +160,7 @@ fn read_books_a_bound_login_s_windows_once_an_hour_unless_now() {
     );
     let five = window(&read["windows"], "five_hour");
     assert_eq!(five["used_percent"], 22.0);
-    assert_eq!(five["resets_at"], rfc3339(now() + 3 * 3600));
+    assert_eq!(five["resets_at"], resets);
     assert_eq!(
         (&five["source"], &five["stale"], &five["group"]),
         (&json!("read"), &json!(false), &Value::Null)
