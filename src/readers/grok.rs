@@ -127,7 +127,13 @@ fn windows(status: u16, body: &str, login_again: &str) -> Result<Vec<Window>, St
     let name = period["type"]
         .as_str()
         .map(|t| t.trim_start_matches("USAGE_PERIOD_TYPE_").to_lowercase());
-    let (Some(name), Some(used)) = (name, config["creditUsagePercent"].as_f64()) else {
+    // The answer is proto3's JSON, which leaves out a 0: a period just
+    // begun has no `creditUsagePercent` and no `productUsage`.
+    let used = match &config["creditUsagePercent"] {
+        Value::Null => Some(0.0),
+        used => used.as_f64(),
+    };
+    let (Some(name), Some(used)) = (name, used) else {
         return Err(format!(
             "{BILLING} answered no credit period: its answer has changed; run `truefit contract --real grok` in stablehand's repo"
         ));
@@ -182,6 +188,37 @@ mod tests {
                 ("weekly", Some("GrokBuild"), 4.0, resets, None),
             ]
         );
+    }
+
+    #[test]
+    fn a_period_just_begun_omits_its_zeros_and_is_a_window_nothing_used() {
+        // As read 2026-11-24 11:40Z, half an hour after the period rolled
+        // over: proto3's JSON leaves out a 0 and an empty list.
+        let body = r#"{"config":{"currentPeriod":{"type":"USAGE_PERIOD_TYPE_WEEKLY",
+            "start":"2026-11-24T11:06:25.960+00:00","end":"2026-12-01T11:06:25.960+00:00"},
+            "isUnifiedBillingUser":true,"prepaidBalance":{"val":1765},
+            "topUpMethod":"TOP_UP_METHOD_SAVED_PAYMENT_METHOD",
+            "billingPeriodStart":"2026-11-24T11:06:25.960+00:00",
+            "billingPeriodEnd":"2026-12-01T11:06:25.960+00:00"}}"#;
+        let got = windows(200, body, "x").unwrap();
+        let shown: Vec<_> = got
+            .iter()
+            .map(|w| {
+                (
+                    w.name.as_str(),
+                    w.group.as_deref(),
+                    w.used_percent,
+                    w.minutes,
+                )
+            })
+            .collect();
+        assert_eq!(shown, [("weekly", None, 0.0, Some(10_080))]);
+        assert_eq!(got[0].resets_at, Some(1_795_518_385 + 7 * 86_400));
+        // A used share that is there but no number is no answer it knows.
+        let odd = r#"{"config":{"currentPeriod":{"type":"USAGE_PERIOD_TYPE_WEEKLY"},
+            "creditUsagePercent":"92"}}"#;
+        let fault = windows(200, odd, "x").unwrap_err();
+        assert!(fault.contains("answered no credit period"), "{fault}");
     }
 
     #[test]

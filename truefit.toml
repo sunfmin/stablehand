@@ -230,6 +230,18 @@ header = "Authorization: Bearer <grok-login>"
 header = "x-grok-client-version: 1.0.92"
 """
 
+# Just after the weekly period rolls over, its answer leaves out the 0s
+# (proto3): no creditUsagePercent, no productUsage. The real side answers
+# what this week holds, read alike either way.
+[[standin.case]]
+name = "a-period-just-begun"
+env = { FAKE_CURL_GROK_PERIOD = "begun" }
+args = ["--silent", "--show-error", "--max-time", "20", "--config", "-", "--write-out", "\n%{http_code}", "https://cli-chat-proxy.grok.com/v1/billing?format=credits"]
+stdin = """
+header = "Authorization: Bearer <grok-login>"
+header = "x-grok-client-version: 1.0.92"
+"""
+
 [[standin.case]]
 name = "a-refused-bearer"
 fault = "unauthorized"

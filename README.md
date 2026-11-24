@@ -182,7 +182,8 @@ stablehand status                   # each account's windows and their pace
   by grok itself (`grok models`, no model turn). Its windows are the credit
   period's, `weekly`: the account's, and one per product in its `group`
   (`Api`, `GrokBuild`): a share of the account's credits, never paced on
-  its own.
+  its own. A period just begun, its usage not in the answer, is one
+  `weekly` window with nothing used.
 - `limit` books a caller's report that a session met the account's limit: the window it names is used up until `--resets-at`, or until the next reading without it; without `--window`, the whole account is.
 - `status` answers each account's windows (each with its `group` where the
   engine groups them), used %, resets at, source (`read` or `limit`),
