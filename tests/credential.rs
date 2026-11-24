@@ -1,5 +1,6 @@
-//! `env`: what a session on an account starts with, through the binary,
-//! against the stand-in of sesame.
+//! `credential`: an account's login as a session's caller is handed it (a
+//! token, or the login files to link), through the binary, against the
+//! stand-in of sesame.
 mod support;
 
 use serde_json::json;
@@ -26,12 +27,12 @@ fn holding(dir: &std::path::Path, secret: &str) -> Vec<String> {
 
 #[test]
 fn a_portable_account_starts_with_its_token_from_sesame() {
-    let r = Register::new("env-portable");
+    let r = Register::new("credential-portable");
     r.ok(&["account", "add", "claude-felix", "--engine", "claude-code"]);
     let login = ["account", "login", "claude-felix", "--token"];
     assert_eq!(r.run_with(&login, &[], &format!("{TOKEN}\n")).code, 0);
 
-    let (code, out) = r.raw(&["env", "claude-felix"], &[], "");
+    let (code, out) = r.raw(&["credential", "claude-felix"], &[], "");
     assert_eq!(code, 0, "{out}");
     assert_eq!(
         out,
@@ -48,7 +49,7 @@ fn a_portable_account_starts_with_its_token_from_sesame() {
         format!("{TOKEN}\n")
     );
 
-    let answer = r.ok(&["env", "claude-felix", "--json"]);
+    let answer = r.ok(&["credential", "claude-felix", "--json"]);
     assert_eq!(
         answer,
         json!({"name": "claude-felix", "login": "portable", "env": {"CLAUDE_CODE_OAUTH_TOKEN": TOKEN}})
@@ -67,8 +68,8 @@ fn a_portable_account_starts_with_its_token_from_sesame() {
 }
 
 #[test]
-fn a_bound_account_starts_in_its_home_on_its_machine() {
-    let r = Register::new("env-bound");
+fn a_bound_account_answers_its_login_files_not_its_home() {
+    let r = Register::new("credential-bound");
     let home = r.path("homes/it's chatgpt");
     r.ok(&[
         "account",
@@ -82,20 +83,65 @@ fn a_bound_account_starts_in_its_home_on_its_machine() {
         &home,
     ]);
     r.ok(&["account", "login", "chatgpt"]);
-    let (code, out) = r.raw(&["env", "chatgpt"], &[], "");
-    assert_eq!(code, 0, "{out}");
-    let quoted = home.replace('\'', "'\\''");
-    assert_eq!(out, format!("export CODEX_HOME='{quoted}'\n"));
-    let answer = r.ok(&["env", "chatgpt", "--json"]);
-    assert_eq!(
-        answer,
-        json!({"name": "chatgpt", "login": "bound", "env": {"CODEX_HOME": home}})
-    );
+    let files = json!([{"path": format!("{home}/auth.json"), "as": "auth.json"}]);
+    let want = json!({"name": "chatgpt", "login": "bound", "files": files});
+    // No `export` lines: the session's home is its caller's, so there is no
+    // variable to set; the answer is the same object with or without --json.
+    for args in [
+        &["credential", "chatgpt"][..],
+        &["credential", "chatgpt", "--json"],
+    ] {
+        assert_eq!(r.ok(args), want, "{args:?}");
+    }
+}
+
+/// Each engine's login file, under its home, as the engines' login facts
+/// name it: what a caller links, and what makes a bound home logged in.
+const LOGIN_FILES: &[(&str, &str)] = &[
+    ("claude-code", ".credentials.json"),
+    ("codex", "auth.json"),
+    ("pi", "auth.json"),
+    ("kimi", "credentials/kimi-code.json"),
+    ("agy", ".gemini/antigravity-cli/antigravity-oauth-token"),
+    ("grok", "auth.json"),
+    ("dsh", ".credentials.yaml"),
+];
+
+#[test]
+fn each_engine_s_login_file_is_both_what_is_linked_and_what_logs_a_home_in() {
+    let r = Register::new("credential-files");
+    let help = r.raw(&["credential", "--help"], &[], "").1;
+    for (engine, file) in LOGIN_FILES {
+        let home = r.path(&format!("homes/{engine}"));
+        let add = ["account", "add", engine, "--engine", engine];
+        r.ok(&[&add[..], &["--machine", "mini", "--home", &home]].concat());
+        // Its home without the file: not logged in, and no credential.
+        assert_eq!(r.ok(&["account", "show", engine])["logged_in"], false);
+        let fault = r.refused_with(&["credential", engine], &[], "", 2);
+        assert!(fault.contains("not logged in"), "{engine}: {fault}");
+
+        let path = format!("{home}/{file}");
+        std::fs::create_dir_all(std::path::Path::new(&path).parent().unwrap()).unwrap();
+        std::fs::write(&path, "{}").unwrap();
+        let show = r.ok(&["account", "show", engine]);
+        assert_eq!(show["logged_in"], true, "{engine}: {show}");
+        assert_eq!(show["login_file"]["path"], path, "{engine}");
+        assert_eq!(
+            r.ok(&["credential", engine])["files"],
+            json!([{"path": path, "as": file}]),
+            "{engine}"
+        );
+        assert!(
+            help.contains(&format!("login file `{file}`")),
+            "{engine}: {help}"
+        );
+    }
+    assert_eq!(r.argv(), "", "no engine ran");
 }
 
 #[test]
 fn an_account_no_session_may_start_on_is_refused_with_its_fix() {
-    let r = Register::new("env-refused");
+    let r = Register::new("credential-refused");
     for name in ["claude-off", "claude-none"] {
         r.ok(&["account", "add", name, "--engine", "claude-code"]);
     }
@@ -158,15 +204,20 @@ fn an_account_no_session_may_start_on_is_refused_with_its_fix() {
         ),
     ];
     for (name, env, part) in cases {
-        for args in [&["env", name][..], &["env", name, "--json"]] {
+        for args in [&["credential", name][..], &["credential", name, "--json"]] {
             let fault = r.refused_with(args, env, "", 2);
             assert!(fault.contains(part), "{args:?}: {fault}");
         }
     }
     // Not an account of the register: a fault of the caller's, exit 1.
-    let fault = r.refused(&["env", "nobody"], 1);
+    let fault = r.refused(&["credential", "nobody"], 1);
     assert!(fault.contains("stablehand account list"), "{fault}");
     // A failure to ask sesame is no refusal of the account: exit 1.
-    let fault = r.refused_with(&["env", "claude-none"], &[("PATH", "/usr/bin:/bin")], "", 1);
+    let fault = r.refused_with(
+        &["credential", "claude-none"],
+        &[("PATH", "/usr/bin:/bin")],
+        "",
+        1,
+    );
     assert!(fault.contains("brew install sunfmin/tap/sesame"), "{fault}");
 }

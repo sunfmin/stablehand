@@ -304,7 +304,7 @@ fn each_refusal_carries_its_code_and_the_exit_it_decides() {
             1,
         ),
         (&["off", "a", "--reason", " "], "bad_terms", 1),
-        (&["env", "a"], "no_session", 2),
+        (&["credential", "a"], "no_session", 2),
         (&["account", "login", "a"], "login_refused", 1),
         (&["limit", "a", "--resets-at", now], "bad_limit", 1),
     ];

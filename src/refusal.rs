@@ -12,7 +12,7 @@ pub enum Code {
     NameTaken,
     /// An account's terms as given are not ones it can have: a date that is no day, `--expires` on a bound login, `--home` on a portable one, an empty `--reason`.
     BadTerms,
-    /// `env` of an account no session may start on here: off, not logged in, with no home, bound to another machine, or of an engine with no token variable. Exit 2.
+    /// `credential` of an account no session may start on here: off, not logged in, with no home, bound to another machine, or of an engine with no token variable. Exit 2.
     NoSession,
     /// `account login` asked for what this account's login cannot do: `--token` on a bound login, no token command without `--token`, another machine, no home.
     LoginRefused,
