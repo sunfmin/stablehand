@@ -19,20 +19,18 @@ stablehand account add claude-felix --engine claude-code --expires 2027-01-31 \
 stablehand account add chatgpt --engine codex --machine mini --home /Users/agent/chatgpt   # a bound one
 stablehand account list                     # every account, by name
 stablehand account show chatgpt
-stablehand account edit chatgpt --sessions 3 --unset home
+stablehand account edit chatgpt --unset home
 stablehand account rm chatgpt
 stablehand off claude-felix --reason "card declined"
 stablehand on claude-felix
 ```
 
 - An **account** has its engine (`claude-code`, `codex`, `pi`, `kimi`,
-  `agy`, `grok`, `dsh`), its sessions at once (`--sessions`; a claude-code
-  account without it runs 2, as Guild's ledger has it, the others no
-  limit), and its login: **portable** without `--machine`, with the command
+  `agy`, `grok`, `dsh`) and its login: **portable** without `--machine`, with the command
   that prints its token (`--token-command`) and when the token expires
   (`--expires YYYY-MM-DD`), or **bound** to the machine `--machine` names, in
   the home `--home` names.
-- `account edit` changes only the terms given; `--unset machine|sessions|expires|home|token-command` clears one.
+- `account edit` changes only the terms given; `--unset machine|expires|home|token-command` clears one.
 - `off` keeps who (`$USER`), when (UTC) and why; `on` forgets them.
 - Each command prints one JSON object on stdout: `{"account": {…}}`, `{"accounts": […]}`, or for `rm` `{"name": …, "removed": true|false}`.
 - A refusal prints `{"error": "…"}`, naming each fault with its fix, exits non-zero and writes nothing: an unknown engine, a name already kept, a date that is no calendar day, `--expires` or `--token-command` on a bound login, `--home` on a portable one.
@@ -305,10 +303,11 @@ stablehand pick --engine agy --model claude-opus-5-5-high
 - The rules are Guild's ledger's quota. None is picked on an account a
   limit holds on, until it lifts; any of whose windows is the stop percent
   used (`--stop-percent`, 90 unless it says), until that window resets;
-  running its sessions at once; or one of whose windows, at its present
+  or one of whose windows, at its present
   rate shared by the sessions running and one more, runs out before it
   resets (a reading over two hours old, or a window under half used, runs
-  on at no rate).
+  on at no rate). How many sessions run on an account never passes it over
+  by itself: they count only in that rate.
 - Of the rest, the one with the most left of its most used window; one with
   no reading in force, or only stale ones, after every one with one; of
   equals, the first by name.
@@ -324,9 +323,9 @@ stablehand pick --engine agy --model claude-opus-5-5-high
   every window, and named in the answer's `model_in_no_group`; an engine
   that groups no window is judged as without a model.
 - None answers `until`, the earliest any passed over lifts (null when none
-  says when: off, not logged in, full, no account), and each one's
+  says when: off, not logged in, no account), and each one's
   `reason`: `no_account`, `off`, `elsewhere`, `not_logged_in`, `limit`,
-  `stopped`, `full` or `runs_out`.
+  `stopped` or `runs_out`.
 
 ## Install
 

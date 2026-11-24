@@ -138,7 +138,6 @@ mod tests {
             name: "kimi-1".into(),
             engine: Engine::Kimi,
             machine: None,
-            sessions: None,
             expires: None,
             home: None,
             off: None,
