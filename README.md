@@ -181,8 +181,17 @@ stablehand status                   # each account's windows and their pace
   `CLAUDE_CONFIG_DIR`; `~/.claude` without `--home`).
 - The bearer goes to curl on its stdin, never on a command line.
 - Its windows are `five_hour`, `seven_day` and any other the endpoint
-  lists. A `claude setup-token` token is refused a usage query (HTTP 403):
-  such an account is known by `limit` alone.
+  lists. A `claude setup-token` token is refused a usage query (HTTP 403
+  scope): its reading spends one small turn instead, the question `claude -p
+  --model haiku --output-format stream-json --verbose --tools ''
+  --strict-mcp-config --no-session-persistence --setting-sources ''
+  --system-prompt 'Answer with one word.' quota` (about 3s, under $0.0002),
+  the token in its `CLAUDE_CODE_OAUTH_TOKEN`, run in a new empty config dir
+  (`CLAUDE_CONFIG_DIR`) removed after, so nothing of `~/.claude` is read; its
+  stream's `rate_limit_event` says the windows. Such an account is asked
+  the question from then on, not its usage: at most once an hour, unless
+  `--now`. Each read says `read_by` (`usage` or `question`) and
+  `spent_turn`; `status` says the latest reading's `read_by`.
 - agy's reader runs `agy -p /usage --output-format json` in the account's
   home (`HOME` set to `--home`; the user's own without it), on its machine
   only: no model turn, no conversation made. Its windows are each model

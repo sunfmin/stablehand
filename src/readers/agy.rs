@@ -11,7 +11,7 @@
 //! or it with a variant after it (` (High)`).
 use crate::account::Account;
 use crate::books::Window;
-use crate::bounded::{self, Ran};
+use crate::bounded;
 use crate::{login, time};
 use std::process::{Command, Stdio};
 use std::time::Duration;
@@ -117,14 +117,7 @@ fn names(description: &str) -> Vec<&str> {
 
 /// Runs `cmd` for its exit code and stdout, killed past `limit`.
 fn run(cmd: Command, limit: Duration) -> Result<(Option<i32>, String), String> {
-    match bounded::run(cmd, limit) {
-        Err(e) => Err(format!("agy: {e}: install agy, or put it on PATH")),
-        Ok(Ran::RanPast) => Err(format!(
-            "agy answered nothing in {}s: try again later (`stablehand read --now`)",
-            limit.as_secs()
-        )),
-        Ok(Ran::Exited(code, out)) => Ok((code, String::from_utf8_lossy(&out).into_owned())),
-    }
+    bounded::answer(cmd, limit, "agy", "install agy, or put it on PATH")
 }
 
 /// The windows of agy's answer, its exit `code` and `stdout`, each with the
@@ -168,6 +161,7 @@ fn windows(
                     name: b["id"].as_str()?.to_string(),
                     group: group.clone(),
                     models: Vec::new(),
+                    read_by: None,
                     used_percent: (1.0 - left) * 100.0,
                     // 1970 (0) is a window not yet used: it has no reset.
                     resets_at: b["reset_time"]

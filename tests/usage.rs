@@ -41,7 +41,7 @@ impl Books {
         let bin = root.join("bin");
         std::fs::create_dir_all(&bin).unwrap();
         let contract = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/contract");
-        for tool in ["curl", "codex", "pi", "agy"] {
+        for tool in ["curl", "codex", "pi", "agy", "claude"] {
             std::os::unix::fs::symlink(contract.join(format!("fake-{tool}")), bin.join(tool))
                 .unwrap();
         }
@@ -69,6 +69,10 @@ impl Books {
             (
                 "FAKE_PI_LOG",
                 root.join("engines.log").display().to_string(),
+            ),
+            (
+                "FAKE_CLAUDE_LOG",
+                root.join("claude.log").display().to_string(),
             ),
             ("STABLEHAND_MACHINE", "mini".to_string()),
         ];
@@ -157,6 +161,25 @@ impl Books {
         reads[0].clone()
     }
 
+    /// The question's answer from now on (fake-claude): a stream of its
+    /// rate_limit_event alone, five_hour and seven_day `five` and `seven`
+    /// used (0 to 1), resetting in 3 hours and 3 days; when five_hour resets.
+    fn question_answers(&self, five: f64, seven: f64) -> String {
+        let (five_at, seven_at) = (now() + 3 * 3600, now() + 3 * 86_400);
+        let event = json!({ "type": "rate_limit_event", "rate_limit_info": { "unifiedWindows": {
+            "five_hour": { "utilization": five, "resetsAt": five_at },
+            "seven_day": { "utilization": seven, "resetsAt": seven_at },
+        }}});
+        let file = self.root.join("stream.jsonl");
+        std::fs::write(&file, format!("{event}\n")).unwrap();
+        self.set("FAKE_CLAUDE_BODY", &file.display().to_string());
+        rfc3339(five_at)
+    }
+
+    fn claude_log(&self) -> String {
+        std::fs::read_to_string(self.root.join("claude.log")).unwrap_or_default()
+    }
+
     fn status(&self, name: &str) -> Value {
         self.ok(&["status", name])["accounts"][0].clone()
     }
@@ -198,6 +221,11 @@ fn read_books_a_bound_login_s_windows_once_an_hour_unless_now() {
     );
     assert_eq!(window(&read["windows"], "seven_day")["used_percent"], 52.0);
     assert_eq!(read["windows"].as_array().unwrap().len(), 2, "{read}");
+    // Its usage answered, so no turn was spent.
+    assert_eq!(
+        (&read["read_by"], &read["spent_turn"]),
+        (&json!("usage"), &json!(false))
+    );
 
     // The bearer and the beta header go to curl on its stdin, never in its arguments.
     let log = b.log();
@@ -242,6 +270,7 @@ fn read_books_a_bound_login_s_windows_once_an_hour_unless_now() {
     assert_eq!(status["pace"], "steady");
     assert_eq!(status["failed"], Value::Null);
     assert_eq!(status["read_at"], status["tried_at"]);
+    assert_eq!(status["read_by"], "usage");
     assert!(status["read_next"].is_string(), "{status}");
     assert_eq!(window(&status["windows"], "seven_day")["pace"], "steady");
 }
@@ -296,7 +325,7 @@ fn a_reader_s_failure_is_booked_and_said_and_the_last_windows_kept_stale() {
 }
 
 #[test]
-fn a_portable_login_is_read_with_its_command_s_token_and_a_setup_token_gets_a_limit() {
+fn a_portable_login_is_read_with_its_command_s_token_and_a_limit_booked_over_it() {
     let b = Books::new("portable");
     b.portable("claude-felix");
     let read = b.read(&["claude-felix"]);
@@ -309,15 +338,7 @@ fn a_portable_login_is_read_with_its_command_s_token_and_a_setup_token_gets_a_li
             .any(|l| l.starts_with("--silent") && l.contains(PORTABLE_TOKEN))
     );
 
-    // A `claude setup-token` token is given no usage: the fix is a limit.
-    b.set("FAKE_CURL_FAULT", "scope");
-    let read = b.read(&["claude-felix", "--now"]);
-    let error = read["error"].as_str().unwrap();
-    assert!(
-        error.contains("HTTP 403") && error.contains("stablehand limit claude-felix"),
-        "{error}"
-    );
-
+    // A caller's limit is booked over the reading.
     let lifts = rfc3339(now() + 1800);
     let limit = b.ok(&[
         "limit",
@@ -362,6 +383,97 @@ fn a_portable_login_is_read_with_its_command_s_token_and_a_setup_token_gets_a_li
             && error.contains("stablehand account edit claude-felix --token-command"),
         "{error}"
     );
+}
+
+#[test]
+fn a_setup_token_refused_usage_is_read_by_one_small_turn_and_its_usage_not_asked_again() {
+    let b = Books::new("question");
+    std::fs::create_dir(b.root.join("tmp")).unwrap();
+    b.set("TMPDIR", &b.root.join("tmp").display().to_string());
+    b.portable("claude-jp");
+    let resets = b.question_answers(0.07, 0.45);
+    // `/api/oauth/usage` refuses a `claude setup-token` token (HTTP 403).
+    b.set("FAKE_CURL_FAULT", "scope");
+    let read = b.read(&["claude-jp"]);
+    assert_eq!(read["outcome"], "read", "{read}");
+    assert_eq!(
+        (&read["read_by"], &read["spent_turn"]),
+        (&json!("question"), &json!(true))
+    );
+    let five = window(&read["windows"], "five_hour");
+    assert_eq!(
+        (&five["used_percent"], &five["resets_at"], &five["source"]),
+        (&json!(7.0), &json!(resets), &json!("read"))
+    );
+    assert_eq!(window(&read["windows"], "seven_day")["used_percent"], 45.0);
+    assert_eq!(read["windows"].as_array().unwrap().len(), 2, "{read}");
+
+    // Asked of claude by one turn on its smallest model, the token in its
+    // environment and on no command line, in an empty config dir of its own.
+    let asked = b.claude_log();
+    let lines: Vec<&str> = asked.lines().collect();
+    assert_eq!(
+        lines,
+        [
+            "-p --model haiku --output-format stream-json --verbose --tools  --strict-mcp-config --no-session-persistence --setting-sources  --system-prompt Answer with one word. quota",
+            &format!("token {PORTABLE_TOKEN}"),
+            "config empty, run in it",
+        ]
+    );
+    let status = b.status("claude-jp");
+    assert_eq!(status["read_by"], "question");
+    assert_eq!(window(&status["windows"], "seven_day")["pace"], "steady");
+
+    // Within the hour it waits: no turn is spent.
+    assert_eq!(b.read(&["claude-jp"])["outcome"], "waits");
+    // With --now it asks again, and says it spent a turn; the usage that
+    // refused it is not asked again.
+    b.question_answers(0.10, 0.46);
+    let forced = b.read(&["claude-jp", "--now"]);
+    assert_eq!(
+        (&forced["outcome"], &forced["spent_turn"]),
+        (&json!("read"), &json!(true))
+    );
+    assert_eq!(
+        window(&forced["windows"], "five_hour")["used_percent"],
+        10.0
+    );
+    assert_eq!(b.log().matches("oauth/usage").count(), 1);
+    assert_eq!(b.claude_log().matches(" quota\n").count(), 2);
+
+    // A token the question is refused fails with the fix, the last windows stale.
+    b.set("FAKE_CLAUDE_FAULT", "refused");
+    let refused = b.read(&["claude-jp", "--now"]);
+    let error = refused["error"].as_str().unwrap();
+    assert!(
+        error.contains("exited 1")
+            && error.contains("401 OAuth access token is invalid")
+            && error.contains("claude setup-token"),
+        "{error}"
+    );
+    assert_eq!(window(&refused["windows"], "five_hour")["stale"], true);
+    // Claude Code not on PATH, or no temporary directory: each fails, saying so.
+    std::fs::remove_file(b.root.join("bin/claude")).unwrap();
+    let error = b.read(&["claude-jp", "--now"])["error"].clone();
+    assert!(
+        error.as_str().unwrap().contains("install Claude Code"),
+        "{error}"
+    );
+    b.set("TMPDIR", &b.root.join("no-such-dir").display().to_string());
+    let error = b.read(&["claude-jp", "--now"])["error"].clone();
+    assert!(error.as_str().unwrap().contains("no-such-dir"), "{error}");
+    b.set("TMPDIR", &b.root.join("tmp").display().to_string());
+
+    // Nothing of the questions is left behind: their config dirs are gone.
+    let tmp = std::fs::read_dir(b.root.join("tmp")).unwrap().count();
+    assert_eq!(
+        tmp,
+        0,
+        "config dirs left in {}",
+        b.root.join("tmp").display()
+    );
+    let db = std::fs::read(b.root.join("config/stablehand.db")).unwrap();
+    assert!(!String::from_utf8_lossy(&db).contains(PORTABLE_TOKEN));
 }
 
 #[test]

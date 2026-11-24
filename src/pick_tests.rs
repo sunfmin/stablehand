@@ -21,6 +21,7 @@ fn window(name: &str, used: f64, resets_at: u64) -> Window {
         used_percent: used,
         resets_at: Some(resets_at),
         minutes: Some(minutes),
+        read_by: None,
     }
 }
 
@@ -458,6 +459,7 @@ fn agy(gemini: f64, third: f64, other: Option<f64>) -> Status {
         used_percent: used,
         resets_at: Some(NOW + 180 * MINUTE),
         minutes: Some(300),
+        read_by: None,
     };
     let mut windows = vec![
         w(

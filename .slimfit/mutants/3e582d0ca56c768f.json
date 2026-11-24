@@ -1,0 +1,38 @@
+{
+  "tree": "901e17b9b96217112d5978c0326c8d64cdeebfd0+d1fba762150c532c",
+  "picker": "codex:01a20d8f-3fa1-70f2-a0ca-1270e9044dc2:default",
+  "author": "claude-code:39a98dd1-ce95-5d8a-864a-aa3744883f73:opus",
+  "picks": {
+    "rust": [
+      {
+        "name": "src/books.rs:470:30: replace > with >= in read_next",
+        "why": "The setup-token test checks an immediate wait and a forced read, so it could miss an ordinary read being held at the exact retry timestamp.",
+        "outcome": "killed",
+        "first_outcome": "killed"
+      },
+      {
+        "name": "src/books.rs:465:49: replace + with * in read_next",
+        "why": "A much later retry timestamp could still produce both the immediate wait and the successful --now read asserted by the setup-token test.",
+        "outcome": "killed",
+        "first_outcome": "killed"
+      },
+      {
+        "name": "src/books.rs:297:38: replace > with >= in held",
+        "why": "The portable-login test books a limit that lifts in 30 minutes, leaving room for a limit to stay held at the exact second it lifts.",
+        "outcome": "killed",
+        "first_outcome": "killed"
+      },
+      {
+        "name": "src/usage.rs:83:25: replace match guard at <= now with false in limit",
+        "why": "The rewritten limit test supplies a future reset, so it could still pass if the command began accepting reset times at or before now.",
+        "outcome": "killed",
+        "first_outcome": "killed"
+      }
+    ]
+  },
+  "removed_tests": {
+    "rust": [
+      "tests/usage.rs:299: a_portable_login_is_read_with_its_command_s_token_and_a_setup_token_gets_a_limit"
+    ]
+  }
+}

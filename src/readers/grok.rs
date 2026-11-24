@@ -140,6 +140,7 @@ fn windows(status: u16, body: &str, login_again: &str) -> Result<Vec<Window>, St
     let window = |group: Option<String>, used_percent| Window {
         name: name.clone(),
         models: Vec::new(),
+        read_by: None,
         used_percent,
         resets_at: end,
         // A product's is its share of the account's credits, not a pool of

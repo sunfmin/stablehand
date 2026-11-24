@@ -166,6 +166,7 @@ fn found(
                 used_percent: it[used].as_f64()?,
                 resets_at: it[resets_at].as_u64(),
                 minutes: it[length].as_u64().map(|l| l * unit / 60),
+                read_by: None,
             })
         })
         .collect();
