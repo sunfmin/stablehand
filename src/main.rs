@@ -19,6 +19,7 @@ mod version;
 use account::{Account, Change, Engine, Field, Off, Terms};
 use agent_help::Help;
 use clap::{CommandFactory, FromArgMatches, Parser, Subcommand};
+use login::Credential;
 use refusal::{Code, Refused};
 use serde_json::{Value, json};
 use std::process::ExitCode;
@@ -35,15 +36,15 @@ const LEARN: &str = "Learn";
 
 /// One home for agent engine accounts (Claude Code, Codex, pi, Kimi Code, agy, Grok, dsh): how each logs in, where it may run, and how much of its usage windows is left.
 ///
-/// `stablehand env <name>` gives a session on an account its engine's variables; `stablehand read` asks an account's engine for its windows and books the reading, `stablehand limit` books a session's report that it met the account's limit, `stablehand status` says what the books say now, each window's pace with it, and `stablehand pick --engine <engine>` which account one more session may start on.
+/// `stablehand credential <name>` hands a session's caller an account's login (a token, or the login files to link into the session's own home); `stablehand read` asks an account's engine for its windows and books the reading, `stablehand limit` books a session's report that it met the account's limit, `stablehand status` says what the books say now, each window's pace with it, and `stablehand pick --engine <engine>` which account one more session may start on.
 ///
 /// Start with `stablehand account list`. Run `stablehand <command> --help` before a command's first run.
 ///
 /// ## Rules to know first
 ///
-/// - Every command but `env` prints one JSON object on stdout. A refusal is `{"error": "…", "code": "…"}`, each fault with the line that fixes it, exit 1, and nothing written; a command line stablehand cannot read is the same with exit {const:EXIT_USAGE}. `--help`, `help` and `--version` answer text.
+/// - Every command but `credential` of a portable login prints one JSON object on stdout. A refusal is `{"error": "…", "code": "…"}`, each fault with the line that fixes it, exit 1, and nothing written; a command line stablehand cannot read is the same with exit {const:EXIT_USAGE}. `--help`, `help` and `--version` answer text.
 /// - `stablehand statusline` answers the status bar's line: it is Claude Code's status line command, not one to run by hand.
-/// - `stablehand env <name>` answers shell text, a session's `export` lines (`--json`: one object), and refuses an account no session may start on with exit {const:EXIT_USAGE}.
+/// - `stablehand credential <name>` of a portable login answers shell text, an `export` line (`--json`: one object); it refuses an account no session may start on with exit {const:EXIT_USAGE}.
 /// - The register and the books are one SQLite file, `$STABLEHAND_CONFIG_DIR/stablehand.db` (default `~/.config/stablehand`). It keeps no token: a portable login's token is sesame's.
 ///
 /// ## Refusals
@@ -65,13 +66,13 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Cmd {
-    /// What a session on an account starts with: its engine's variables.
+    /// An account's login, as a session's caller is handed it: a token, or the login files to link. It only reads; `stablehand account login` logs in.
     ///
-    /// Portable: the engine's token variable (below), its value the token sesame keeps (`sesame token stablehand-<name> --json`). Bound: the engine's home variable (below) set to the account's `--home`, on its machine only (`$STABLEHAND_MACHINE`, else `hostname -s`).
+    /// The session's home is the caller's: it sets the engine's home variable to a home of its own and links the login into it, so nothing else of the account's home (a person's settings, hooks, skills) reaches the session. Portable: the engine's token variable (below), its value the token sesame keeps (`sesame token stablehand-<name> --json`). Bound: the engine's login file (below) in the account's `--home`, on its machine only (`$STABLEHAND_MACHINE`, else `hostname -s`).
     ///
     /// ## What it answers
     ///
-    /// One `export NAME='value'` line each, the value one shell word, for a shell to read (`. <file>`, or `eval`); with `--json`, `{"name", "login", "env": {NAME: value}}`. Written to stdout alone: no file, and no child is given a value on its command line.
+    /// Portable: one `export NAME='value'` line, the value one shell word, for a shell to read (`. <file>`, or `eval`); with `--json`, `{"name", "login": "portable", "env": {NAME: value}}`. Bound, with or without `--json`: `{"name", "login": "bound", "files": [{"path", "as"}]}`, `path` the file in the account's home and `as` where the engine's home holds it, for the caller to link `<its home>/<as>` to `path`. Written to stdout alone: no file, and no child is given a value on its command line.
     ///
     /// ## What it refuses
     ///
@@ -81,9 +82,9 @@ enum Cmd {
     ///
     /// {const:ENGINES}
     #[command(next_help_heading = SESSIONS, verbatim_doc_comment)]
-    Env {
+    Credential {
         name: String,
-        /// Answer one JSON object instead of `export` lines.
+        /// Answer one JSON object instead of a portable login's `export` line.
         #[arg(long, verbatim_doc_comment)]
         json: bool,
     },
@@ -343,7 +344,7 @@ enum AccountCmd {
     Rm { name: String },
 }
 
-/// Each engine's login, as `stablehand env --help`, `stablehand account login --help` and `stablehand account show --help` list it.
+/// Each engine's login, as `stablehand credential --help`, `stablehand account login --help` and `stablehand account show --help` list it.
 fn engines_help() -> String {
     let lines = <Engine as clap::ValueEnum>::value_variants()
         .iter()
@@ -389,7 +390,7 @@ fn main() -> ExitCode {
         }
     };
     match cli.cmd {
-        Cmd::Env { name, json } => answer(env(&name, json)),
+        Cmd::Credential { name, json } => answer(credential(&name, json)),
         Cmd::Statusline { account, then } => statusline::run(&account, then.as_deref()),
         Cmd::Help { topic } => {
             let text = match topic {
@@ -417,21 +418,24 @@ fn answer(result: Result<String, Refused>) -> ExitCode {
     }
 }
 
-/// `env`'s answer: the account's variable as an `export NAME='value'` line,
-/// the value one shell word whatever it holds (the text of factorium's
+/// `credential`'s answer: a portable login's token as an `export NAME='value'`
+/// line, the value one shell word whatever it holds (the text of factorium's
 /// secrets file, factorium_harness::secrets_file), or with `json` as
-/// {"name", "login", "env": {NAME: value}}.
-fn env(name: &str, json: bool) -> Result<String, Refused> {
+/// {"name", "login", "env": {NAME: value}}; a bound login's files as
+/// {"name", "login", "files": [{"path", "as"}]}.
+fn credential(name: &str, json: bool) -> Result<String, Refused> {
     let a = kept(&Store::open()?, name)?;
-    let (var, value) = login::env(&a)?;
-    Ok(if json {
-        let env = json!({ var: value });
-        format!(
-            "{}\n",
-            json!({ "name": a.name, "login": a.login(), "env": env })
-        )
-    } else {
-        format!("export {var}='{}'\n", value.replace('\'', "'\\''"))
+    let answer = |key: &str, value: Value| {
+        let mut answer = json!({ "name": a.name, "login": a.login() });
+        answer[key] = value;
+        format!("{answer}\n")
+    };
+    Ok(match login::credential(&a)? {
+        Credential::Token { var, token } if !json => {
+            format!("export {var}='{}'\n", token.replace('\'', "'\\''"))
+        }
+        Credential::Token { var, token } => answer("env", json!({ var: token })),
+        Credential::Files(files) => answer("files", json!(files)),
     })
 }
 

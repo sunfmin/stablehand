@@ -27,7 +27,7 @@ None of these endpoints is documented for outside use.
 - **stablehand is the one home** of an account: its engine, its login, where
   it may run, its terms (sessions at once, a token's expiry), its readings
   and its off switch. mytokens' `agent-account-*` entries move here and go;
-  factorium asks stablehand for a pick and a session's environment.
+  factorium asks stablehand for a pick and an account's credential.
 - **An account is a subscription, not an engine.** Engines that spend one
   account (pi and codex on one ChatGPT account) read and book into the same
   account.
@@ -43,6 +43,13 @@ None of these endpoints is documented for outside use.
 - **Reading is bounded**: at most once an hour per account unless a caller
   asks, never again on a credential the engine refused (dsh deletes its grant
   on a 401).
+- **stablehand the login, the caller the session.** `stablehand credential`
+  answers an account's login and nothing else of it: a portable token, or a
+  bound account's engine login files with where the engine's home holds them.
+  The session's home is the caller's own, which links only those files into
+  it, so nothing else of the account's home (a person's settings, hooks,
+  skills) reaches a session. Each engine's login file is listed once, here:
+  what a caller links is what makes a bound home logged in.
 - **The pick is stablehand's**: the stop percent, the pace and the sessions
   already running decide it here, so no caller computes it again.
 

@@ -269,7 +269,7 @@ fn a_bound_home_holding_its_engines_login_file_is_logged_in() {
     assert_eq!(show["login_file"], json!(null));
     let pick = r.ok(&["pick", "--engine", "codex"]);
     assert_eq!(pick["why"][0]["reason"], "not_logged_in", "{pick}");
-    assert!(r.raw(&["env", "codex"], &[], "").0 != 0);
+    assert!(r.raw(&["credential", "codex"], &[], "").0 != 0);
 
     // Its engine's login file in it (codex `auth.json`): logged in, as of
     // when the file was written, with no `account login` and nothing written.
@@ -285,8 +285,8 @@ fn a_bound_home_holding_its_engines_login_file_is_logged_in() {
         r.ok(&["pick", "--engine", "codex"]),
         json!({"account": "codex"})
     );
-    let env = r.ok(&["env", "codex", "--json"]);
-    assert_eq!(env["env"]["CODEX_HOME"], home);
+    let credential = r.ok(&["credential", "codex", "--json"]);
+    assert_eq!(credential["files"][0]["path"], file);
     let entries: Vec<_> = std::fs::read_dir(&home).unwrap().collect();
     assert_eq!(entries.len(), 1, "adopting wrote in the home");
     assert_eq!(r.argv(), "", "no engine ran");

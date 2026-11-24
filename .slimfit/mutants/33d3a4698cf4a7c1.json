@@ -1,0 +1,32 @@
+{
+  "tree": "f85f42687a5952aaeebcbd2f0057b65d83800b1b+d1fba762150c532c",
+  "picker": "codex:01a20d6c-0a5e-7f63-9e9a-d7a528de3a77:default",
+  "author": "claude-code:28e8c04f-a284-532e-b906-cf975753e076:opus",
+  "picks": {
+    "rust": [
+      {
+        "name": "src/login.rs:270:9: delete field logged_in_at from struct Account expression in login",
+        "why": "The replacement bound test checks the returned file link, so the file created by login could mask a missing stored login timestamp.",
+        "outcome": "killed",
+        "first_outcome": "killed"
+      },
+      {
+        "name": "src/login.rs:90:44: replace || with && in logged_in",
+        "why": "The portable cases exercise successful login and an account with no token, leaving open whether they distinguish one login signal from two.",
+        "outcome": "killed",
+        "first_outcome": "killed"
+      },
+      {
+        "name": "src/store.rs:83:13: replace & with | in prepare",
+        "why": "The credential assertions could pass even if a read reapplies permissions to an already-prepared store.",
+        "outcome": "killed",
+        "first_outcome": "killed"
+      }
+    ]
+  },
+  "removed_tests": {
+    "rust": [
+      "tests/env.rs:70: a_bound_account_starts_in_its_home_on_its_machine"
+    ]
+  }
+}

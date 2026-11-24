@@ -109,7 +109,7 @@ pub fn login_file(a: &Account) -> Result<Option<LoginFile>, String> {
     if &this_machine()? != machine {
         return Ok(None);
     }
-    let path = Path::new(home).join(a.engine.login().file);
+    let path = in_home(a, home);
     let Some(written) = std::fs::metadata(&path)
         .ok()
         .filter(std::fs::Metadata::is_file)
@@ -124,6 +124,13 @@ pub fn login_file(a: &Account) -> Result<Option<LoginFile>, String> {
         path: path.display().to_string(),
         written_at: crate::time::utc(secs),
     }))
+}
+
+/// Where `a`'s engine's login file is in `home`: the one list of login
+/// files ([`crate::account::Login::file`]), read by [`login_file`] and
+/// [`credential`] alike.
+fn in_home(a: &Account, home: &str) -> std::path::PathBuf {
+    Path::new(home).join(a.engine.login().file)
 }
 
 /// The token sesame keeps for `a`, if it keeps one: `sesame token <provider>
@@ -150,11 +157,30 @@ pub fn token(a: &Account) -> Result<Option<String>, String> {
     }
 }
 
-/// What a session on `a` starts with on this machine: its engine's variable
-/// and its value; refused `no_session`, with its fix, an account no session
-/// may start on here: off, of an engine with no token variable, not logged
-/// in, with no home, or bound to another machine.
-pub fn env(a: &Account) -> Result<(&'static str, String), Refused> {
+/// An account's login as a session's caller is handed it: the session's home
+/// is the caller's (docs/adr/0001 "stablehand the login, the caller the
+/// session").
+pub enum Credential {
+    /// A portable login: the engine's token variable and the token.
+    Token { var: &'static str, token: String },
+    /// A bound login: its engine's login files in the account's home, for
+    /// the caller to link into the session's own home.
+    Files(Vec<Link>),
+}
+
+/// One login file: where it is in the account's home, and where the
+/// engine's home holds it.
+#[derive(Debug, Serialize)]
+pub struct Link {
+    pub path: String,
+    #[serde(rename = "as")]
+    pub as_: &'static str,
+}
+
+/// `a`'s credential on this machine; refused `no_session`, with its fix, an
+/// account no session may start on here: off, of an engine with no token
+/// variable, not logged in, with no home, or bound to another machine.
+pub fn credential(a: &Account) -> Result<Credential, Refused> {
     let no_session = |text: String| Err(Refused::new(Code::NoSession, text));
     let name = &a.name;
     if let Some(off) = &a.off {
@@ -172,7 +198,7 @@ pub fn env(a: &Account) -> Result<(&'static str, String), Refused> {
             ));
         };
         return match token(a)? {
-            Some(t) => Ok((var, t)),
+            Some(token) => Ok(Credential::Token { var, token }),
             None => no_session(format!(
                 "account `{name}` is not logged in: sesame holds no token for {}: `stablehand account login {name}`",
                 provider(a)
@@ -195,7 +221,10 @@ pub fn env(a: &Account) -> Result<(&'static str, String), Refused> {
             "account `{name}` is not logged in: run `stablehand account login {name}` on {machine}"
         ));
     }
-    Ok((login.home_var, home.clone()))
+    Ok(Credential::Files(vec![Link {
+        path: in_home(a, home).display().to_string(),
+        as_: login.file,
+    }]))
 }
 
 /// Logs `a` in by its engine's own login: a portable token into sesame

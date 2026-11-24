@@ -100,36 +100,43 @@ stablehand account import --from-mytokens
   token sesame refuses stops it there: the accounts before it are added, and
   running it again adds the rest.
 
-## A session's environment
+## An account's credential
 
 ```sh
-stablehand env claude-felix          # export CLAUDE_CODE_OAUTH_TOKEN='sk-ant-…'
-stablehand env chatgpt               # on mini: export CODEX_HOME='/Users/agent/chatgpt'
-stablehand env chatgpt --json        # {"name": "chatgpt", "login": "bound", "env": {"CODEX_HOME": "…"}}
+stablehand credential claude-felix          # export CLAUDE_CODE_OAUTH_TOKEN='sk-ant-…'
+stablehand credential claude-felix --json   # {"name": "claude-felix", "login": "portable", "env": {"CLAUDE_CODE_OAUTH_TOKEN": "…"}}
+stablehand credential chatgpt               # on mini: {"name": "chatgpt", "login": "bound", "files": [{"path": "/Users/agent/chatgpt/auth.json", "as": "auth.json"}]}
 ```
 
-- `env` says what a session on an account starts with, so its caller starts
-  the engine without knowing how the account logs in. **Portable**: the
-  engine's token variable (claude-code: `CLAUDE_CODE_OAUTH_TOKEN`), its value
-  the token sesame keeps (`sesame token stablehand-<name> --json`). **Bound**:
-  the engine's home variable set to the account's home, on its machine only.
-- It prints one `export NAME='value'` line each, the value one shell word
-  whatever it holds, or with `--json` one object. The value is written to
-  stdout alone: no file is left behind, and no child is given it on its
-  command line.
+- stablehand answers the login; the caller makes the session. `credential`
+  hands a session's caller an account's login and nothing else of it: the
+  session's home is the caller's own (factorium builds a kept home per
+  engine), so a person's settings, hooks or skills in the account's home
+  never reach a worker. It only reads; `account login` logs in.
+- **Portable**: the engine's token variable (claude-code:
+  `CLAUDE_CODE_OAUTH_TOKEN`), its value the token sesame keeps (`sesame token
+  stablehand-<name> --json`): one `export NAME='value'` line, the value one
+  shell word whatever it holds, or with `--json` one object.
+- **Bound**, on its machine only: the engine's login file in the account's
+  home (`path`) and where the engine's home holds it (`as`), one JSON object
+  with or without `--json`; the caller links `<its home>/<as>` to `path`, so a
+  login the engine refreshes is refreshed in the account's home too. Each
+  engine's login file is listed once, in stablehand (`stablehand credential
+  --help`, "Engines"): the same file whose presence makes a bound home logged in.
+- Nothing is written: the token goes to stdout alone, no file is left behind,
+  and no child is given it on its command line.
 - It refuses, exit 2 with `{"error": "…"}` naming the fix, an account that is
   off, not logged in, or bound to another machine; also one bound with no
   home, and a portable one of an engine with no token variable (any but
   claude-code: bind it). Exit 1 is an account not kept, or sesame that could
   not be asked.
-- factorium can hand it to a session unchanged (factorium SPEC §1.7; its test
-  "an account secret stays off the command line"): `env`'s stdout is the very
-  text factorium writes to a secrets file (`export NAME='value'` lines,
-  `factorium_harness::secrets_file`). factorium writes that stdout as it is
-  into a new 0600 file under its secrets directory, in place of the text it
-  makes from mytokens' fields, and the session's start line reads and removes
-  it as now (`. <file> && rm -f <file> && …`); a non-zero exit is a session
-  not started, its `error` the reason.
+- factorium can hand a portable answer to a session unchanged (factorium SPEC
+  §1.7; its test "an account secret stays off the command line"): its stdout
+  is the very text factorium writes to a secrets file (`export NAME='value'`
+  lines, `factorium_harness::secrets_file`). factorium writes that stdout as
+  it is into a new 0600 file under its secrets directory, and the session's
+  start line reads and removes it (`. <file> && rm -f <file> && …`); a
+  non-zero exit is a session not started, its `error` the reason.
 
 ## The books: read, limit, status
 
