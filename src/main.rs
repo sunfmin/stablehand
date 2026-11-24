@@ -18,10 +18,13 @@ stablehand keeps each agent engine account (Claude Code, Codex, pi, Kimi Code,
 agy, Grok, dsh): how it logs in, where it may run, and, as later versions add
 it, how much of its usage windows is left.
 
-Every command prints one JSON object on stdout. A refusal is {\"error\": \"…\"},
+Every command but `env` prints one JSON object on stdout. A refusal is {\"error\": \"…\"},
 each fault with the line that fixes it, exit 1, and nothing written; a command
-line clap cannot read is the same with exit 2. Start with `stablehand account
-list`; run `stablehand <command> --help` before a command's first use.
+line clap cannot read is the same with exit 2. One command answers shell text:
+`stablehand env <name>` prints a session's `export` lines (--json: one object),
+and refuses an account no session may start on with exit 2. Start with
+`stablehand account list`; run `stablehand <command> --help` before a command's
+first use.
 The register is one SQLite file, $STABLEHAND_CONFIG_DIR/stablehand.db
 (default ~/.config/stablehand). It keeps no token.";
 
@@ -211,22 +214,22 @@ fn answer(result: Result<String, String>, failure: ExitCode) -> ExitCode {
     }
 }
 
-/// `env`'s answer: the account's variables as `export` lines, or with
-/// `json` as {"name", "login", "env": {…}}; `Ok(Err)` a refusal (exit 2).
+/// `env`'s answer: the account's variable as an `export NAME='value'` line,
+/// the value one shell word whatever it holds (the text of factorium's
+/// secrets file, factorium_harness::secrets_file), or with `json` as
+/// {"name", "login", "env": {NAME: value}}; `Ok(Err)` a refusal (exit 2).
 fn env(name: &str, json: bool) -> Result<Result<String, String>, String> {
     let a = kept(&Store::open()?, name)?;
-    Ok(login::env(&a)?.map(|vars| {
-        if !json {
-            return account::exports(&vars);
+    Ok(login::env(&a)?.map(|(var, value)| {
+        if json {
+            let env = json!({ var: value });
+            format!(
+                "{}\n",
+                json!({ "name": a.name, "login": a.login(), "env": env })
+            )
+        } else {
+            format!("export {var}='{}'\n", value.replace('\'', "'\\''"))
         }
-        let env: serde_json::Map<_, _> = vars
-            .into_iter()
-            .map(|(k, v)| (k.into(), v.into()))
-            .collect();
-        format!(
-            "{}\n",
-            json!({ "name": a.name, "login": a.login(), "env": env })
-        )
     }))
 }
 

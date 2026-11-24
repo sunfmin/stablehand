@@ -2,7 +2,7 @@
 //! engine's own"): the programs it runs, the engine's and sesame's. A token
 //! never passes through stablehand: sesame reads it from the terminal or the
 //! stdin stablehand was given, and no child is given it on its command line.
-use crate::account::{self, Account, Session};
+use crate::account::Account;
 use std::io::IsTerminal;
 use std::os::fd::AsFd;
 use std::process::{Command, Stdio};
@@ -111,33 +111,51 @@ fn token(a: &Account) -> Result<Option<String>, String> {
     }
 }
 
-/// What a session on `a` starts with on this machine, each variable and its
-/// value (account::session): `Err` when stablehand could not ask, `Ok(Err)`
-/// a refusal, with its fix, of an account no session may start on here.
-pub type Env = Result<Vec<(&'static str, String)>, String>;
-
-pub fn env(a: &Account) -> Result<Env, String> {
+/// What a session on `a` starts with on this machine: its engine's variable
+/// and its value. `Err` when stablehand could not ask; `Ok(Err)` a refusal,
+/// with its fix, of an account no session may start on here: off, of an
+/// engine with no token variable, not logged in, with no home, or bound to
+/// another machine.
+pub fn env(a: &Account) -> Result<Result<(&'static str, String), String>, String> {
     let name = &a.name;
-    Ok(match account::session(a) {
-        Err(refusal) => Err(refusal),
-        Ok(Session::Token { var }) => match token(a)? {
-            Some(t) => Ok(vec![(var, t)]),
-            None => Err(format!(
+    if let Some(off) = &a.off {
+        return Ok(Err(format!(
+            "account `{name}` is off ({} at {}: {}): start on another account, or `stablehand on {name}`",
+            off.by, off.at, off.reason
+        )));
+    }
+    let login = a.engine.login();
+    let Some(machine) = &a.machine else {
+        let Some(var) = login.token_var else {
+            return Ok(Err(format!(
+                "{} takes no token from its environment: bind account `{name}` with `stablehand account edit {name} --machine <machine> --home <dir>`, then `stablehand account login {name}` there",
+                a.engine.name()
+            )));
+        };
+        return Ok(token(a)?.map(|t| (var, t)).ok_or_else(|| {
+            format!(
                 "account `{name}` is not logged in: sesame holds no token for {}: `stablehand account login {name}`",
                 provider(a)
-            )),
-        },
-        Ok(Session::Home { machine, var, home }) => {
-            let here = this_machine()?;
-            if here == machine {
-                Ok(vec![(var, home.to_string())])
-            } else {
-                Err(format!(
-                    "account `{name}` is bound to {machine} and this machine is {here} ($STABLEHAND_MACHINE, else `hostname -s`): start its session on {machine}, or on another account"
-                ))
-            }
-        }
-    })
+            )
+        }));
+    };
+    let Some(home) = &a.home else {
+        return Ok(Err(format!(
+            "account `{name}` has no home: `stablehand account edit {name} --home <dir>`, then `stablehand account login {name}` on {machine}"
+        )));
+    };
+    if a.logged_in_at.is_none() {
+        return Ok(Err(format!(
+            "account `{name}` is not logged in: run `stablehand account login {name}` on {machine}"
+        )));
+    }
+    let here = this_machine()?;
+    if &here != machine {
+        return Ok(Err(format!(
+            "account `{name}` is bound to {machine} and this machine is {here} ($STABLEHAND_MACHINE, else `hostname -s`): start its session on {machine}, or on another account"
+        )));
+    }
+    Ok(Ok((login.home_var, home.clone())))
 }
 
 /// Logs `a` in by its engine's own login: a portable token into sesame
