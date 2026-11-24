@@ -3,7 +3,10 @@
 # this script, as stablehand does, its headers on stdin, and prints what
 # stablehand reads of the answer (src/readers/grok.rs, src/curl.rs), and no
 # more: curl's exit, the HTTP status, and, of a 200, the credit period's and
-# the products' shape; of any other, the error's.
+# the products' shape; of any other, the error's. The answer is proto3's
+# JSON, which leaves out a 0 and an empty list, as a period just begun does:
+# an absent creditUsagePercent is read as the number 0, and an absent
+# productUsage as no products.
 program="$(dirname "$0")/$1"
 shift
 if [ ! -x "$program" ]; then
@@ -21,11 +24,12 @@ if [ "$status" = 200 ]; then
     printf '%s' "$body" | jq -r '
         def kind: if type == "string" and test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T") then "time" else type end;
         .config as $c | $c.currentPeriod as $p
+        | ($c.productUsage // []) as $products
         | "currentPeriod.type \($p.type | type)",
           "currentPeriod.start \($p.start | kind), end \($p.end | kind)",
-          "creditUsagePercent \($c.creditUsagePercent | type)",
-          "productUsage \($c.productUsage | type)",
-          "every product: \([$c.productUsage[] | "product \(.product | type), usagePercent \(.usagePercent | type)"]
+          "creditUsagePercent \($c.creditUsagePercent // 0 | type)",
+          "productUsage \($products | type)",
+          "every product: \([$products[] | "product \(.product | type), usagePercent \(.usagePercent | type)"]
             | all(. == "product string, usagePercent number"))"'
 else
     printf '%s' "$body" | jq -r '"error \(.error | type)"'
