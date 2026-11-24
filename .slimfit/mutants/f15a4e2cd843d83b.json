@@ -1,0 +1,33 @@
+{
+  "tree": "5751aa1d7c5c2011d5ff4cece9db0a566f1b973e+d1fba762150c532c",
+  "picker": "codex:01a20ca6-ef10-73a2-91a6-6e5bfc70c496:default",
+  "author": "claude-code:ee0c6d8b-8c9b-5fe6-9bc6-61890ac1a628:opus",
+  "picks": {
+    "rust": [
+      {
+        "name": "src/account.rs:218:9: delete match arm 4 | 6 | 9 | 11 in check_date",
+        "why": "The calendar tests reject April 31 but never accept a valid date in a 30-day month.",
+        "outcome": "killed",
+        "first_outcome": "killed"
+      },
+      {
+        "name": "src/main.rs:125:19: replace match guard !e.use_stderr() with false in main",
+        "why": "The CLI tests cover parse refusals, so routing help and version output through the JSON error path could survive.",
+        "outcome": "killed",
+        "first_outcome": "killed"
+      },
+      {
+        "name": "src/store.rs:120:9: replace Store::err -> String with String::new()",
+        "why": "The refusal tests exercise invalid input and missing accounts, leaving the database path and underlying SQLite error unchecked.",
+        "outcome": "killed",
+        "first_outcome": "killed"
+      },
+      {
+        "name": "src/store.rs:69:13: replace & with | in prepare",
+        "why": "The permission test checks only the final mode, so an unconditional chmod passes both cases.",
+        "outcome": "killed",
+        "first_outcome": "killed"
+      }
+    ]
+  }
+}
