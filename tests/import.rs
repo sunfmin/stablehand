@@ -182,3 +182,32 @@ fn a_token_sesame_refuses_imports_that_account_on_the_next_run() {
     assert_eq!(out["accounts"][0]["result"], "added");
     assert_eq!(r.sesame_token("stablehand-claude-felix").unwrap(), TOKEN);
 }
+
+#[test]
+fn what_mytokens_cannot_answer_is_named_with_its_fix() {
+    let r = Register::new("import-no-mytokens");
+    let args = ["account", "import", "--from-mytokens"];
+    let e = r.refused_with(&args, &[("PATH", "/usr/bin:/bin")], "", 1);
+    assert!(e.contains("`mytokens` could not start"), "{e}");
+    assert!(e.contains("install mytokens"), "{e}");
+
+    // A name the register refuses is named with the entry it came from.
+    r.mytokens_entry("agent-account-two words", &[("HARNESS", "codex")]);
+    let e = r.refused(&args, 1);
+    assert!(
+        e.contains("agent-account-two words/default: account name `two words` is not one word"),
+        "{e}"
+    );
+
+    // A token mytokens lists and does not give: that account is not added.
+    let r = Register::new("import-token-unread");
+    r.mytokens_entry("agent-account-claude-felix", &[("HARNESS", "claude-code")]);
+    let unread = r.path("mytokens/agent-account-claude-felix/default/CLAUDE_CODE_OAUTH_TOKEN");
+    std::fs::create_dir(unread).unwrap();
+    let e = r.refused(&args, 1);
+    assert!(
+        e.contains("`mytokens get agent-account-claude-felix --account default --field CLAUDE_CODE_OAUTH_TOKEN` failed"),
+        "{e}"
+    );
+    assert!(r.sesame_token("stablehand-claude-felix").is_none());
+}
