@@ -1,0 +1,21 @@
+{
+  "tree": "a7e64a3715fadc8b602ab4281b8915d2068392ba+d1fba762150c532c",
+  "picker": "codex:01a20de8-5551-7310-918e-6a2196482da5:default",
+  "author": "claude-code:5a04229d-9c0a-5980-b85d-c1f6c88896bc:opus",
+  "picks": {
+    "rust": [
+      {
+        "name": "src/run.rs:276:5: replace hold_signals -> libc::sigset_t with Default::default()",
+        "why": "On macOS this skips blocking signals during spawn, while the signal tests wait for the child to start before sending one.",
+        "outcome": "survived",
+        "first_outcome": "survived"
+      },
+      {
+        "name": "src/run.rs:265:48: replace | with ^ in forward_signals",
+        "why": "SA_SIGINFO and SA_RESTART use distinct bits, so XOR produces the same handler flags as OR.",
+        "outcome": "survived",
+        "first_outcome": "survived"
+      }
+    ]
+  }
+}
