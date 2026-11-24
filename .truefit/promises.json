@@ -8,5 +8,10 @@
     "mark": "not",
     "sentence": "A login is the engine's own (docs/adr/0001): stablehand runs the engine's command, never a vendor's OAuth client.",
     "source": "README.md:47"
+  },
+  "daaeaf1fba2c": {
+    "mark": "promise",
+    "sentence": "mytokens is only read: nothing in it is changed or removed.",
+    "source": "README.md:83"
   }
 }

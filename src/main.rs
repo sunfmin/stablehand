@@ -1,6 +1,7 @@
 //! stablehand: one home for agent engine accounts, their logins and their
 //! usage windows (README.md, docs/adr/0001). Today: the account register.
 mod account;
+mod import;
 mod login;
 mod store;
 // build.rs runs it to stamp the version; compiled here too, for its tests.
@@ -122,6 +123,27 @@ enum AccountCmd {
         /// Clear a term: machine (the login becomes portable), sessions (no limit), expires, home. Repeatable.
         #[arg(long, value_enum)]
         unset: Vec<Field>,
+    },
+    /// Move this host's `agent-account-*` entries of mytokens into stablehand.
+    ///
+    /// Each entry `agent-account-<name>` (`mytokens list`) becomes the account
+    /// <name>: its engine from its HARNESS, bound to its MACHINE if it has one;
+    /// its CLAUDE_CODE_OAUTH_TOKEN, if it has one, goes from `mytokens get`
+    /// straight into sesame, as `account login` keeps a token. An account
+    /// already kept is left as it is. mytokens is only read: nothing in it is
+    /// changed or removed. Answers {"dry_run": …, "accounts": [{"from":
+    /// "agent-account-<name>/<label>", "result": "added"|"would add"|"already
+    /// kept", "token": true|false, "account": {…}}, …]}, no token shown.
+    /// Refuses, importing nothing, an entry whose HARNESS is no engine, one
+    /// with both a token and a MACHINE, and a field mytokens does not answer;
+    /// a token sesame refuses stops it there, and running it again imports the rest.
+    Import {
+        /// Read the accounts from mytokens (the one source today).
+        #[arg(long, required = true)]
+        from_mytokens: bool,
+        /// Say what it would import, reading no token and writing nothing.
+        #[arg(long)]
+        dry_run: bool,
     },
     /// Remove an account.
     ///
@@ -271,6 +293,7 @@ fn run(cmd: Cmd) -> Result<Value, String> {
                 store.put(&a)?;
                 Ok(shown(&a))
             }
+            AccountCmd::Import { dry_run, .. } => import::import(&store, dry_run),
             AccountCmd::Rm { name } => {
                 let removed = store.remove(&name)?;
                 Ok(json!({ "name": name, "removed": removed }))
