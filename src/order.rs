@@ -20,8 +20,12 @@ pub struct Step {
 }
 
 /// Each `<engine>[@<model>[,<model>…]]`, highest first; each fault, with
-/// its fix.
-pub fn parse(specs: &[String]) -> Result<Vec<Rank>, Vec<String>> {
+/// its fix. agy's models are checked against `agy_models` (what `agy models`
+/// lists, or why it failed), asked only when agy names any.
+pub fn parse(
+    specs: &[String],
+    agy_models: impl FnOnce() -> Result<Vec<String>, String>,
+) -> Result<Vec<Rank>, Vec<String>> {
     let mut order: Vec<Rank> = Vec::new();
     let mut faults = Vec::new();
     for spec in specs {
@@ -64,6 +68,22 @@ pub fn parse(specs: &[String]) -> Result<Vec<Rank>, Vec<String>> {
             continue;
         }
         order.push(Rank { engine, models });
+    }
+    if let Some(agy) = order
+        .iter()
+        .find(|r| r.engine == Engine::Agy && !r.models.is_empty())
+    {
+        match agy_models() {
+            Err(e) => faults.push(e),
+            Ok(listed) => {
+                faults.extend(agy.models.iter().filter(|m| !listed.contains(m)).map(|m| {
+                    format!(
+                        "`agy models` lists no `{m}`: give one of {}",
+                        listed.join(", ")
+                    )
+                }))
+            }
+        }
     }
     if faults.is_empty() {
         Ok(order)
@@ -109,7 +129,10 @@ mod tests {
 
     fn kit() -> Vec<Rank> {
         let specs = ["claude-code@opus", "codex", "agy@gemini,claude"];
-        parse(&specs.map(String::from)).unwrap()
+        parse(&specs.map(String::from), || {
+            Ok(vec!["claude".into(), "gemini".into()])
+        })
+        .unwrap()
     }
 
     fn shown(steps: &[Step]) -> Vec<String> {
@@ -128,9 +151,16 @@ mod tests {
                 models: vec!["gemini".into(), "claude".into()]
             }
         );
-        let faults = parse(&["nope", "codex", "codex", "agy@a,", "kimi@a,a"].map(String::from));
+        let none = || -> Result<Vec<String>, String> { unreachable!("no agy model named") };
+        let faults = parse(
+            &["nope", "codex", "codex", "agy@a,", "kimi@a,a"].map(String::from),
+            none,
+        );
         let faults = faults.unwrap_err();
         assert_eq!(faults.len(), 4, "{faults:?}");
+        let listed = || Ok(vec!["gemini".into()]);
+        let faults = parse(&["agy@gemini,x,y"].map(String::from), listed).unwrap_err();
+        assert_eq!(faults.len(), 2, "{faults:?}");
     }
 
     #[test]

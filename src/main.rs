@@ -751,28 +751,8 @@ fn run(cmd: Register) -> Result<Value, Refused> {
         Register::Order { cmd } => {
             if let OrderCmd::Set { ranks } = cmd {
                 let bad = |f: Vec<String>| Refused::new(Code::BadOrder, f.join("; "));
-                let order = order::parse(&ranks).map_err(bad)?;
-                if let Some(agy) = order
-                    .iter()
-                    .find(|r| r.engine == Engine::Agy && !r.models.is_empty())
-                {
-                    let listed =
-                        readers::agy::models(&agy_home(&store)?).map_err(|e| bad(vec![e]))?;
-                    let unknown: Vec<String> = agy
-                        .models
-                        .iter()
-                        .filter(|m| !listed.contains(m))
-                        .map(|m| {
-                            format!(
-                                "`agy models` lists no `{m}`: give one of {}",
-                                listed.join(", ")
-                            )
-                        })
-                        .collect();
-                    if !unknown.is_empty() {
-                        return Err(bad(unknown));
-                    }
-                }
+                let agy_models = || readers::agy::models(&agy_home(&store).map_err(|r| r.text)?);
+                let order = order::parse(&ranks, agy_models).map_err(bad)?;
                 store.set_order(&order)?;
             }
             Ok(json!({ "order": store.order()? }))
