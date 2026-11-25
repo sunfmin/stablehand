@@ -5,7 +5,7 @@ use serde_json::{Value, json};
 use std::cell::RefCell;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 /// The bound login's token, and the portable one its token command prints: stand-ins.
 const LOGIN_TOKEN: &str = "sk-ant-oat01-standin-login";
@@ -1570,4 +1570,82 @@ fn order_set_refuses_what_stablehand_does_not_know_and_writes_nothing() {
     // --model naming no model of the order, and no --engine: nothing to walk.
     let (code, json) = b.run(&["pick", "--model", "opus"]);
     assert_eq!((code, &json["code"]), (1, &json!("no_order")), "{json}");
+}
+
+impl Books {
+    /// `statusline args…` on `stdin`: its line, and how long it took.
+    fn statusline(&self, args: &[&str], stdin: &str) -> (String, Duration) {
+        use std::io::Write;
+        let started = Instant::now();
+        let mut child = Command::new(env!("CARGO_BIN_EXE_stablehand"))
+            .args([&["statusline"][..], args].concat())
+            .env_clear()
+            .envs(std::env::vars().filter(|(k, _)| k == "LLVM_PROFILE_FILE"))
+            .envs(self.env.borrow().iter().map(|(k, v)| (k, v)))
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .spawn()
+            .unwrap();
+        child
+            .stdin
+            .take()
+            .unwrap()
+            .write_all(stdin.as_bytes())
+            .unwrap();
+        let out = child.wait_with_output().unwrap();
+        assert!(out.status.success());
+        (String::from_utf8(out.stdout).unwrap(), started.elapsed())
+    }
+
+    /// The calls curl's stand-in was given.
+    fn calls(&self) -> usize {
+        self.log()
+            .lines()
+            .filter(|l| l.starts_with("--silent"))
+            .count()
+    }
+
+    /// Waits up to 10s for `done`.
+    fn until(&self, what: &str, done: impl Fn() -> bool) {
+        let by = Instant::now() + Duration::from_secs(10);
+        while !done() {
+            assert!(Instant::now() < by, "never: {what}");
+            std::thread::sleep(Duration::from_millis(20));
+        }
+    }
+}
+
+#[test]
+fn the_status_line_starts_one_read_where_its_books_are_stale_and_waits_on_none() {
+    let b = Books::new("statusline-reads");
+    b.portable("claude-nate");
+    let hold = b.root.join("hold");
+    std::fs::write(&hold, "").unwrap();
+    b.set("FAKE_CURL_HOLD", &hold.display().to_string());
+    let args = ["--account", "claude-nate"];
+
+    // No books and no rate_limits: one read starts, and the line is the
+    // books as they are, at once, the read still held running.
+    let (line, took) = b.statusline(&args, "{}");
+    assert_eq!(line, "claude-nate\n");
+    assert!(took < Duration::from_secs(5), "{took:?}");
+    b.until("the read asks curl", || b.calls() == 1);
+    // A second refresh while it runs starts none.
+    let (line, _) = b.statusline(&args, "{}");
+    assert_eq!(line, "claude-nate\n");
+    std::fs::remove_file(&hold).unwrap();
+    b.until("the reading is booked", || {
+        b.statusline(&args, "{}").0 == "claude-nate · 5h 22% · 7d 52%\n"
+    });
+    // Fresh books start none.
+    std::thread::sleep(Duration::from_millis(300));
+    assert_eq!(b.calls(), 1, "{}", b.log());
+
+    // With rate_limits on stdin nothing starts, though no books were kept.
+    b.portable("claude-other");
+    let given = include_str!("statusline/rate-limits.json");
+    let (line, _) = b.statusline(&["--account", "claude-other"], given);
+    assert_eq!(line, "claude-other · 5h 24% · 7d 41%\n");
+    std::thread::sleep(Duration::from_millis(300));
+    assert_eq!(b.calls(), 1, "{}", b.log());
 }

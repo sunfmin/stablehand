@@ -548,7 +548,7 @@ check = ["test"]
 [[promise]]
 name = "run-names-the-child-s-account"
 says = '''The child's environment names its account, `STABLEHAND_ACCOUNT=<account>`'''
-source = "README.md:371"
+source = "README.md:378"
 check = ["test"]
 
 # tests/statusline.rs the_account_is_stablehand_run_s_where_no_account_is_named,
@@ -557,4 +557,12 @@ check = ["test"]
 name = "statusline-account-from-run"
 says = '''With no account, nothing is booked and stablehand's line is empty'''
 source = "README.md:265"
+check = ["test"]
+
+# tests/usage.rs the_status_line_starts_one_read_where_its_books_are_stale_and_waits_on_none
+[[promise]]
+name = "statusline-one-detached-read"
+says = '''One such read of an account runs at
+  a time'''
+source = "README.md:272"
 check = ["test"]

@@ -242,6 +242,12 @@ impl Store {
         format!("{}: {e}", self.path.display())
     }
 
+    /// The file a read of `account` the status line started holds locked
+    /// while it runs, beside the register.
+    pub fn reading_lock(&self, account: &str) -> PathBuf {
+        self.path.with_file_name(format!("reading-{account}.lock"))
+    }
+
     pub fn get(&self, name: &str) -> Result<Option<Account>, String> {
         self.conn
             .query_row(

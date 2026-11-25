@@ -2,7 +2,9 @@
 //! the `rate_limits` Claude Code gives on stdin as a reading of one
 //! account, and prints the status bar's line, or hands the same stdin to
 //! the person's own status line command and lets it print. Local only: no
-//! network, so it is as fast as the bar needs.
+//! network, so it is as fast as the bar needs. Where Claude Code gives no
+//! windows (a `claude setup-token` session's never does), it starts
+//! `stablehand read` detached to keep the books fresh, and does not wait.
 use crate::account::{Account, Engine};
 use crate::books::{self, Entry, What, Window};
 use crate::readers::claude_code;
@@ -14,7 +16,8 @@ use std::process::{Command, ExitCode, Stdio};
 /// status line reads where no `--account` is given: a name, never a value.
 pub const ACCOUNT_VAR: &str = "STABLEHAND_ACCOUNT";
 
-/// A reading older than this many seconds is shown with its age.
+/// A reading older than this many seconds is shown with its age, and,
+/// where Claude Code gives none, read again.
 const FRESH_SECS: u64 = 10 * 60;
 
 /// Reads stdin, books its windows as a reading of `account` (else
@@ -51,7 +54,7 @@ pub fn run(account: Option<String>, then: Option<&str>) -> ExitCode {
             let mut pipe = child.stdin.take();
             // A line that reads none of its stdin closes the pipe: no fault.
             let feed = std::thread::spawn(move || pipe.as_mut().map(|p| p.write_all(&stdin)));
-            if let Some(Err(fault)) = account.map(|a| book(&a, &windows)) {
+            if let Some(Err(fault)) = account.map(|a| shown(&a, &windows)) {
                 eprintln!("stablehand: {fault}");
             }
             let _ = feed.join();
@@ -70,7 +73,8 @@ struct Shown {
 }
 
 /// Books `windows` of `name`, and answers what the bar shows: `windows`,
-/// or with none given, the books' latest as `stablehand status` has them.
+/// or with none given, the books' latest as `stablehand status` has them,
+/// a read of the account started where they are past [`FRESH_SECS`].
 fn shown(name: &str, windows: &[Window]) -> Result<Vec<Shown>, String> {
     let (store, a) = book(name, windows)?;
     if !windows.is_empty() {
@@ -83,6 +87,10 @@ fn shown(name: &str, windows: &[Window]) -> Result<Vec<Shown>, String> {
     }
     let now = crate::now()?;
     let status = books::status(&crate::usage::book_of(&store, &a)?, now);
+    if !status.refused && books::read_after(&status, FRESH_SECS, now).is_none() {
+        // Not started is as good as not due: the next refresh tries again.
+        let _ = start_read(&store, name);
+    }
     let booked = status.windows.into_iter().map(|w| Shown {
         age: Some(now.saturating_sub(w.at)),
         name: w.name,
@@ -109,6 +117,47 @@ fn book(name: &str, windows: &[Window]) -> Result<(Store, Account), String> {
     let what = What::Read(windows.to_vec());
     store.book(name, &Entry { at, what })?;
     Ok((store, a))
+}
+
+/// Starts `stablehand read --now <name>` detached, in a process group of
+/// its own, with no stdin, stdout or stderr, unless a read it started
+/// still runs: the read holds [`Store::reading_lock`] locked (it inherits
+/// the lock, and the kernel lets it go when the read ends, however it
+/// ends). Answers whether one started.
+fn start_read(store: &Store, name: &str) -> Result<bool, String> {
+    use std::os::fd::AsRawFd;
+    use std::os::unix::fs::OpenOptionsExt;
+    use std::os::unix::process::CommandExt;
+    let path = store.reading_lock(name);
+    let lock = std::fs::OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .mode(0o600)
+        .open(&path)
+        .map_err(|e| format!("{}: {e}", path.display()))?;
+    let fd = lock.as_raw_fd();
+    // SAFETY: flock on a descriptor this process holds open.
+    if unsafe { libc::flock(fd, libc::LOCK_EX | libc::LOCK_NB) } != 0 {
+        return Ok(false);
+    }
+    let me = std::env::current_exe().map_err(|e| e.to_string())?;
+    let mut read = Command::new(me);
+    read.args(["read", "--now", name])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .process_group(0);
+    // SAFETY: between fork and exec it only calls fcntl, async-signal-safe,
+    // so that the read keeps the locked descriptor open.
+    unsafe {
+        read.pre_exec(move || {
+            libc::fcntl(fd, libc::F_SETFD, 0);
+            Ok(())
+        });
+    }
+    read.spawn().map_err(|e| e.to_string())?;
+    Ok(true)
 }
 
 /// The bar's line: the account, and each window's use, rounded, with its

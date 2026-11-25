@@ -266,6 +266,13 @@ stablehand status                   # each account's windows and their pace
   (with `--then`, the person's line alone).
   Booking is local: it asks no engine and reaches no network (a few
   milliseconds a run).
+- Where stdin carries no `rate_limits` and the account was not read or
+  tried in the last ten minutes, it starts `stablehand read --now
+  <account>` detached and answers at once from the books as they are; the
+  next refresh shows the new reading. One such read of an account runs at
+  a time (`reading-<account>.lock` beside the register, let go when it
+  ends). A `claude setup-token` account's read spends one smallest-model
+  turn: at most about 6 an hour.
 - It prints one line for the bar, `claude-felix · 5h 24% · 7d 41%`. Where
   stdin carries no `rate_limits` (a `claude setup-token` session's never
   does), the windows are the books' latest, as `status` has them, each

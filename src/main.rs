@@ -114,7 +114,7 @@ enum Cmd {
     Run(run::Asked),
     /// Claude Code's status line command: books the session's rate limits as a reading of the account.
     ///
-    /// Claude Code runs it with its session's JSON on stdin; its `rate_limits` (`five_hour`, `seven_day`: `used_percentage`, `resets_at`) are booked as a reading of `--account` (else `${const:ACCOUNT_VAR}`, which `stablehand run` sets in the session it starts), as `stablehand read` books one, when they differ from the books' latest entry. It asks no engine and reaches no network. Set it in `~/.claude/settings.json`:
+    /// Claude Code runs it with its session's JSON on stdin; its `rate_limits` (`five_hour`, `seven_day`: `used_percentage`, `resets_at`) are booked as a reading of `--account` (else `${const:ACCOUNT_VAR}`, which `stablehand run` sets in the session it starts), as `stablehand read` books one, when they differ from the books' latest entry. It asks no engine and reaches no network itself, and never waits on one. Set it in `~/.claude/settings.json`:
     ///
     /// `"statusLine": {"type": "command", "command": "stablehand statusline --account claude-felix"}`
     ///
@@ -127,6 +127,8 @@ enum Cmd {
     /// One line for the status bar, `claude-felix · 5h 24% · 7d 41%`, exit 0. With no `rate_limits` given (a `claude setup-token` session is given none, nor is one before its first answer), the windows are the books' latest, as `stablehand status` shows them, each with its age past ten minutes (`7d 70% (3h ago)`, `reset` once it has reset since); an account with none booked, its name alone. With no account named, nothing is booked and the line is empty (with `--then`, the person's line alone). With `--then <cmd>`, `sh -c <cmd>` is given the same stdin, byte for byte, and its stdout and exit are the answer: a person's own status line keeps working.
     ///
     /// ## What trips you up
+    ///
+    /// With no `rate_limits` given, and no reading or try of the account in the last ten minutes, it starts `stablehand read --now <account>` detached (a process group of its own, no stdin, stdout or stderr) and answers from the books as they are; the next refresh shows the new reading. At most one such read of an account runs at a time: it holds `reading-<account>.lock` beside the register, let go when it ends, however it ends. A `claude setup-token` account's read spends one smallest-model turn of its quota: at most about 6 an hour while its sessions' bars refresh. A refused credential starts none.
     ///
     /// It never refuses, so the bar always has a line: an account not kept, one not claude-code's, or a register it cannot open books nothing, and the line says why (with `--then`, stderr does).
     #[command(next_help_heading = SESSIONS, verbatim_doc_comment)]
