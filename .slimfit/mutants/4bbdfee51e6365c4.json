@@ -1,0 +1,6 @@
+{
+  "tree": "b0afe75258a483116df1c4e87f4e481dfde661e5+d1fba762150c532c",
+  "picker": "codex:01a2128c-96c9-79e2-84fd-b613ec4aa729:default",
+  "author": "claude-code:675e6ff7-f424-5bdf-b2f5-656b8480e9ac:opus",
+  "none": "The shown tests distinguish every buildable parser mutant, and replacing the entire dispatcher with a null response cannot isolate coverage of the changed error paths."
+}
