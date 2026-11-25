@@ -198,7 +198,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn each_group_s_buckets_are_its_windows_and_1970_or_disabled_is_unused() {
+    fn each_group_s_buckets_are_its_windows_and_1970_is_unused() {
         let body = r#"{"status":"SUCCESS","num_turns":0,"command":{"name":"usage","data":{"groups":[
             {"name":"Gemini Models","buckets":[
               {"id":"gemini-weekly","window":"weekly","remaining_fraction":0.75,"reset_time":"2026-12-01T01:58:11Z"},
