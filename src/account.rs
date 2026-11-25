@@ -174,13 +174,14 @@ pub fn personal(kind: Option<&str>) -> bool {
 }
 
 /// The account of `kept` that `a` is a copy of (GLOSSARY.md "Identity"):
-/// for a bound login, the first other bound one of its identity; for a
+/// for a bound login, the first other bound one of its identity, of any
+/// engine (pi and codex on one ChatGPT account); for a
 /// portable token, the bound login whose personal organization it names.
 /// Two tokens of one organization are no copies: it may be a team's.
 pub fn copy_of<'a>(a: &Account, kept: &'a [Account]) -> Option<&'a str> {
     let id = a.identity.as_deref()?;
     let of = |b: &&Account| {
-        let bound = b.machine.is_some() && b.name != a.name && b.engine == a.engine;
+        let bound = b.machine.is_some() && b.name != a.name;
         bound
             && match a.machine {
                 Some(_) => b.identity.as_deref() == Some(id) && b.name < a.name,
@@ -534,6 +535,14 @@ mod tests {
             bound("work-copy", "login-2"),
             team,
             token("alone", "org-other"),
+            Account {
+                engine: Engine::Codex,
+                ..bound("codex", "chatgpt")
+            },
+            Account {
+                engine: Engine::Pi,
+                ..bound("pi", "chatgpt")
+            },
         ];
         let of: Vec<_> = kept.iter().map(|a| copy_of(a, &kept)).collect();
         assert_eq!(
@@ -545,7 +554,9 @@ mod tests {
                 None,
                 Some("work"),
                 None,
-                None
+                None,
+                None,
+                Some("codex"),
             ]
         );
         assert!(personal(Some("claude_pro")) && !personal(Some("claude_team")) && !personal(None));
