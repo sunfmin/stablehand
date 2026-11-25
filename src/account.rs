@@ -543,6 +543,9 @@ mod tests {
                 engine: Engine::Pi,
                 ..bound("pi", "chatgpt")
             },
+            // A token is never the account a login is a copy of.
+            token("a-token", "login-3"),
+            bound("z-login", "login-3"),
         ];
         let of: Vec<_> = kept.iter().map(|a| copy_of(a, &kept)).collect();
         assert_eq!(
@@ -557,6 +560,8 @@ mod tests {
                 None,
                 None,
                 Some("codex"),
+                None,
+                None,
             ]
         );
         assert!(personal(Some("claude_pro")) && !personal(Some("claude_team")) && !personal(None));
