@@ -1,7 +1,7 @@
 //! `read`, `limit`, `status` and `pick`: an account's readings booked
 //! through its engine's reader, a caller's limit booked, what the books say
 //! now, and which account one more session may start on.
-use crate::account::Account;
+use crate::account::{self, Account};
 use crate::books::{self, Entry, ReadBy, Status, What};
 use crate::login;
 use crate::order::Step;
@@ -112,6 +112,7 @@ pub fn limit(
 
 /// What the books say of each of `accounts` now.
 pub fn status(store: &Store, accounts: &[Account], now: u64) -> Result<Value, String> {
+    let kept = store.list()?;
     let mut shown = Vec::new();
     for a in accounts {
         let s = books::status(&book_of(store, a)?, now);
@@ -119,6 +120,7 @@ pub fn status(store: &Store, accounts: &[Account], now: u64) -> Result<Value, St
             "name": a.name,
             "engine": a.engine,
             "off": a.off.is_some(),
+            "copy_of": account::copy_of(a, &kept),
             "pace": s.pace,
             "windows": windows(&s),
             "balances": balances(&s),
@@ -178,6 +180,8 @@ pub struct Session<'a> {
     pub running: &'a [(String, u32)],
     /// The machine it starts on.
     pub machine: &'a str,
+    /// Every account kept: a copy of one on here gives way to it.
+    pub kept: &'a [Account],
 }
 
 /// What the session starts on: for each step of `walk` in turn, the
@@ -229,7 +233,7 @@ pub fn pick(
             }
             candidates.push(Candidate {
                 name: &a.name,
-                barred: barred(a, session.machine)?,
+                barred: barred(a, session)?,
                 running: session
                     .running
                     .iter()
@@ -268,13 +272,22 @@ pub fn pick(
     }))
 }
 
-/// Why no session may start on `a` on `machine`, whatever its books say.
-fn barred(a: &Account, machine: &str) -> Result<Option<(Reason, String)>, String> {
+/// Why no session may start on `a` on the session's machine, whatever its
+/// books say.
+fn barred(a: &Account, session: &Session) -> Result<Option<(Reason, String)>, String> {
+    let machine = session.machine;
+    let copy = || account::copy_on(a, session.kept, machine);
     Ok(match (&a.off, &a.machine) {
         (Some(off), _) => Some((Reason::Off, format!("switched off: {}", off.reason))),
         (None, Some(bound)) if bound != machine => Some((
             Reason::Elsewhere,
             format!("its login is bound to {bound}, not {machine}"),
+        )),
+        _ if let Some(of) = copy() => Some((
+            Reason::Copy,
+            format!(
+                "a copy of {of}, which is on here: sessions start on {of}; switch it off and this one is picked as any account"
+            ),
         )),
         _ if !login::logged_in(a)? => Some((
             Reason::NotLoggedIn,
@@ -342,9 +355,11 @@ pub fn pick_now(store: &Store, accounts: &[Account], ask: Ask, now: u64) -> Resu
             store.end_session(pid)?;
         }
     }
+    let kept = store.list()?;
     let session = Session {
         running: &running,
         machine: &machine,
+        kept: &kept,
     };
     Ok(pick(
         store,

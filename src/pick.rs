@@ -39,6 +39,8 @@ pub enum Reason {
     Off,
     /// Its login is bound to another machine.
     Elsewhere,
+    /// A copy of another kept account that is on here (GLOSSARY.md "Identity").
+    Copy,
     /// Not logged in.
     NotLoggedIn,
     /// A caller's limit holds on it.

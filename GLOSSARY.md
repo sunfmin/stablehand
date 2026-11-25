@@ -54,6 +54,8 @@
 - **Pick**: the answer to "what may one more session start on now": the
   first engine, model and account of the order whose account takes it,
   or none with until when and why. The session itself is the caller's.
+  A copy (see Identity) gives way to its account while that one is on
+  here: one subscription takes sessions under one name.
 - **Kept command**: how this host starts an engine, its program and the
   flags it always takes (`claude --dangerously-skip-permissions`), one per
   engine, kept beside the accounts (`stablehand command`); `stablehand run`

@@ -358,6 +358,10 @@ stablehand pick --engine agy --model claude-opus-5-5-high
 - It reads no engine: it judges the books as `status` shows them.
 - The candidates are the engine's accounts usable on the machine
   (`--machine`, else this one): portable, or bound to it; logged in; not off.
+- A copy of another kept account (`copy_of`) that is on (not off, bound to
+  the machine) is passed over (`copy`), its `why` naming that account: the
+  two spend one subscription's windows. With that account off or bound
+  elsewhere, the copy is picked as any account.
 - The rules are Guild's ledger's quota. None is picked on an account a
   limit holds on, until it lifts; any of whose windows is the stop percent
   used (`--stop-percent`, 90 unless it says), until that window resets;

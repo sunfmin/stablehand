@@ -179,19 +179,33 @@ pub fn personal(kind: Option<&str>) -> bool {
 /// portable token, the bound login whose personal organization it names.
 /// Two tokens of one organization are no copies: it may be a team's.
 pub fn copy_of<'a>(a: &Account, kept: &'a [Account]) -> Option<&'a str> {
-    let id = a.identity.as_deref()?;
-    let of = |b: &&Account| {
-        let bound = b.machine.is_some() && b.name != a.name;
-        bound
-            && match a.machine {
-                Some(_) => b.identity.as_deref() == Some(id) && b.name < a.name,
-                None => {
-                    b.organization.as_deref() == Some(id)
-                        && personal(b.organization_type.as_deref())
-                }
-            }
+    kept.iter().find(|b| copies(a, b)).map(|b| b.name.as_str())
+}
+
+/// The kept account `a` is a copy of ([`copy_of`]) that is on at
+/// `machine`: not off, and its login bound there. No session starts on a
+/// copy while one is (GLOSSARY.md "Pick"); with none, it is picked as any
+/// account, and of three copies the next gives way to none.
+pub fn copy_on<'a>(a: &Account, kept: &'a [Account], machine: &str) -> Option<&'a str> {
+    let on = |b: &Account| b.off.is_none() && b.machine.as_deref() == Some(machine);
+    kept.iter()
+        .find(|b| on(b) && copies(a, b))
+        .map(|b| b.name.as_str())
+}
+
+/// Whether `a` is a copy of `b` ([`copy_of`]).
+fn copies(a: &Account, b: &Account) -> bool {
+    let Some(id) = a.identity.as_deref() else {
+        return false;
     };
-    kept.iter().find(of).map(|b| b.name.as_str())
+    let bound = b.machine.is_some() && b.name != a.name;
+    bound
+        && match a.machine {
+            Some(_) => b.identity.as_deref() == Some(id) && b.name < a.name,
+            None => {
+                b.organization.as_deref() == Some(id) && personal(b.organization_type.as_deref())
+            }
+        }
 }
 
 /// An account as every command answers it: its terms, and its login
@@ -506,6 +520,72 @@ mod tests {
         assert_eq!(day_of("2000-03-01"), Some(11_017));
     }
 
+    #[test]
+    fn a_copy_gives_way_only_to_an_account_on_here() {
+        let at = |name: &str, identity: &str, machine: &str| Account {
+            machine: Some(machine.into()),
+            identity: Some(identity.into()),
+            ..new(name, Engine::ClaudeCode, Change::default()).unwrap()
+        };
+        let off = Some(Off {
+            by: "felix".into(),
+            at: "2026-11-25T02:53:00Z".into(),
+            reason: "a copy".into(),
+        });
+        let token = Account {
+            machine: None,
+            ..at("claude-code", "org-max", "mini")
+        };
+        let max = Account {
+            organization: Some("org-max".into()),
+            organization_type: Some("claude_max".into()),
+            ..at("claude-code-2", "login-1", "mini")
+        };
+        let mut kept = vec![
+            token,
+            max,
+            at("c-a", "login-2", "mini"),
+            at("c-b", "login-2", "mini"),
+            at("c-c", "login-2", "mini"),
+            at("far", "login-3", "studio"),
+            at("near", "login-3", "mini"),
+            at("other", "login-4", "mini"),
+            Account {
+                identity: None,
+                ..at("unknown", "", "mini")
+            },
+        ];
+        let on = |kept: &[Account]| -> Vec<Option<String>> {
+            kept.iter()
+                .map(|a| copy_on(a, kept, "mini").map(str::to_string))
+                .collect()
+        };
+        let s = |n: &str| Some(n.to_string());
+        assert_eq!(
+            on(&kept),
+            [
+                s("claude-code-2"),
+                None,
+                None,
+                s("c-a"),
+                s("c-a"),
+                None,
+                None,
+                None,
+                None
+            ]
+        );
+        // Its account off, a copy is picked as any account; of three, the
+        // next gives way to none and the last to it.
+        kept[1].off = off.clone();
+        kept[2].off = off;
+        assert_eq!(
+            on(&kept),
+            [None, None, None, None, s("c-b"), None, None, None, None]
+        );
+        // Elsewhere, its account is not on here.
+        assert_eq!(copy_on(&kept[0], &kept, "studio"), None);
+    }
     #[test]
     fn an_account_whose_identity_is_another_s_names_it() {
         let bound = |name: &str, identity: &str| Account {
