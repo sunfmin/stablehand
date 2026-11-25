@@ -1,0 +1,6 @@
+{
+  "tree": "a2ff21369d4b2c4bcb0148debc4275008234163c+d1fba762150c532c",
+  "picker": "codex:01a2128a-ed22-74a1-9464-6fd02a920490:default",
+  "author": "claude-code:675e6ff7-f424-5bdf-b2f5-656b8480e9ac:opus",
+  "none": "The new parser test rules out every listed parser replacement, and replacing all of run with a null response is too broad to probe command error reporting."
+}
