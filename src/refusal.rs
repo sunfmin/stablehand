@@ -22,6 +22,8 @@ pub enum Code {
     NoOrder,
     /// `run` given arguments with no command, a command no engine's without `--engine`, a command, `--engine` and `--account` of different engines, two models, `--model` for an engine that takes none (dsh), `--home` for a bound claude-code account (docs/adr/0002), or a `--home` holding a login file that is no link to the account's.
     BadRun,
+    /// `command set` given no `<engine>=<command>`, an engine stablehand does not know, a command `sh` cannot split, one whose program is not its engine's (`claude` for claude-code, or a path ending in it), or one naming a model.
+    BadCommand,
     /// `run` found no account that takes one more session now: nothing started; its `until` and `why` are `pick`'s.
     NonePicked,
     /// `account scan --path` names no directory.

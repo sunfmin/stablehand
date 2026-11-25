@@ -44,10 +44,15 @@
 - **Order**: the engines, and of each the models, the next session starts
   on, highest first (`claude-code@opus codex grok agy@gemini-4-neon-high,claude-opus-5-5-high`);
   one per machine, kept beside the accounts. A preference only: the
-  command an engine starts with, its flags and its guard are the caller's.
+  command an engine starts with is its kept command's, its guard the caller's.
 - **Pick**: the answer to "what may one more session start on now": the
   first engine, model and account of the order whose account takes it,
   or none with until when and why. The session itself is the caller's.
+- **Kept command**: how this host starts an engine, its program and the
+  flags it always takes (`claude --dangerously-skip-permissions`), one per
+  engine, kept beside the accounts (`stablehand command`); `stablehand run`
+  starts it, its own arguments after the kept ones. None kept: the bare
+  program. The session's own arguments, home and protocol are the caller's.
 - **Session**: one run of an engine on an account. The caller's, but one
   started by `stablehand run` is kept in the register while it runs, and
   counted by a pick.

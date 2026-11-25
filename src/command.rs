@@ -77,21 +77,81 @@ pub fn named_model(engine: Engine, args: &[String]) -> Option<String> {
     None
 }
 
-/// The line `run` starts: `command`, or the engine's own start line where
-/// none is given, with the engine's model flag and `model` added where the
-/// engine takes one (the caller adds none to a line naming its own).
-pub fn line(engine: Engine, command: &[String], model: Option<&str>) -> Vec<String> {
-    let mut line: Vec<String> = if command.is_empty() {
-        engine.start().iter().map(|s| s.to_string()).collect()
-    } else {
-        command.to_vec()
+/// One `command set` argument, `<engine>=<command>`: the engine and its
+/// command's words, split as `sh` would (none: drop the one kept). Refused,
+/// with its fix: no `=`, an engine stablehand does not know, a command `sh`
+/// cannot split, whose program is not the engine's (its name or a path
+/// ending in it), or that names a model (the model is the pick's).
+pub fn kept(arg: &str) -> Result<(Engine, Vec<String>), String> {
+    let (name, command) = arg
+        .split_once('=')
+        .ok_or_else(|| format!("`{arg}` is no command: give it as <engine>=<command>, `claude-code=claude --dangerously-skip-permissions`, or <engine>= to drop one"))?;
+    let engine = <Engine as clap::ValueEnum>::from_str(name.trim(), false)
+        .map_err(|_| format!("no engine `{name}`: give one of {}", programs()))?;
+    let words = shell_words::split(command)
+        .map_err(|e| format!("{name}: sh cannot split `{command}` ({e}): close its quotes"))?;
+    let Some(program) = words.first() else {
+        return Ok((engine, words));
+    };
+    if Engine::of_program(program) != Some(engine) {
+        return Err(format!(
+            "{name}: `{program}` is not {name}'s program `{}` (nor a path ending in it): its command starts with its program ({})",
+            engine.start()[0],
+            programs()
+        ));
+    }
+    if let Some(model) = named_model(engine, &words[1..]) {
+        return Err(format!(
+            "{name}: `{command}` names a model ({model}): the model is the pick's (`stablehand order set`, `run --model`); drop it from the command"
+        ));
+    }
+    Ok((engine, words))
+}
+
+/// A kept command as `command show` answers it: its words joined as `sh`
+/// splits them back.
+pub fn shown(words: &[String]) -> String {
+    shell_words::join(words)
+}
+
+/// The line `run` starts, and whether `kept` (the engine's kept command,
+/// empty for none) is in it: with no command, `kept`, else the engine's own
+/// start line; a command of the engine's program gets `kept`'s arguments
+/// right after its program, before its own, and `kept`'s program where it
+/// names a bare one; a command of another program (`--engine`'s wrapper)
+/// none. Then the engine's model flag and `model`, after the program, where
+/// the engine takes one (the caller adds none to a line naming its own).
+pub fn line(
+    engine: Engine,
+    command: &[String],
+    kept: &[String],
+    model: Option<&str>,
+) -> (Vec<String>, bool) {
+    let (mut line, used) = match (command.split_first(), kept.split_first()) {
+        (None, Some(_)) => (kept.to_vec(), true),
+        (None, None) => (
+            engine.start().iter().map(|s| s.to_string()).collect(),
+            false,
+        ),
+        (Some((program, args)), Some((kept_program, kept_args)))
+            if Engine::of_program(program) == Some(engine) =>
+        {
+            let program = if program.contains('/') {
+                program
+            } else {
+                kept_program
+            };
+            let words = [std::slice::from_ref(program), kept_args, args].concat();
+            (words, true)
+        }
+        (Some(_), _) => (command.to_vec(), false),
     };
     let flag = engine.model_flags().first();
     if let (Some(model), Some(flag)) = (model, flag) {
         line.insert(1, model.to_string());
         line.insert(1, flag.to_string());
     }
-    line
+    (line, used)
 }
 
 #[cfg(test)]
@@ -137,6 +197,7 @@ mod tests {
 
     #[test]
     fn the_model_flag_is_added_where_the_line_names_none() {
+        let line = |e, c: &[String], m| line(e, c, &[], m).0;
         assert_eq!(
             line(ClaudeCode, &[], Some("opus")),
             s(&["claude", "--model", "opus"])
@@ -156,5 +217,47 @@ mod tests {
         }
         // `-m` is not claude's: its line names no model.
         assert_eq!(named_model(ClaudeCode, &s(&["-m", "x"])), None);
+    }
+
+    #[test]
+    fn a_kept_command_s_arguments_go_before_the_person_s_its_path_over_a_bare_name() {
+        let kept = s(&["/opt/claude", "--yes"]);
+        assert_eq!(
+            line(ClaudeCode, &[], &kept, Some("opus")),
+            (s(&["/opt/claude", "--model", "opus", "--yes"]), true)
+        );
+        assert_eq!(
+            line(ClaudeCode, &s(&["claude", "-p", "hi"]), &kept, None),
+            (s(&["/opt/claude", "--yes", "-p", "hi"]), true)
+        );
+        assert_eq!(
+            line(ClaudeCode, &s(&["/usr/bin/claude"]), &kept, None),
+            (s(&["/usr/bin/claude", "--yes"]), true)
+        );
+        // A wrapper `--engine` names is not the engine's program: no kept arguments.
+        assert_eq!(
+            line(ClaudeCode, &s(&["wrap.sh", "x"]), &kept, None),
+            (s(&["wrap.sh", "x"]), false)
+        );
+    }
+
+    #[test]
+    fn a_kept_command_is_its_engine_s_program_and_names_no_model() {
+        assert_eq!(
+            kept("grok=/opt/grok --always-approve 'a b'"),
+            Ok((Grok, s(&["/opt/grok", "--always-approve", "a b"])))
+        );
+        assert_eq!(kept("codex="), Ok((Codex, vec![])));
+        assert_eq!(shown(&s(&["/opt/grok", "a b"])), "/opt/grok 'a b'");
+        for (arg, part) in [
+            ("x", "<engine>=<command>"),
+            ("nope=claude", "no engine `nope`"),
+            ("codex=claude", "not codex's program `codex`"),
+            ("claude-code=claude \"x", "sh cannot split"),
+            ("kimi=kimi -m k2", "names a model (k2)"),
+        ] {
+            let err = kept(arg).unwrap_err();
+            assert!(err.contains(part), "{arg}: {err}");
+        }
     }
 }

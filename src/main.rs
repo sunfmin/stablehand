@@ -42,7 +42,7 @@ const LEARN: &str = "Learn";
 ///
 /// stablehand runs no login and keeps no secret: a person logs an engine in by the engine itself, and stablehand finds the login where it is. A bound account is logged in when its home holds its engine's login file; a portable one when the command it names (`--token-command`) prints its token, the token kept where the person keeps secrets (the Keychain, 1Password, mytokens).
 ///
-/// `stablehand credential <name>` hands a session's caller an account's login (a token, or the login files to link into the session's own home); `stablehand read` asks an account's engine for its windows and books the reading, `stablehand limit` books a session's report that it met the account's limit, `stablehand status` says what the books say now, each window's pace with it, and `stablehand pick` what the next session starts on: the first engine, model and account of the order (`stablehand order`) one more session may start on. The session itself, its command, flags and home, is the caller's.
+/// `stablehand credential <name>` hands a session's caller an account's login (a token, or the login files to link into the session's own home); `stablehand read` asks an account's engine for its windows and books the reading, `stablehand limit` books a session's report that it met the account's limit, `stablehand status` says what the books say now, each window's pace with it, and `stablehand pick` what the next session starts on: the first engine, model and account of the order (`stablehand order`) one more session may start on. How this host starts each engine, its program and the flags it always takes, is stablehand's too (`stablehand command`, docs/adr/0003): `stablehand run` starts it so. The rest of the session, its own arguments, its home and its protocol, is the caller's.
 ///
 /// Start with `stablehand account list`. Run `stablehand <command> --help` before a command's first run.
 ///
@@ -102,10 +102,11 @@ enum Cmd {
     ///
     /// - Its login, in its environment alone, never on a command line: portable, the engine's token variable (`CLAUDE_CODE_OAUTH_TOKEN`) set to what the account's `--token-command` prints; bound, the engine's home variable (`CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `HOME` for agy, …) set to the account's home, the token variable cleared. With `--home <dir>`, the home variable is `<dir>`, and a bound account's login files (`stablehand credential`) are linked into it.
     /// - The account's name, never a value, in `{const:ACCOUNT_VAR}`: its status line (`stablehand statusline`) books and shows that account's windows.
+    /// - Its engine's kept command (`stablehand command show`), unless `--bare`: with no command, the kept command starts; a command of the engine's program gets the kept command's arguments right after its program, before its own (`stablehand run claude -p hi` starts `claude --dangerously-skip-permissions -p hi`), and the kept program's path where it names the bare program. A command of another program (`--engine`'s wrapper) gets none. An engine with none kept starts as given, or bare.
     /// - The model: where the command names none, the engine's model flag and the picked model are put after its program (`claude --model opus -p hi`). dsh takes none: its profile names it.
     /// - The terminal, as stablehand's. stablehand waits for it: its exit code is stablehand's, and a signal that ends it ends stablehand the same way. A signal a process sends stablehand (`kill -TERM`) is passed on to it; the terminal's (^C) reach it themselves.
     ///
-    /// stderr gets one line of what was chosen, `stablehand: claude-code on claude-felix (opus)`, never a value. While the child runs, its session is kept in the register, and `stablehand pick` counts it beside `--running`; it is dropped when the child ends, or found dead by its pid.
+    /// stderr gets one line of what was chosen, `stablehand: claude-code on claude-felix (opus)`, and `, kept command` after it where the kept command was used, never a value. While the child runs, its session is kept in the register, and `stablehand pick` counts it beside `--running`; it is dropped when the child ends, or found dead by its pid.
     ///
     /// ## What it refuses
     ///
@@ -161,6 +162,12 @@ enum Register {
     Account {
         #[command(subcommand)]
         cmd: AccountCmd,
+    },
+    /// Set or show each engine's command: its program and the flags it always takes on this host (`claude --dangerously-skip-permissions`), as `stablehand run` starts it.
+    #[command(next_help_heading = REGISTER, verbatim_doc_comment)]
+    Command {
+        #[command(subcommand)]
+        cmd: CommandCmd,
     },
     /// Set or show the order: the engines, and of each the models, the next session starts on, highest first (`stablehand pick` walks it).
     #[command(next_help_heading = REGISTER, verbatim_doc_comment)]
@@ -270,7 +277,7 @@ enum Register {
     ///
     /// `{"engine", "model" (null: the engine's own), "account", "why", "model_in_no_group"}`, or `{"none": true, "until": <the earliest time any passed over lifts, or null>, "why", "model_in_no_group"}`. `why` is each (engine, model, account) passed over before the answer, in the walk's order: `[{"engine", "model", "account" (null for an engine skipped), "reason", "why", "until"}]`, `reason` one of `no_account`, `off`, `elsewhere`, `not_logged_in`, `limit`, `stopped`, `runs_out`. It refuses a `--running` name that is no account kept, and a walk with nothing in it.
     ///
-    /// The order is a preference only: the command an engine starts with, its flags, and which caller keeps to which engine stay the caller's.
+    /// The order is a preference only: which caller keeps to which engine stays the caller's, and the command an engine starts with is `stablehand command`'s.
     ///
     /// ## What trips you up
     ///
@@ -300,7 +307,7 @@ enum Register {
 enum OrderCmd {
     /// Set the order, highest first: each `<engine>[@<model>[,<model>…]]`.
     ///
-    /// One order per machine, kept in the register's database; it replaces the one kept. An engine is one of stablehand's (below); its models are the ids its engine starts a session with, highest first (claude-code's `opus`), none naming the engine's own. agy's are checked against the ids `agy models` lists, run in the home of the first agy account bound to this machine (the user's own without one). The order is a preference only: the command an engine starts with, its flags and its guard stay the caller's.
+    /// One order per machine, kept in the register's database; it replaces the one kept. An engine is one of stablehand's (below); its models are the ids its engine starts a session with, highest first (claude-code's `opus`), none naming the engine's own. agy's are checked against the ids `agy models` lists, run in the home of the first agy account bound to this machine (the user's own without one). The order is a preference only: the command an engine starts with is `stablehand command`'s; its guard stays the caller's.
     ///
     /// `stablehand order set claude-code@opus codex grok agy@gemini-4-neon-high,claude-opus-5-5-high`
     ///
@@ -320,6 +327,31 @@ enum OrderCmd {
     /// The order kept, highest first.
     ///
     /// Answers `{"order": [{"engine", "models": [...]}]}`, empty when none is set.
+    #[command(verbatim_doc_comment)]
+    Show,
+}
+
+/// Each engine's command, as `stablehand run` starts it.
+#[derive(Subcommand)]
+enum CommandCmd {
+    /// Keep each engine's command: `<engine>=<command>`, its program then its arguments; `<engine>=` drops one.
+    ///
+    /// One command per engine, per machine, kept in the register's database (docs/adr/0003); those named replace the ones kept, the rest are left. A command is split into words as `sh` splits it, never run through a shell. Its program is its engine's ({const:PROGRAMS}), or a path ending in it (`/opt/bin/claude`). A fresh store keeps none: each engine starts bare until a person keeps its command.
+    ///
+    /// `stablehand command set 'claude-code=claude --dangerously-skip-permissions' 'codex=codex --dangerously-bypass-approvals-and-sandbox'`
+    ///
+    /// ## What it answers
+    ///
+    /// `{"commands": {"<engine>": "<command>"}}`, as `stablehand command show` does. It refuses, writing nothing (`bad_command`), an argument with no `=`, an engine it does not know, a command `sh` cannot split (an open quote), one whose program is not its engine's, and one naming a model (the model is the pick's: `stablehand order set`, `run --model`).
+    #[command(verbatim_doc_comment)]
+    Set {
+        /// `<engine>=<command>`; `<engine>=` drops one.
+        #[arg(required = true, verbatim_doc_comment)]
+        commands: Vec<String>,
+    },
+    /// The engines' commands kept.
+    ///
+    /// Answers `{"commands": {"<engine>": "<command>"}}`, only the engines with one kept; `{"commands": {}}` on a fresh store.
     #[command(verbatim_doc_comment)]
     Show,
 }
@@ -699,6 +731,26 @@ fn run(cmd: Register) -> Result<Value, Refused> {
                 stop_percent,
             };
             usage::pick_now(&store, &all, ask, now()?)
+        }
+        Register::Command { cmd } => {
+            if let CommandCmd::Set { commands } = cmd {
+                let (kept, faults): (Vec<_>, Vec<_>) = commands
+                    .iter()
+                    .map(|c| command::kept(c))
+                    .partition(Result::is_ok);
+                if !faults.is_empty() {
+                    let faults: Vec<_> = faults.into_iter().filter_map(Result::err).collect();
+                    return Err(Refused::new(Code::BadCommand, faults.join("; ")));
+                }
+                let kept: Vec<_> = kept.into_iter().filter_map(Result::ok).collect();
+                store.set_commands(&kept)?;
+            }
+            let shown: serde_json::Map<String, Value> = store
+                .commands()?
+                .into_iter()
+                .map(|(e, words)| (e.name(), json!(command::shown(&words))))
+                .collect();
+            Ok(json!({ "commands": shown }))
         }
         Register::Order { cmd } => {
             if let OrderCmd::Set { ranks } = cmd {
