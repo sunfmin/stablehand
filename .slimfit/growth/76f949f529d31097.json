@@ -1,0 +1,10 @@
+{
+  "tree": "d9faf2726be25d9acb02469b8f3d5fd9f67b001e+d1fba762150c532c",
+  "lines": 186,
+  "serves": "stablehand#31",
+  "considered": "a second copy rule in scan (same_as) beside account::copy_of, deleted for copy_of over the kept and new accounts; a scan-only Org kept for the identity read; Store::put instead of fill_hashes (a put rewrites the whole row from a stale read, so a targeted COALESCE update was kept); reading a token's organization on account add (not needed: scan is where tokens are judged)",
+  "reviewer": "codex:01a210af-dfeb-7ec0-a595-a655ea206fff:default",
+  "author": "claude-code:3cc8c718-d01f-5108-8d3b-4b3a8b7ff3aa:opus",
+  "cut": "In src/scan.rs, reuse the kept account vector for new bound logins and keep its original prefix for token lookup and hash backfill. Stage skipped rows and read tokens in one ordered Result<Token, Value> vector, then match organizations directly on those tokens to remove the null placeholders, Token.at, and the parallel ids vector. Compute copy_of once and derive the status separately so registered tokens retain their status. In src/curl.rs, split and parse the HTTP status trailer in run for both callers. In src/store.rs, use read.name in fill_hashes and drop the separate name argument from its scan caller.",
+  "answer": "made every cut: new bound logins pushed onto kept (its stored prefix zipped for the backfill), one Vec<Result<Token, Value>> with of_its_org over it (no placeholders, Token.at or ids), copy_of computed once and the status derived from it, curl::run parses the status for get and post_for_header, fill_hashes takes the account alone; what remains is the organization read, the copy rule, the store columns and their tests"
+}

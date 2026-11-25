@@ -144,6 +144,8 @@ mod tests {
             off: None,
             token_command: Some("mytokens get kimi".into()),
             identity: None,
+            organization: None,
+            organization_type: None,
         }
     }
 

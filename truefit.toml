@@ -86,6 +86,45 @@ fault = "refused"
 env = { CLAUDE_CODE_OAUTH_TOKEN = "sk-ant-oat01-not-a-token" }
 args = ["-p", "--model", "haiku", "--output-format", "stream-json", "--verbose", "--tools", "", "--strict-mcp-config", "--no-session-persistence", "--setting-sources", "", "--system-prompt", "Answer with one word.", "quota"]
 
+# The organization a claude-code token's answers name
+# (src/readers/claude_code.rs `organization`), which `account scan` compares
+# with the bound logins' (a `claude setup-token` token is refused
+# user:profile): `POST /v1/messages` of an empty request through curl, the
+# bearer on curl's stdin, refused HTTP 400 before any turn. The usage
+# endpoint's 403 names none (2026-11-25). Both sides answer through
+# organization-shape: curl's exit, the status, whether the header is an
+# organization id. The stand-in answers the recorded answer
+# (recorded/claude-code-organization.http); the real side swaps
+# `<setup-token>` for a real one and spends nothing.
+[[standin]]
+name = "claude-code-organization"
+run = ["tests/contract/organization-shape", "fake-curl"]
+real = ["tests/contract/organization-shape", "real-curl"]
+needs = "curl, jq and mytokens on PATH, and a `claude setup-token` token in mytokens (profile claude-theplant-jp, or the one STABLEHAND_CONTRACT_SETUP_TOKEN names)"
+ready = ["sh", "-c", "command -v curl >/dev/null && command -v jq >/dev/null && mytokens list 2>/dev/null | grep -q \"^${STABLEHAND_CONTRACT_SETUP_TOKEN:-claude-theplant-jp}/\""]
+version = ["sh", "-c", "curl --version | head -n 1"]
+faults = ["unauthorized"]
+fault_env = "FAKE_CURL_FAULT"
+
+[[standin.case]]
+name = "a-token-s-organization"
+args = ["--silent", "--show-error", "--max-time", "20", "--data", "{}", "--config", "-", "--write-out", "\n%header{anthropic-organization-id}\n%{http_code}", "https://api.anthropic.com/v1/messages"]
+stdin = """
+header = "Authorization: Bearer <setup-token>"
+header = "anthropic-beta: oauth-2025-04-20"
+header = "anthropic-version: 2023-06-01"
+"""
+
+[[standin.case]]
+name = "a-refused-bearer-names-none"
+fault = "unauthorized"
+args = ["--silent", "--show-error", "--max-time", "20", "--data", "{}", "--config", "-", "--write-out", "\n%header{anthropic-organization-id}\n%{http_code}", "https://api.anthropic.com/v1/messages"]
+stdin = """
+header = "Authorization: Bearer sk-ant-oat01-not-a-token"
+header = "anthropic-beta: oauth-2025-04-20"
+header = "anthropic-version: 2023-06-01"
+"""
+
 # agy's reader (src/readers/agy.rs) runs `agy -p /usage --output-format json`
 # in the account's home, then `agy models` there. Both sides answer through
 # agy-shape, which keeps only what the reader reads: the exit, the status,

@@ -17,6 +17,10 @@ use std::time::Duration;
 
 const USAGE: &str = "https://api.anthropic.com/api/oauth/usage";
 const BETA: &str = "anthropic-beta: oauth-2025-04-20";
+/// Where a token's organization is asked: its answers, even one refusing the
+/// request, name it in `anthropic-organization-id`.
+const MESSAGES: &str = "https://api.anthropic.com/v1/messages";
+const ORGANIZATION: &str = "anthropic-organization-id";
 
 /// The question a token refused its usage is asked: `claude` with these
 /// arguments, one turn on its smallest model, with no tools, settings,
@@ -63,6 +67,29 @@ pub fn read(account: &Account, read_by: Option<ReadBy>) -> Result<Vec<Window>, S
         }
     }
     question(account, &bearer)
+}
+
+/// The organization `bearer`'s answers name, which a `claude setup-token`
+/// token tells though it is refused `user:profile`: `POST /v1/messages` of
+/// an empty request, refused HTTP 400 before any turn, so nothing is spent
+/// (tests/contract/recorded/claude-code-organization.http). Never said or
+/// kept: its hash is.
+pub fn organization(bearer: &str) -> Result<String, String> {
+    let headers = [
+        format!("Authorization: Bearer {bearer}"),
+        BETA.to_string(),
+        "anthropic-version: 2023-06-01".to_string(),
+    ];
+    let (status, org) = curl::post_for_header(MESSAGES, &headers, "{}", ORGANIZATION)?;
+    match (status, org.is_empty()) {
+        (_, false) => Ok(org),
+        (401, true) => Err(format!(
+            "{MESSAGES} answered HTTP 401: the token was refused or has expired"
+        )),
+        _ => Err(format!(
+            "{MESSAGES} answered HTTP {status} naming no organization: its answer has changed; run `truefit contract --real claude-code-organization` in stablehand's repo"
+        )),
+    }
 }
 
 /// The windows the [`QUESTION`] answers, asked with `bearer` in
@@ -314,6 +341,8 @@ mod tests {
             off: None,
             token_command: None,
             identity: None,
+            organization: None,
+            organization_type: None,
         }
     }
 

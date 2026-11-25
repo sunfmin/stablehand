@@ -13,7 +13,8 @@ fn account(name: &str, engine: &str) -> Value {
         "name": name, "engine": engine, "login": "portable", "machine": null,
         "expires": null, "home": null, "off": null,
         "token_command": null,
-        "identity": null,
+        "identity": null, "organization": null, "organization_type": null,
+        "copy_of": null,
     })
 }
 

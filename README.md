@@ -100,8 +100,8 @@ stablehand account scan --path /Users/agent/chatgpt   # one more home to look in
   `agent-account-<name>` entry with an engine's token field
   (`CLAUDE_CODE_OAUTH_TOKEN`) is a portable account `<name>`, its
   `--token-command` `mytokens get agent-account-<name> --field <that
-  field>`; one with no token (a bound one, its `MACHINE`) is `skipped`. No
-  token is read.
+  field>`; one with no token (a bound one, its `MACHINE`) is `skipped`. A
+  claude-code token is read only to ask its organization, never said or kept.
 - **One account per subscription.** The same subscription is often in
   several homes (pi's `openai-codex` and codex on one ChatGPT account).
   scan tells them apart by the identity each login file holds (Claude's
@@ -112,9 +112,17 @@ stablehand account scan --path /Users/agent/chatgpt   # one more home to look in
   account kept already is, else the most recently written; the others are
   `copy`, with the warning that copies of one refresh token refresh each
   other out. An identity it cannot read (a format it does not know; dsh's
-  file holds none) is said as such, `identity_unknown`, never guessed. A
-  portable token tells no identity, so whether it is a home login's
-  subscription is `unknown`.
+  file holds none) is said as such, `identity_unknown`, never guessed.
+- **A Claude token's identity is its organization.** A setup token is
+  refused `user:profile`, but every answer to it names its organization
+  (`anthropic-organization-id`), even the refusal of an empty `POST
+  /v1/messages`, which spends nothing. A personal organization
+  (`claude_max`, `claude_pro`) is its subscription: a token of a bound
+  login's is a `copy` of that login's account (`same_as_a_login`), which
+  `--add` does not register. A team's is several people's seats, so a token
+  of one, or of no login's, is `unknown`; two tokens of one organization are
+  warned of. `account list` and `show` say `copy_of` of an account whose
+  identity is another kept one's.
 - Without `--add` it writes nothing: it answers each login found (engine,
   home, logged in at, identity's hash, `new`, `registered` or `copy`, and
   the account: the one it is, or is a copy of, or the name `--add` gives,

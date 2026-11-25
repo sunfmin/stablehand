@@ -21,9 +21,15 @@
 - **Identity**: the subscription a bound login's files say they are of
   (ChatGPT's account id, Claude's account and organization): what tells
   two logins of one account apart from two accounts. `account scan` reads
-  it in memory and keeps only its hash; a portable token tells none. Two
-  logins of one identity are **copies**: one is the account, the others are
-  left unused, since copies of one refresh token refresh each other out.
+  it in memory and keeps only its hash. A portable claude-code token's is
+  its **organization**, which every answer to it names
+  (`anthropic-organization-id`), read by an empty `POST /v1/messages` that
+  is refused before any turn; a personal one (`claude_max`, `claude_pro`)
+  is its subscription, a team's is several people's seats. Two logins of
+  one identity are **copies**: one is the account, the others are left
+  unused, since copies of one refresh token refresh each other out; so is
+  a token of a bound login's personal organization, since both spend the
+  same windows.
 - **Window**: one span of an account's use as its engine names it
   (`five_hour`, `seven_day`, `primary`, `gemini-5h`): how much is used, 0 to
   100, and when it resets. An account may have several **groups** of windows

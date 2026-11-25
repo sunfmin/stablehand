@@ -1,0 +1,19 @@
+HTTP/2 400 
+date: Wed, 25 Nov 2026 03:01:15 GMT
+content-type: application/json
+x-should-retry: false
+accept-encoding: gzip, identity
+strict-transport-security: max-age=31536000; includeSubDomains; preload
+request-id: req_011CStandin
+traceresponse: 00-00000000000000000000000000000000-0000000000000000-01
+anthropic-organization-id: 00000000-0000-4000-8000-000000000000
+anthropic-workspace-id: wrkspc_01Standin
+vary: Accept-Encoding
+server: cloudflare
+server-timing: x-originResponse;dur=37
+x-robots-tag: none
+content-security-policy: default-src 'none'; frame-ancestors 'none'
+cf-cache-status: DYNAMIC
+cf-ray: 0000000000000000-NRT
+
+{"type":"error","error":{"type":"invalid_request_error","message":"model: Field required"},"request_id":"req_011CStandin"}

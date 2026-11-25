@@ -1,8 +1,10 @@
 //! `account scan`: the engine logins already on this machine, and the
 //! portable tokens mytokens keeps, found and, with `--add`, registered: one
 //! account per subscription, told apart by the identity each login file
-//! holds. An identity is read and compared in memory, and only its hash
-//! ([`hash`]) is answered or kept; a token is never read (docs/adr/0001).
+//! holds, a portable Claude token by the organization its answers name. An
+//! identity is read and compared in memory, and only its hash ([`hash`]) is
+//! answered or kept; a token is read only to ask its organization, and
+//! never said or kept (docs/adr/0001).
 use crate::account::{self, Account, Change, Engine, Terms};
 use crate::login;
 use crate::refusal::{Code, Refused};
@@ -22,6 +24,16 @@ struct Found {
     written: u64,
     /// The hash of its identity, or why it cannot be read.
     identity: Result<String, String>,
+    /// A Claude login's organization.
+    organization: Option<Org>,
+}
+
+/// A Claude organization as scan compares it: its id's hash ([`org_hash`]),
+/// and its `organizationType`.
+#[derive(Debug, Clone, PartialEq)]
+struct Org {
+    hash: String,
+    kind: Option<String>,
 }
 
 /// What scan makes of a login or a token.
@@ -37,12 +49,12 @@ enum Status {
 
 /// Where each engine's login holds its identity, as `account scan --help`
 /// says it: the one list beside [`identity`], which reads them.
-pub const IDENTITIES: &str = "claude-code: its account and organization in `.claude.json` (its home's, or `~/.claude.json` for `~/.claude`); codex: `tokens.account_id`, the ChatGPT account; pi: `openai-codex.accountId`, the same ChatGPT account; kimi: its access token's `user_id`; agy: `id_token_email`; grok: its login's `user_id`; dsh: none, its file holds only a grant";
+pub const IDENTITIES: &str = "claude-code: its account and organization in `.claude.json` (its home's, or `~/.claude.json` for `~/.claude`), and the organization's type (`organizationType`); a portable claude-code token: the organization its answers name, read by one `POST https://api.anthropic.com/v1/messages` of an empty request, which is refused before any turn, so nothing is spent; codex: `tokens.account_id`, the ChatGPT account; pi: `openai-codex.accountId`, the same ChatGPT account; kimi: its access token's `user_id`; agy: `id_token_email`; grok: its login's `user_id`; dsh: none, its file holds only a grant";
 
 /// The identity `engine`'s login in `home` holds, `<kind>:<id>` (codex's and
-/// pi's one kind: a ChatGPT account), or why it cannot be read. Never said
-/// or kept: [`hash`] of it is.
-fn identity(engine: Engine, home: &Path) -> Result<String, String> {
+/// pi's one kind: a ChatGPT account), with a Claude login's organization, or
+/// why it cannot be read. Never said or kept: [`hash`] of it is.
+fn identity(engine: Engine, home: &Path) -> Result<(String, Option<Org>), String> {
     let file = engine.login().file;
     let json = |rel: &str| -> Result<Value, String> {
         let bytes = std::fs::read(home.join(rel)).map_err(|_| format!("{rel} cannot be read"))?;
@@ -68,7 +80,12 @@ fn identity(engine: Engine, home: &Path) -> Result<String, String> {
             let v = json(rel)?;
             let user = field(&v, "/oauthAccount/accountUuid", rel)?;
             let org = field(&v, "/oauthAccount/organizationUuid", rel)?;
-            ("claude", format!("{user}/{org}"))
+            let kind = v.pointer("/oauthAccount/organizationType");
+            let organization = Org {
+                hash: org_hash(&org),
+                kind: kind.and_then(Value::as_str).map(String::from),
+            };
+            return Ok((format!("claude:{user}/{org}"), Some(organization)));
         }
         Engine::Codex => ("chatgpt", field(&json(file)?, "/tokens/account_id", file)?),
         Engine::Pi => (
@@ -96,7 +113,20 @@ fn identity(engine: Engine, home: &Path) -> Result<String, String> {
         }
         Engine::Dsh => return Err(format!("{file} holds no account id, only its grant")),
     };
-    Ok(format!("{kind}:{id}"))
+    Ok((format!("{kind}:{id}"), None))
+}
+
+/// A Claude organization's id as it is said and kept: its [`hash`], the
+/// identity of a portable token of it.
+fn org_hash(org: &str) -> String {
+    hash(&format!("claude-org:{org}"))
+}
+
+/// The hash of the organization the token `account`'s command prints
+/// names, or why it was not read.
+fn token_org(account: &Account) -> Result<String, String> {
+    let bearer = login::token(account)?;
+    crate::readers::claude_code::organization(&bearer).map(|o| org_hash(&o))
 }
 
 /// The claims of the JSON web token `token`.
@@ -128,12 +158,13 @@ fn logins(user_home: &Path, paths: &[PathBuf]) -> Vec<Found> {
     let engines = <Engine as clap::ValueEnum>::value_variants();
     let found = |engine: Engine, home: PathBuf| {
         let written = login::written(&home.join(engine.login().file))?;
-        let identity = identity(engine, &home).map(|i| hash(&i));
+        let read = identity(engine, &home);
         Some(Found {
             engine,
             home,
             written,
-            identity,
+            identity: read.as_ref().map(|(i, _)| hash(i)).map_err(String::clone),
+            organization: read.ok().and_then(|(_, o)| o),
         })
     };
     let mut all: Vec<Found> = engines
@@ -174,22 +205,17 @@ fn fresh(taken: &mut Vec<String>, base: &str) -> String {
 }
 
 /// What each of `found` is, judged against the accounts `kept` (each with
-/// the hash of its identity, kept or read in its home) bound to `machine`:
+/// the hash of its identity, kept or read in its home) and bound to `machine`:
 /// an account kept at its home is it; then, newest first, one whose
 /// identity an account has is a copy of that, and the rest are new, the
 /// newest of an identity its account and the others copies of it. A login
 /// whose identity cannot be read is new, never a copy.
-fn judge(
-    found: &[Found],
-    kept: &[(Account, Option<String>)],
-    machine: &str,
-    taken: &mut Vec<String>,
-) -> Vec<Status> {
+fn judge(found: &[Found], kept: &[Account], machine: &str, taken: &mut Vec<String>) -> Vec<Status> {
     let mut owner: HashMap<String, String> = HashMap::new();
     let mut status: Vec<Option<Status>> = found
         .iter()
         .map(|f| {
-            let (a, _) = kept.iter().find(|(a, _)| {
+            let a = kept.iter().find(|a| {
                 a.engine == f.engine
                     && a.machine.as_deref() == Some(machine)
                     && a.home.as_ref().is_some_and(|h| same(Path::new(h), &f.home))
@@ -200,8 +226,8 @@ fn judge(
             Some(Status::Registered(a.name.clone()))
         })
         .collect();
-    for (a, id) in kept {
-        if let Some(id) = id {
+    for a in kept {
+        if let Some(id) = &a.identity {
             owner.entry(id.clone()).or_insert(a.name.clone());
         }
     }
@@ -316,19 +342,27 @@ pub fn scan(store: &Store, paths: &[String], add: bool) -> Result<Value, Refused
     let machine = login::this_machine()?;
     let paths: Vec<PathBuf> = paths.iter().map(PathBuf::from).collect();
     let found = logins(Path::new(&user_home), &paths);
-    let kept: Vec<(Account, Option<String>)> = store
-        .list()?
-        .into_iter()
+    let stored = store.list()?;
+    // Each kept account with the hashes read in its home on this machine
+    // where the register keeps none; a token's are read below.
+    let mut kept: Vec<Account> = stored
+        .iter()
         .map(|a| {
             let read = match (&a.machine, &a.home) {
                 (Some(m), Some(h)) if *m == machine => identity(a.engine, Path::new(h)).ok(),
                 _ => None,
             };
-            let id = a.identity.clone().or(read.map(|i| hash(&i)));
-            (a, id)
+            let (id, org) = read.map_or((None, None), |(i, o)| (Some(hash(&i)), o));
+            let mut a = a.clone();
+            a.identity = a.identity.or(id);
+            if a.organization.is_none() {
+                a.organization = org.as_ref().map(|o| o.hash.clone());
+                a.organization_type = org.and_then(|o| o.kind);
+            }
+            a
         })
         .collect();
-    let mut taken: Vec<String> = kept.iter().map(|(a, _)| a.name.clone()).collect();
+    let mut taken: Vec<String> = kept.iter().map(|a| a.name.clone()).collect();
     let judged = judge(&found, &kept, &machine, &mut taken);
 
     let mut out_logins = Vec::new();
@@ -340,8 +374,14 @@ pub fn scan(store: &Store, paths: &[String], add: bool) -> Result<Value, Refused
                     home: Some(f.home.display().to_string()),
                     ..Terms::default()
                 };
-                let id = f.identity.clone().ok();
-                (register(store, add, n, f.engine, terms, id)?, n)
+                let mut a = new(n, f.engine, terms)?;
+                a.identity = f.identity.clone().ok();
+                a.organization = f.organization.as_ref().map(|o| o.hash.clone());
+                a.organization_type = f.organization.as_ref().and_then(|o| o.kind.clone());
+                let status = register(store, add, &a)?;
+                // Beside the kept ones, what a token may be a copy of.
+                kept.push(a);
+                (status, n)
             }
             Status::Registered(n) => ("registered", n),
             Status::Copy(n) => ("copy", n),
@@ -360,12 +400,12 @@ pub fn scan(store: &Store, paths: &[String], add: bool) -> Result<Value, Refused
             "warning": warning,
         }));
     }
-
     let (list, mytokens) = match mytokens_list() {
         Ok(list) => (list, None),
         Err(why) => (String::new(), Some(why)),
     };
-    let mut tokens = Vec::new();
+    // Each entry in its order: a skipped one as answered, a token as read.
+    let mut rows: Vec<Result<Token, Value>> = Vec::new();
     for e in entries(&list) {
         let Some((engine, var)) = e.token() else {
             let why = match e.fields.contains(&"MACHINE") {
@@ -374,7 +414,9 @@ pub fn scan(store: &Store, paths: &[String], add: bool) -> Result<Value, Refused
                 }
                 false => "it holds no engine's token field",
             };
-            tokens.push(json!({ "entry": e.id, "status": "skipped", "why": why }));
+            rows.push(Err(
+                json!({ "entry": e.id, "status": "skipped", "why": why }),
+            ));
             continue;
         };
         let cmd = e.token_command(var);
@@ -382,33 +424,85 @@ pub fn scan(store: &Store, paths: &[String], add: bool) -> Result<Value, Refused
             "mytokens get {} --account {} --field {var}",
             e.service, e.label
         );
-        let registered = kept.iter().find(|(a, _)| {
+        let kept_at = kept.iter().position(|a| {
             a.machine.is_none()
                 && a.token_command
                     .as_ref()
                     .is_some_and(|c| *c == cmd || *c == legacy)
         });
-        let (status, name) = match registered {
-            Some((a, _)) => ("registered", a.name.clone()),
+        let mut account = match kept_at {
+            Some(i) => kept[i].clone(),
             None => {
-                let name = fresh(&mut taken, &e.service[PREFIX.len()..]);
                 let terms = Terms {
                     token_command: Some(cmd.clone()),
                     ..Terms::default()
                 };
-                (register(store, add, &name, engine, terms, None)?, name)
+                let name = fresh(&mut taken, &e.service[PREFIX.len()..]);
+                new(&name, engine, terms)?
+            }
+        };
+        let org = match engine {
+            Engine::ClaudeCode => token_org(&account),
+            _ => Err(format!("a {} token tells none", engine.name())),
+        };
+        account.identity = account.identity.or(org.clone().ok());
+        if let Some(i) = kept_at {
+            kept[i].identity.clone_from(&account.identity);
+        }
+        rows.push(Ok(Token {
+            entry: e.id.to_string(),
+            command: cmd,
+            kept: kept_at.is_some(),
+            account,
+            org,
+        }));
+    }
+    let mut tokens = Vec::new();
+    for row in &rows {
+        let t = match row {
+            Ok(t) => t,
+            Err(skipped) => {
+                tokens.push(skipped.clone());
+                continue;
+            }
+        };
+        let a = &t.account;
+        let copy = account::copy_of(a, &kept);
+        let status = match (t.kept, copy) {
+            (true, _) => "registered",
+            (false, Some(_)) => "copy",
+            (false, None) => register(store, add, a)?,
+        };
+        let warning = match copy {
+            Some(login) => Some(format!(
+                "a token of {login}'s subscription (its organization is {login}'s, one person's): both spend the same windows, so run sessions on one of them only and switch the other off (`stablehand off <account>`)"
+            )),
+            None => {
+                let entries = of_its_org(&rows, t);
+                (!entries.is_empty()).then(|| format!(
+                    "of the organization of the token of {} too: one subscription if it is one person's, a team's seats if not, which a token does not tell; if one person's, run sessions on one of them only",
+                    entries.join(", ")
+                ))
             }
         };
         tokens.push(json!({
-            "entry": e.id,
-            "engine": engine.name(),
-            "token_command": cmd,
+            "entry": t.entry,
+            "engine": a.engine.name(),
+            "token_command": t.command,
             "status": status,
-            "account": name,
-            // A portable token tells no identity (a setup token is refused
-            // user:profile): whether it is a home login's subscription is not known.
-            "same_as_a_login": "unknown",
+            "account": copy.filter(|_| !t.kept).unwrap_or(&a.name),
+            "identity": t.org.as_ref().ok(),
+            "identity_unknown": t.org.as_ref().err(),
+            "same_as_a_login": copy.unwrap_or("unknown"),
+            "warning": warning,
         }));
+    }
+    if add {
+        for (a, was) in kept.iter().zip(&stored) {
+            if a != was {
+                store.fill_hashes(a)?;
+            }
+        }
     }
     Ok(json!({
         "add": add,
@@ -419,30 +513,55 @@ pub fn scan(store: &Store, paths: &[String], add: bool) -> Result<Value, Refused
     }))
 }
 
-/// A `new` one's status: with `add`, the account `name` of `engine` with
-/// `terms` and `identity` added; refused when another run kept its name meanwhile.
-fn register(
-    store: &Store,
-    add: bool,
-    name: &str,
-    engine: Engine,
-    terms: Terms,
-    identity: Option<String>,
-) -> Result<&'static str, Refused> {
-    if !add {
-        return Ok("new");
-    }
+/// The other tokens of `rows` of `t`'s organization, by entry.
+fn of_its_org<'a>(rows: &'a [Result<Token, Value>], t: &Token) -> Vec<&'a str> {
+    let Ok(id) = &t.org else {
+        return Vec::new();
+    };
+    let same = |o: &&'a Token| o.entry != t.entry && o.org.as_ref() == Ok(id);
+    rows.iter()
+        .flatten()
+        .filter(same)
+        .map(|o| o.entry.as_str())
+        .collect()
+}
+
+/// A token entry as scan read it.
+struct Token {
+    /// `<service>/<label>`.
+    entry: String,
+    command: String,
+    /// Whether `account` is kept; else it is as `--add` would keep it.
+    kept: bool,
+    account: Account,
+    /// Its organization's hash, or why it was not read.
+    org: Result<String, String>,
+}
+
+/// A new account `name` of `engine` with `terms`.
+fn new(name: &str, engine: Engine, terms: Terms) -> Result<Account, Refused> {
     let change = Change {
         terms,
         ..Change::default()
     };
-    let a = account::new(name, engine, change).map_err(|f| f.join("; "))?;
-    if store.insert(&Account { identity, ..a })? {
+    Ok(account::new(name, engine, change).map_err(|f| f.join("; "))?)
+}
+
+/// A `new` one's status: with `add`, `a` added; refused when another run
+/// kept its name meanwhile.
+fn register(store: &Store, add: bool, a: &Account) -> Result<&'static str, Refused> {
+    if !add {
+        return Ok("new");
+    }
+    if store.insert(a)? {
         return Ok("added");
     }
     Err(Refused::new(
         Code::NameTaken,
-        format!("account `{name}` was kept meanwhile: run the scan again"),
+        format!(
+            "account `{}` was kept meanwhile: run the scan again",
+            a.name
+        ),
     ))
 }
 
@@ -498,6 +617,7 @@ mod tests {
             home: PathBuf::from(home),
             written,
             identity: id.map(String::from).map_err(String::from),
+            organization: None,
         }
     }
 
@@ -525,8 +645,11 @@ mod tests {
             account::new(name, engine, change).unwrap()
         };
         let kept = [
-            (bound("work", ClaudeCode, "/x/claude"), None),
-            (bound("grok", Grok, "/elsewhere"), Some("other".into())),
+            bound("work", ClaudeCode, "/x/claude"),
+            Account {
+                identity: Some("other".into()),
+                ..bound("grok", Grok, "/elsewhere")
+            },
         ];
         let mut taken = vec!["work".to_string(), "grok".to_string()];
         let judged = judge(&found, &kept, "mini", &mut taken);
@@ -549,5 +672,31 @@ mod tests {
             judged[2..4],
             [New("claude-code".into()), Copy("claude-code".into())]
         );
+    }
+
+    #[test]
+    fn two_tokens_of_one_organization_are_said_so() {
+        let token = |entry: &str, org: Result<&str, &str>| Token {
+            entry: entry.into(),
+            command: String::new(),
+            kept: false,
+            account: account::new("t", Engine::ClaudeCode, Change::default()).unwrap(),
+            org: org.map(String::from).map_err(String::from),
+        };
+        let rows = [
+            Ok(token("a", Ok("team"))),
+            Ok(token("b", Ok("max"))),
+            Err(Value::Null),
+            Ok(token("c", Err("not read"))),
+            Ok(token("d", Ok("team"))),
+        ];
+        let of: Vec<_> = rows
+            .iter()
+            .flatten()
+            .map(|t| of_its_org(&rows, t))
+            .collect();
+        assert_eq!(of, [vec!["d"], vec![], vec![], vec!["a"]]);
+        assert_ne!(org_hash("o"), hash("o"));
+        assert_eq!(org_hash("o").len(), 16);
     }
 }
