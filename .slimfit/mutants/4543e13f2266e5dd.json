@@ -1,0 +1,15 @@
+{
+  "tree": "13ae8373300188ffefa0d30ff98974dde9211b0b+d1fba762150c532c",
+  "picker": "codex:01a210b2-9092-7b21-878c-77559152519e:default",
+  "author": "claude-code:3cc8c718-d01f-5108-8d3b-4b3a8b7ff3aa:opus",
+  "picks": {
+    "rust": [
+      {
+        "name": "src/account.rs:184:41: replace && with || in copy_of",
+        "why": "A portable account with an earlier name and a matching stored identity could become the owner of a bound login, a case the fixtures do not exercise.",
+        "outcome": "killed",
+        "first_outcome": "killed"
+      }
+    ]
+  }
+}
