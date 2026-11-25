@@ -16,7 +16,7 @@ use serde_json::{Value, json};
 /// home's login file says when it logged in: a credential refused before it
 /// was written is asked again. It goes first, so one written in the second
 /// of a refusal is not after it (the books keep the order of a second).
-fn book_of(store: &Store, a: &Account) -> Result<Vec<Entry>, String> {
+pub fn book_of(store: &Store, a: &Account) -> Result<Vec<Entry>, String> {
     let login = login::login_file(a)?.map(|f| Entry {
         at: f.written,
         what: What::LoggedIn,

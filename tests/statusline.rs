@@ -46,10 +46,17 @@ fn the_status_line_books_its_rate_limits_and_prints_one_line() {
     assert_eq!(s["windows"].as_array().unwrap().len(), 2, "{s}");
 
     // A session that has had no answer yet gives no rate_limits: the line
-    // is the account's name, and the books keep what they had.
+    // is the account's latest books, and the books keep what they had.
     let (code, line) = r.raw(&args, &[], NO_RATE_LIMITS);
-    assert_eq!((code, line.as_str()), (0, "claude-felix\n"));
+    assert_eq!(
+        (code, line.as_str()),
+        (0, "claude-felix · 5h 24% · 7d 41%\n")
+    );
     assert_eq!(status(&r, "claude-felix"), s);
+    // An account with no books yet: its name alone.
+    r.ok(&["account", "add", "claude-new", "--engine", "claude-code"]);
+    let (code, line) = r.raw(&["statusline", "--account", "claude-new"], &[], "{}");
+    assert_eq!((code, line.as_str()), (0, "claude-new\n"));
 
     // A reading lifts a limit booked without a reset, as `read` does.
     r.ok(&["limit", "claude-felix"]);
@@ -116,4 +123,39 @@ fn an_account_it_cannot_book_still_gets_a_line() {
         stdin,
     );
     assert_eq!((code, line.as_str()), (0, "mine\n"));
+}
+
+#[test]
+fn the_account_is_stablehand_run_s_where_no_account_is_named() {
+    let r = Register::new("statusline-env");
+    r.ok(&["account", "add", "claude-felix", "--engine", "claude-code"]);
+    let env = [("STABLEHAND_ACCOUNT", "claude-felix")];
+    let (code, line) = r.raw(&["statusline"], &env, RATE_LIMITS);
+    assert_eq!(
+        (code, line.as_str()),
+        (0, "claude-felix · 5h 24% · 7d 41%\n")
+    );
+    let (code, line) = r.raw(&["statusline"], &env, "{}");
+    assert_eq!(
+        (code, line.as_str()),
+        (0, "claude-felix · 5h 24% · 7d 41%\n")
+    );
+    // --account outranks it.
+    r.ok(&["account", "add", "claude-other", "--engine", "claude-code"]);
+    let (code, line) = r.raw(&["statusline", "--account", "claude-other"], &env, "{}");
+    assert_eq!((code, line.as_str()), (0, "claude-other\n"));
+}
+
+#[test]
+fn with_no_account_the_line_is_empty_of_stablehand_and_books_nothing() {
+    let r = Register::new("statusline-none");
+    r.ok(&["account", "add", "claude-felix", "--engine", "claude-code"]);
+    for env in [&[][..], &[("STABLEHAND_ACCOUNT", "")][..]] {
+        let (code, line) = r.raw(&["statusline"], env, RATE_LIMITS);
+        assert_eq!((code, line.as_str()), (0, "\n"));
+        let (code, line) = r.raw(&["statusline", "--then", "cat"], env, RATE_LIMITS);
+        assert_eq!((code, line.as_str()), (0, RATE_LIMITS));
+    }
+    assert_eq!(status(&r, "claude-felix")["windows"], json!([]));
+    assert_eq!(r.stderr(), "");
 }

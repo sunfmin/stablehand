@@ -543,3 +543,18 @@ says = '''Such an account is asked
   `--now`.'''
 source = "README.md:171"
 check = ["test"]
+
+# tests/run.rs a_command_starts_on_its_engine_s_pick_its_login_in_its_environment_alone
+[[promise]]
+name = "run-names-the-child-s-account"
+says = '''The child's environment names its account, `STABLEHAND_ACCOUNT=<account>`'''
+source = "README.md:371"
+check = ["test"]
+
+# tests/statusline.rs the_account_is_stablehand_run_s_where_no_account_is_named,
+# with_no_account_the_line_is_empty_of_stablehand_and_books_nothing
+[[promise]]
+name = "statusline-account-from-run"
+says = '''With no account, nothing is booked and stablehand's line is empty'''
+source = "README.md:265"
+check = ["test"]

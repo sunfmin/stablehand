@@ -254,16 +254,22 @@ stablehand status                   # each account's windows and their pace
 ## Claude Code's status line
 
 ```json
-"statusLine": {"type": "command", "command": "stablehand statusline --account claude-felix --then ~/.claude/statusline.sh"}
+"statusLine": {"type": "command", "command": "stablehand statusline --then ~/.claude/statusline.sh"}
 ```
 
 - Set in `~/.claude/settings.json`, Claude Code runs it with its session's
   JSON on stdin; its `rate_limits` (`five_hour`, `seven_day`:
-  `used_percentage`, `resets_at`) are booked as a reading of `--account`,
-  as `read` books one, when they differ from the books' latest entry.
+  `used_percentage`, `resets_at`) are booked as a reading of `--account`
+  (default `$STABLEHAND_ACCOUNT`, which `stablehand run` sets in the session
+  it starts), as `read` books one, when they differ from the books' latest
+  entry. With no account, nothing is booked and stablehand's line is empty
+  (with `--then`, the person's line alone).
   Booking is local: it asks no engine and reaches no network (a few
   milliseconds a run).
-- It prints one line for the bar, `claude-felix · 5h 24% · 7d 41%`. With
+- It prints one line for the bar, `claude-felix · 5h 24% · 7d 41%`. Where
+  stdin carries no `rate_limits` (a `claude setup-token` session's never
+  does), the windows are the books' latest, as `status` has them, each
+  with its age past ten minutes (`7d 70% (3h ago)`). With
   `--then <cmd>`, `sh -c <cmd>` gets the same stdin byte for byte, and its
   line and exit are the answer, so a person's own status line keeps working.
 - It never refuses: an account not kept, or not claude-code's, books
@@ -362,6 +368,8 @@ stablehand run --home /tmp/s1 codex  # a session home of its own, the login link
   home variable is `<dir>` and a bound login's files are linked into it;
   refused for a bound claude-code account, since Claude Code replaces a
   linked login with a copy when it refreshes (docs/adr/0002).
+- The child's environment names its account, `STABLEHAND_ACCOUNT=<account>`
+  (a name, never a value), so its status line shows that account's windows.
 - Where the command names no model, the engine's model flag and the picked
   model are added (`claude --model opus -p hi`); dsh takes none.
 - stderr gets one line of what was chosen, never a value. run waits for the
