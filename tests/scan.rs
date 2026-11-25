@@ -388,12 +388,13 @@ fn a_token_of_a_login_s_personal_organization_is_its_copy_and_list_says_so() {
         &cmd,
     ]);
     let claude = format!("{home}/.claude");
-    let machine = r.ok(&["account", "scan"])["machine"].clone();
+    // The machine the register's runs are on (tests/support).
+    let here = "mini";
     let bound = [
         "--engine",
         "claude-code",
         "--machine",
-        machine.as_str().unwrap(),
+        here,
         "--home",
         &claude,
     ];
@@ -506,6 +507,15 @@ fn a_token_of_a_login_s_personal_organization_is_its_copy_and_list_says_so() {
     let why = out["tokens"][0]["identity_unknown"].as_str().unwrap();
     assert!(why.contains("HTTP 401") && why.contains("refused"), "{why}");
     assert_eq!(out["tokens"][0]["same_as_a_login"], "unknown");
+    // One answered naming no organization says its answer changed, and how to check.
+    let unnamed = [("HOME", home.as_str()), ("FAKE_CURL_FAULT", "unnamed")];
+    let out = r.run_with(&["account", "scan"], &unnamed, "").json;
+    let why = out["tokens"][0]["identity_unknown"].as_str().unwrap();
+    assert!(
+        why.contains("HTTP 200 naming no organization")
+            && why.contains("truefit contract --real claude-code-organization"),
+        "{why}"
+    );
 
     // --add registers no copy, and keeps the hashes the old register lacked.
     let added = scan(&["--add"]);
@@ -536,7 +546,6 @@ fn a_token_of_a_login_s_personal_organization_is_its_copy_and_list_says_so() {
     // pick passes over the copy while its account is on here
     // (stablehand#32); accounts of another or no known identity are
     // judged as before.
-    let here = machine.as_str().unwrap();
     let pick = |on: &str| r.ok(&["pick", "--engine", "claude-code", "--machine", on]);
     assert_eq!(pick(here)["account"], "claude-code-2");
     let lifts = "2099-01-01T00:00:00Z";

@@ -1,18 +1,101 @@
 {
+  "039a69eb9b10": {
+    "mark": "promise",
+    "sentence": "`status` answers each account's windows (each with its `group` where the engine groups them, and the `models` whose use it counts where the engine names them), used %, resets at, source (`read` or `limit`), `stale`, and pace: `tight` (at its recent rate it runs out before it resets), `spare` (it resets within a quarter of its length with 20% or more left), `used_up`, or `steady`. The account's pace is its worst window's.",
+    "source": "README.md:254"
+  },
   "0c79334f1611": {
     "mark": "promise",
     "sentence": "`status` answers each account's windows (each with its `group` where the engine groups them), used %, resets at, source (`read` or `limit`), `stale`, and pace: `tight` (at its recent rate it runs out before it resets), `spare` (it resets within a quarter of its length with 20% or more left), `used_up`, or `steady`. The account's pace is its worst window's.",
     "source": "README.md:61"
+  },
+  "1448c5e5efbb": {
+    "mark": "promise",
+    "sentence": "stderr gets one line of what was chosen, never a value.",
+    "source": "README.md:428"
+  },
+  "185b63601a21": {
+    "mark": "promise",
+    "sentence": "At a step with a model (agy's `claude-opus-5-5-high`, as `agy models` lists it), an account whose windows are grouped by model is judged only by the windows of the group holding it, and those in no group, so one agy account is two pools: its Gemini group used up, the walk falls to its Claude model.",
+    "source": "README.md:380"
   },
   "20ee0a5e4e42": {
     "mark": "not",
     "sentence": "stablehand is being built: today it says only its version (`stablehand --version`). Its commands land one ticket at a time, each described here as it lands.",
     "source": "README.md:7"
   },
+  "24d140306d85": {
+    "mark": "promise",
+    "sentence": "It never refuses: an account not kept, or not claude-code's, books nothing, and the line says why (with `--then`, stderr does).",
+    "source": "README.md:299"
+  },
+  "2e9365aa7644": {
+    "mark": "promise",
+    "sentence": "agy's reader runs `agy -p /usage --output-format json` in the account's home (`HOME` set to `--home`; the user's own without it), on its machine only: no model turn, no conversation made.",
+    "source": "README.md:205"
+  },
+  "33ad5eeaaa53": {
+    "mark": "not",
+    "sentence": "A setup token is refused `user:profile`, but every answer to it names its organization (`anthropic-organization-id`), even the refusal of an empty `POST /v1/messages`, which spends nothing.",
+    "source": "README.md:116",
+    "why": "how Anthropic's API answers a setup token (another system's behaviour, held by the claude-code-question contract), not stablehand's"
+  },
+  "45a2d71a44e3": {
+    "mark": "promise",
+    "sentence": "**Bound**, on its machine only: the engine's login file in the account's home (`path`) and where the engine's home holds it (`as`), one JSON object with or without `--json`; the caller links `<its home>/<as>` to `path`, so a login the engine refreshes is refreshed in the account's home too.",
+    "source": "README.md:153"
+  },
+  "4710d4706f73": {
+    "mark": "promise",
+    "sentence": "None is picked on an account a limit holds on, until it lifts; any of whose windows is the stop percent used (`--stop-percent`, 90 unless it says), until that window resets; or one of whose windows, at its present rate shared by the sessions running and one more, runs out before it resets (a reading over two hours old, or a window under half used, runs on at no rate). How many sessions run on an account never passes it over by itself: they count only in that rate.",
+    "source": "README.md:365"
+  },
+  "4e7133a1ce37": {
+    "mark": "promise",
+    "sentence": "An identity it cannot read (a format it does not know; dsh's file holds none) is said as such, `identity_unknown`, never guessed.",
+    "source": "README.md:114"
+  },
+  "5f8ccb1b6149": {
+    "mark": "promise",
+    "sentence": "Of the rest, the one with the most left of its most used window; one with no reading in force, or only stale ones, after every one with one; of equals, the first by name.",
+    "source": "README.md:373"
+  },
+  "6ab7f4a0e07d": {
+    "mark": "not",
+    "sentence": "It is a preference only: the command an engine starts with is its kept command's (below); its guard, and which checkout keeps to which engine, stay the caller's (factorium's pins).",
+    "source": "README.md:316",
+    "why": "where the order's job ends: what a kept command is, and what stays the caller's (factorium's pins); the kept command's use is its own promise under 'Each engine's command' and run's"
+  },
+  "6d7add4957f9": {
+    "mark": "promise",
+    "sentence": "kimi's reader asks `api.kimi.com/coding/v1/usages`, as Kimi Code's own `/usage` does, with the account's bearer: a portable login's from its `--token-command`, a bound one's from `<home>/credentials/kimi-code.json` (its `KIMI_CODE_HOME`; `~/.kimi-code` without `--home`). Its windows are `limit_5h` and any other it lists (`limit_7d`, `limit_month_total`, `limit_month_code`). A bound login's token lasts 15 minutes and only a kimi session refreshes it: read long after one, it is refused (HTTP 401), said with that fix.",
+    "source": "README.md:236"
+  },
   "75f5834f48d7": {
     "mark": "promise",
     "sentence": "The rules are Guild's ledger's: a reading over two hours old, or a window under half used, is never tight on its own.",
     "source": "README.md:66"
+  },
+  "83f576dfaf45": {
+    "mark": "not",
+    "sentence": "One home for agent engine accounts: how each logs in, where it may run, and how much of its usage windows is left; and, from that and the order of engines and models kept beside them (`pick`), what one more session may start on now: its engine, model and account; and how this host starts each engine, its program and the flags it always takes (`command`). The rest of the session, its own arguments, its home and its protocol, is the caller's.",
+    "source": "README.md:3",
+    "why": "the README's opening: what stablehand is for, and what it leaves to its caller; a description, nothing a run could break"
+  },
+  "8570c6660317": {
+    "mark": "promise",
+    "sentence": "scan looks in each engine's own default home (`~/.claude`, `~/.codex`, `~/.pi/agent`, `~/.kimi-code`, agy's `$HOME`, `~/.grok`, `~/.dsh`) and in each `--path`, never in a home another program keeps for its own use (factorium's `~/.agent-accounts`, Guild's `~/.guild/engines`) unless a `--path` names it.",
+    "source": "README.md:92"
+  },
+  "8c320f2bbf7e": {
+    "mark": "promise",
+    "sentence": "It only reads, and logs nothing in.",
+    "source": "README.md:148"
+  },
+  "9c9241a7b293": {
+    "mark": "promise",
+    "sentence": "`--running <account>=<n>,…` is the caller's count of the sessions now running on each account (factorium knows its workers), counted beside the sessions `stablehand run` keeps; across machines only as the caller counts.",
+    "source": "README.md:376"
   },
   "a08c8f71737f": {
     "mark": "promise",
@@ -24,10 +107,45 @@
     "sentence": "**Portable**: the engine's token variable (claude-code: `CLAUDE_CODE_OAUTH_TOKEN`), its value the token sesame keeps (`sesame token stablehand-<name> --json`). **Bound**: the engine's home variable set to the account's home, on its machine only.",
     "source": "README.md:79"
   },
+  "a717e96a5d96": {
+    "mark": "promise",
+    "sentence": "The default is a released stablehand's only: a development build (`cargo build`, any version with `+`) refuses unless `STABLEHAND_CONFIG_DIR` is set, as its schema steps may not be the released ones.",
+    "source": "README.md:40"
+  },
+  "a7b551df0ce8": {
+    "mark": "promise",
+    "sentence": "`credential` hands a session's caller an account's login and nothing else of it: the session's home is the caller's own (factorium builds a kept home per engine), so a person's settings, hooks or skills in the account's home never reach a worker.",
+    "source": "README.md:144"
+  },
+  "ad0d4a7594f1": {
+    "mark": "promise",
+    "sentence": "Without `--add` it writes nothing: it answers each login found (engine, home, logged in at, identity's hash, `new`, `registered` or `copy`, and the account: the one it is, or is a copy of, or the name `--add` gives, `<engine>`, or `<engine>-2` … when the name is kept). An account kept is never renamed.",
+    "source": "README.md:126"
+  },
+  "b253070fe11d": {
+    "mark": "promise",
+    "sentence": "How this host starts each engine: its program, then the arguments it always takes, split as `sh` would and never run through a shell.",
+    "source": "README.md:328"
+  },
+  "ba3c7442ee28": {
+    "mark": "promise",
+    "sentence": "One no group of which holds the model is judged by every window, and named in the answer's `model_in_no_group`; an engine that groups no window is judged as without a model.",
+    "source": "README.md:384"
+  },
+  "ceb874047196": {
+    "mark": "promise",
+    "sentence": "Its token lasts hours: an expired one is refreshed by grok itself (`grok models`, no model turn). Its windows are the credit period's, `weekly`: the account's, and one per product in its `group` (`Api`, `GrokBuild`): a share of the account's credits, never paced on its own.",
+    "source": "README.md:247"
+  },
   "d44ebf590010": {
     "mark": "not",
     "sentence": "A login is the engine's own (docs/adr/0001): stablehand runs the engine's command, never a vendor's OAuth client.",
     "source": "README.md:47"
+  },
+  "d46120914bb8": {
+    "mark": "promise",
+    "sentence": "It reads mytokens too, when it is on PATH, from `mytokens list` alone, which names each entry's fields and never prints a value: an `agent-account-<name>` entry with an engine's token field (`CLAUDE_CODE_OAUTH_TOKEN`) is a portable account `<name>`, its `--token-command` `mytokens get agent-account-<name> --field <that field>`; one with no token (a bound one, its `MACHINE`) is `skipped`. A claude-code token is read only to ask its organization, never said or kept.",
+    "source": "README.md:98"
   },
   "d9ec30f93c7c": {
     "mark": "promise",
@@ -38,5 +156,10 @@
     "mark": "promise",
     "sentence": "mytokens is only read: nothing in it is changed or removed.",
     "source": "README.md:83"
+  },
+  "f56cacc4183d": {
+    "mark": "promise",
+    "sentence": "`account edit` changes only the terms given; `--unset machine|expires|home|token-command` clears one.",
+    "source": "README.md:35"
   }
 }
