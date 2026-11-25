@@ -346,8 +346,8 @@ sources = ["README.md"]
 # tests/register.rs add_list_show_edit_and_rm
 [[promise]]
 name = "edit-changes-only-the-terms-given"
-says = '''`account edit` changes only the terms given; `--unset machine|sessions|expires|home|token-command` clears one.'''
-source = "README.md:31"
+says = '''`account edit` changes only the terms given; `--unset machine|expires|home|token-command` clears one.'''
+source = "README.md:35"
 check = ["test"]
 
 # tests/register.rs refusals_name_the_fix_and_write_nothing
@@ -380,12 +380,12 @@ source = "README.md:56"
 check = ["test"]
 
 # tests/usage.rs read_books_a_bound_login_s_windows_once_an_hour_unless_now,
-# a_portable_login_is_read_with_its_command_s_token_and_a_setup_token_gets_a_limit;
+# an_agy_account_is_read_in_its_home_a_window_per_model_group (`models`);
 # src/books_tests.rs the_account_s_pace_is_its_worst_window_s and the pace tests
 [[promise]]
 name = "status-windows-and-pace"
-says = '''`status` answers each account's windows (each with its `group` where the engine groups them), used %, resets at, source (`read` or `limit`), `stale`, and pace: `tight` (at its recent rate it runs out before it resets), `spare` (it resets within a quarter of its length with 20% or more left), `used_up`, or `steady`. The account's pace is its worst window's.'''
-source = "README.md:61"
+says = '''`status` answers each account's windows (each with its `group` where the engine groups them, and the `models` whose use it counts where the engine names them), used %, resets at, source (`read` or `limit`), `stale`, and pace: `tight` (at its recent rate it runs out before it resets), `spare` (it resets within a quarter of its length with 20% or more left), `used_up`, or `steady`. The account's pace is its worst window's.'''
+source = "README.md:254"
 check = ["test"]
 
 # src/books_tests.rs a_reading_older_than_two_hours_makes_no_window_tight_on_its_own,
@@ -604,4 +604,172 @@ name = "statusline-one-detached-read"
 says = '''One such read of an account runs at
   a time'''
 source = "README.md:272"
+check = ["test"]
+
+# src/store.rs only_a_released_build_opens_the_host_store_unasked
+[[promise]]
+name = "a-development-build-opens-no-host-store-unasked"
+says = '''a development build (`cargo build`, any version with `+`) refuses unless `STABLEHAND_CONFIG_DIR` is set'''
+source = "README.md:40"
+check = ["test"]
+
+# tests/scan.rs scan_finds_one_account_per_subscription_and_add_registers_the_new_ones
+# (~/.agent-accounts and ~/.guild/engines hold a login it never answers),
+# a_kept_home_tells_its_identity_and_what_is_not_the_same_login_is_not_taken_for_it
+[[promise]]
+name = "scan-looks-in-no-home-of-another-program-s"
+says = '''scan looks in each engine's own default home (`~/.claude`, `~/.codex`, `~/.pi/agent`, `~/.kimi-code`, agy's `$HOME`, `~/.grok`, `~/.dsh`) and in each `--path`, never in a home another program keeps for its own use (factorium's `~/.agent-accounts`, Guild's `~/.guild/engines`) unless a `--path` names it.'''
+source = "README.md:92"
+check = ["test"]
+
+# tests/scan.rs scan_finds_one_account_per_subscription_and_add_registers_the_new_ones
+# (mytokens is called `list` and the one token's `get` alone; no secret said
+# or in the register); src/scan.rs entries_are_the_agent_account_lines_with_their_fields
+[[promise]]
+name = "scan-reads-mytokens-from-its-list-alone"
+says = '''It reads mytokens too, when it is on PATH, from `mytokens list` alone, which names each entry's fields and never prints a value: an `agent-account-<name>` entry with an engine's token field (`CLAUDE_CODE_OAUTH_TOKEN`) is a portable account `<name>`, its `--token-command` `mytokens get agent-account-<name> --field <that field>`; one with no token (a bound one, its `MACHINE`) is `skipped`. A claude-code token is read only to ask its organization, never said or kept.'''
+source = "README.md:98"
+check = ["test"]
+
+# tests/scan.rs scan_finds_one_account_per_subscription_and_add_registers_the_new_ones
+# (kimi's opaque token: identity null, identity_unknown says why),
+# a_kept_home_tells_its_identity_and_what_is_not_the_same_login_is_not_taken_for_it
+[[promise]]
+name = "an-unread-identity-is-said-never-guessed"
+says = '''An identity it cannot read (a format it does not know; dsh's file holds none) is said as such, `identity_unknown`, never guessed.'''
+source = "README.md:114"
+check = ["test"]
+
+# tests/scan.rs scan_finds_one_account_per_subscription_and_add_registers_the_new_ones
+# (the list unchanged by a dry scan; grok-2 beside a kept grok; a second
+# --add adds and renames nothing)
+[[promise]]
+name = "scan-without-add-writes-nothing-and-renames-no-account"
+says = '''Without `--add` it writes nothing: it answers each login found (engine, home, logged in at, identity's hash, `new`, `registered` or `copy`, and the account: the one it is, or is a copy of, or the name `--add` gives, `<engine>`, or `<engine>-2` … when the name is kept). An account kept is never renamed.'''
+source = "README.md:126"
+check = ["test"]
+
+# tests/credential.rs a_bound_account_answers_its_login_files_not_its_home,
+# a_portable_account_starts_with_its_token_from_its_command
+[[promise]]
+name = "credential-hands-the-login-alone"
+says = '''`credential` hands a session's caller an account's login and nothing else of it'''
+source = "README.md:144"
+check = ["test"]
+
+# tests/credential.rs each_engine_s_login_file_is_both_what_is_linked_and_what_logs_a_home_in
+# (no engine ran)
+[[promise]]
+name = "credential-only-reads"
+says = '''It only reads, and logs nothing in.'''
+source = "README.md:148"
+check = ["test"]
+
+# tests/credential.rs a_bound_account_answers_its_login_files_not_its_home,
+# each_engine_s_login_file_is_both_what_is_linked_and_what_logs_a_home_in,
+# an_account_no_session_may_start_on_is_refused_with_its_fix (bound elsewhere)
+[[promise]]
+name = "credential-bound-answers-its-login-files-here-only"
+says = '''**Bound**, on its machine only: the engine's login file in the account's home (`path`) and where the engine's home holds it (`as`), one JSON object with or without `--json`'''
+source = "README.md:153"
+check = ["test"]
+
+# tests/usage.rs an_agy_account_is_read_in_its_home_a_window_per_model_group,
+# an_agy_account_portable_or_bound_elsewhere_is_not_run
+[[promise]]
+name = "agy-is-read-in-its-home-on-its-machine-no-turn"
+says = '''agy's reader runs `agy -p /usage --output-format json` in the account's home (`HOME` set to `--home`; the user's own without it), on its machine only: no model turn, no conversation made.'''
+source = "README.md:205"
+check = ["test"]
+
+# tests/kimi.rs read_and_status_book_a_bound_kimi_login_s_usages,
+# a_portable_kimi_login_is_read_with_its_command_s_token,
+# a_refused_kimi_token_keeps_the_last_windows_stale_and_waits_the_hour;
+# src/readers/kimi.rs a_refusal_names_its_fix
+[[promise]]
+name = "kimi-is-read-with-the-account-s-bearer"
+says = '''kimi's reader asks `api.kimi.com/coding/v1/usages`, as Kimi Code's own `/usage` does, with the account's bearer: a portable login's from its `--token-command`, a bound one's from `<home>/credentials/kimi-code.json` (its `KIMI_CODE_HOME`; `~/.kimi-code` without `--home`).'''
+source = "README.md:236"
+check = ["test"]
+
+# tests/usage.rs grok_s_credits_are_booked_its_weekly_window_and_one_per_product
+# (an expired token: `grok models` alone runs; the products' windows never
+# tight); src/readers/grok.rs the_period_is_a_window_and_each_product_one_in_its_group
+[[promise]]
+name = "grok-refreshes-by-itself-and-a-product-is-never-paced"
+says = '''an expired one is refreshed by grok itself (`grok models`, no model turn). Its windows are the credit period's, `weekly`: the account's, and one per product in its `group` (`Api`, `GrokBuild`): a share of the account's credits, never paced on its own.'''
+source = "README.md:247"
+check = ["test"]
+
+# tests/statusline.rs an_account_it_cannot_book_still_gets_a_line
+[[promise]]
+name = "statusline-never-refuses"
+says = '''It never refuses: an account not kept, or not claude-code's, books nothing, and the line says why (with `--then`, stderr does).'''
+source = "README.md:299"
+check = ["test"]
+
+# src/command.rs a_kept_command_is_its_engine_s_program_and_names_no_model
+# ('a b' one argument); tests/run.rs
+# an_engine_s_command_is_kept_shown_and_dropped_and_a_foreign_one_refused
+# (an open quote refused), run_starts_the_engine_s_kept_command_its_arguments_before_the_person_s
+[[promise]]
+name = "a-kept-command-is-split-as-sh-and-run-by-no-shell"
+says = '''its program, then the arguments it always takes, split as `sh` would and never run through a shell.'''
+source = "README.md:328"
+check = ["test"]
+
+# src/pick_tests.rs a_limit_that_holds_takes_no_session_until_it_lifts,
+# an_account_ninety_percent_used_of_a_window_takes_no_new_session_until_it_resets,
+# the_stop_is_a_setting, the_sessions_running_share_the_rate_one_more_adds_one_share,
+# a_reading_older_than_two_hours_runs_out_of_nothing_on_its_own,
+# a_night_s_burst_in_a_week_under_half_used_runs_out_of_nothing,
+# any_number_running_is_judged_only_by_the_windows_and_their_pace;
+# tests/usage.rs pick_stops_an_account_at_its_stop_percent_and_one_whose_window_would_run_out
+[[promise]]
+name = "pick-passes-over-a-limit-a-stop-and-a-run-out"
+says = '''None is picked on an account a limit holds on, until it lifts; any of whose windows is the stop percent used (`--stop-percent`, 90 unless it says), until that window resets; or one of whose windows, at its present rate shared by the sessions running and one more, runs out before it resets (a reading over two hours old, or a window under half used, runs on at no rate). How many sessions run on an account never passes it over by itself: they count only in that rate.'''
+source = "README.md:365"
+check = ["test"]
+
+# src/pick_tests.rs of_those_that_may_take_one_the_most_left_is_picked_and_no_reading_last,
+# an_account_read_only_stale_comes_after_every_one_read_fresh
+[[promise]]
+name = "pick-takes-the-most-left-no-reading-last-then-by-name"
+says = '''Of the rest, the one with the most left of its most used window; one with no reading in force, or only stale ones, after every one with one; of equals, the first by name.'''
+source = "README.md:373"
+check = ["test"]
+
+# tests/run.rs a_session_is_counted_while_it_runs_and_signals_pass_through;
+# tests/usage.rs pick_takes_the_engine_s_usable_accounts_and_passes_over_each_by_guild_s_rules
+[[promise]]
+name = "pick-counts-running-beside-run-s-sessions"
+says = '''`--running <account>=<n>,…` is the caller's count of the sessions now running on each account (factorium knows its workers), counted beside the sessions `stablehand run` keeps'''
+source = "README.md:376"
+check = ["test"]
+
+# src/pick_tests.rs a_model_is_judged_by_its_group_s_windows_and_those_in_no_group,
+# a_model_s_windows_carry_a_limit_on_them_and_not_one_on_another_group;
+# tests/usage.rs pick_of_a_model_judges_an_agy_account_by_its_group_s_windows,
+# pick_walks_the_order_and_a_used_up_gemini_group_falls_to_agy_s_opus
+[[promise]]
+name = "a-model-is-judged-by-its-group-s-windows"
+says = '''an account whose windows are grouped by model is judged only by the windows of the group holding it, and those in no group'''
+source = "README.md:380"
+check = ["test"]
+
+# src/pick_tests.rs ungrouped_windows_know_no_model_and_every_one_decides;
+# tests/usage.rs pick_of_a_model_judges_an_agy_account_by_its_group_s_windows
+# (gpt-9 in model_in_no_group), pick_of_a_model_leaves_an_engine_with_no_groups_as_it_was
+[[promise]]
+name = "a-model-in-no-group-is-judged-by-every-window"
+says = '''One no group of which holds the model is judged by every window, and named in the answer's `model_in_no_group`; an engine that groups no window is judged as without a model.'''
+source = "README.md:384"
+check = ["test"]
+
+# tests/run.rs a_command_starts_on_its_engine_s_pick_its_login_in_its_environment_alone
+# (stderr is the one line; no token on it)
+[[promise]]
+name = "run-says-its-choice-in-one-line-never-a-value"
+says = '''stderr gets one line of what was chosen, never a value.'''
+source = "README.md:428"
 check = ["test"]
