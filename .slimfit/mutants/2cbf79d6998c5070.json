@@ -1,0 +1,15 @@
+{
+  "tree": "8869aa0861ee194695933f592d87cad02846d7c1+d1fba762150c532c",
+  "picker": "codex:01a21027-25d7-7eb2-8903-aaba96e3348e:default",
+  "author": "claude-code:f4cf0675-7972-537e-8a5e-27885271b80a:opus",
+  "picks": {
+    "rust": [
+      {
+        "name": "src/statusline.rs:105:27: replace || with && in book",
+        "why": "The tests compare displayed status, so duplicate or empty readings could be appended without changing the asserted windows.",
+        "outcome": "killed",
+        "first_outcome": "killed"
+      }
+    ]
+  }
+}
