@@ -122,12 +122,6 @@ pub fn merged(
     kept
 }
 
-/// A kept command as `command show` answers it: its words joined as `sh`
-/// splits them back.
-pub fn shown(words: &[String]) -> String {
-    shell_words::join(words)
-}
-
 /// The line `run` starts, and whether `kept` (the engine's kept command,
 /// empty for none) is in it: with no command, `kept`, else the engine's own
 /// start line; a command of the engine's program gets `kept`'s arguments
@@ -141,24 +135,21 @@ pub fn line(
     kept: &[String],
     model: Option<&str>,
 ) -> (Vec<String>, bool) {
-    let (mut line, used) = match (command.split_first(), kept.split_first()) {
-        (None, Some(_)) => (kept.to_vec(), true),
-        (None, None) => (
-            engine.start().iter().map(|s| s.to_string()).collect(),
-            false,
-        ),
-        (Some((program, args)), Some((kept_program, kept_args)))
-            if Engine::of_program(program) == Some(engine) =>
-        {
-            let program = if program.contains('/') {
-                program
-            } else {
-                kept_program
-            };
-            let words = [std::slice::from_ref(program), kept_args, args].concat();
-            (words, true)
+    let used = !kept.is_empty()
+        && command
+            .first()
+            .is_none_or(|p| Engine::of_program(p) == Some(engine));
+    let mut line: Vec<String> = match (used, command.split_first()) {
+        (true, Some((program, args))) => {
+            let mut line = [kept, args].concat();
+            if program.contains('/') {
+                line[0] = program.clone();
+            }
+            line
         }
-        (Some(_), _) => (command.to_vec(), false),
+        (true, None) => kept.to_vec(),
+        (false, None) => engine.start().iter().map(|s| s.to_string()).collect(),
+        (false, Some(_)) => command.to_vec(),
     };
     let flag = engine.model_flags().first();
     if let (Some(model), Some(flag)) = (model, flag) {
@@ -262,16 +253,5 @@ mod tests {
             Ok((Grok, s(&["/opt/grok", "--always-approve", "a b"])))
         );
         assert_eq!(kept("codex="), Ok((Codex, vec![])));
-        assert_eq!(shown(&s(&["/opt/grok", "a b"])), "/opt/grok 'a b'");
-        for (arg, part) in [
-            ("x", "<engine>=<command>"),
-            ("nope=claude", "no engine `nope`"),
-            ("codex=claude", "not codex's program `codex`"),
-            ("claude-code=claude \"x", "sh cannot split"),
-            ("kimi=kimi -m k2", "names a model (k2)"),
-        ] {
-            let err = kept(arg).unwrap_err();
-            assert!(err.contains(part), "{arg}: {err}");
-        }
     }
 }

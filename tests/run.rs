@@ -389,6 +389,7 @@ fn an_engine_s_command_is_kept_shown_and_dropped_and_a_foreign_one_refused() {
         ("claude-code", "<engine>=<command>"),
         ("claude-code=claude 'open", "sh cannot split"),
         ("claude-code=claude --model opus", "names a model"),
+        ("kimi=kimi -m k2", "names a model (k2)"),
     ] {
         let out = r.run(&["command", "set", arg]);
         assert_eq!(out.code, 1, "{arg}: {}", out.json);

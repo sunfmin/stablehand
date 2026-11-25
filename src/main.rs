@@ -748,7 +748,7 @@ fn run(cmd: Register) -> Result<Value, Refused> {
             let shown: serde_json::Map<String, Value> = store
                 .commands()?
                 .into_iter()
-                .map(|(e, words)| (e.name(), json!(command::shown(&words))))
+                .map(|(e, words)| (e.name(), json!(shell_words::join(&words))))
                 .collect();
             Ok(json!({ "commands": shown }))
         }
