@@ -1,0 +1,27 @@
+{
+  "tree": "88efeb0135b4577bc0a2fa5b18c967a70caa2912+d1fba762150c532c",
+  "picker": "codex:01a2102d-2e34-77b1-b2bf-a0404ad4fc01:default",
+  "author": "claude-code:f4cf0675-7972-537e-8a5e-27885271b80a:opus",
+  "picks": {
+    "rust": [
+      {
+        "name": "src/statusline.rs:21:28: replace * with +",
+        "why": "The age tests derive their boundary from FRESH_SECS, and the refresh test checks only brand-new readings, so a 70-second cutoff could pass.",
+        "outcome": "killed",
+        "first_outcome": "killed"
+      },
+      {
+        "name": "src/books.rs:479:49: replace + with * in read_after",
+        "why": "The status-line refresh test covers a successful read, leaving open whether a failed attempt becomes eligible for retry after ten minutes.",
+        "outcome": "killed",
+        "first_outcome": "killed"
+      },
+      {
+        "name": "src/books.rs:478:54: replace + with * in read_after",
+        "why": "This makes an existing reading eligible for refresh one second early, and the refresh test never checks a booked reading at the cutoff.",
+        "outcome": "killed",
+        "first_outcome": "killed"
+      }
+    ]
+  }
+}
