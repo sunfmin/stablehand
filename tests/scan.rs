@@ -1,5 +1,5 @@
 //! `account scan`, through the binary, over a fixture home tree and the
-//! stand-in of mytokens.
+//! stand-ins of mytokens and curl.
 mod support;
 
 use serde_json::{Value, json};
@@ -22,6 +22,14 @@ const SECRETS: &[&str] = &[
     TOKEN,
 ];
 const TOKEN: &str = "sk-ant-oat01-portable-SECRET";
+
+/// A register whose PATH has curl's stand-in (tests/contract/fake-curl) too.
+fn register(name: &str) -> Register {
+    let r = Register::new(name);
+    let fake = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/contract/fake-curl");
+    std::os::unix::fs::symlink(fake, r.path("bin/curl")).unwrap();
+    r
+}
 
 /// `rel` under `dir` holding `text`, written at `at` seconds since 1970.
 fn file(dir: &str, rel: &str, text: &str, at: Option<u64>) {
@@ -95,7 +103,7 @@ fn said(out: &Value) -> (Vec<Value>, Vec<Value>) {
 
 #[test]
 fn scan_finds_one_account_per_subscription_and_add_registers_the_new_ones() {
-    let r = Register::new("scan");
+    let r = register("scan");
     let (home, claude) = tree(&r);
     // A grok account kept elsewhere: the one found here is named grok-2.
     let elsewhere = ["--machine", "studio", "--home", "/elsewhere"];
@@ -216,10 +224,11 @@ fn scan_finds_one_account_per_subscription_and_add_registers_the_new_ones() {
     );
     assert_eq!(tokens[0][1], "registered");
 
-    // scan read no secret: mytokens was only listed; no identity or token
-    // was said or kept.
+    // scan read no secret but the token, to ask its organization: mytokens
+    // was listed and asked that token alone; no identity or token was said
+    // or kept.
     for call in r.argv().lines() {
-        assert_eq!(call, "mytokens list");
+        assert!(call == "mytokens list" || call == felix, "{call}");
     }
     let register = std::fs::read(r.dir.join("stablehand.db")).unwrap();
     let shown = format!("{dry}{added}{again}{}", r.stderr());
@@ -243,7 +252,7 @@ fn scan_finds_one_account_per_subscription_and_add_registers_the_new_ones() {
 
 #[test]
 fn a_path_that_is_no_directory_is_refused_and_no_mytokens_is_said() {
-    let r = Register::new("scan-refused");
+    let r = register("scan-refused");
     let home = r.path("empty");
     std::fs::create_dir_all(&home).unwrap();
     let env = [("HOME", home.as_str()), ("PATH", "/usr/bin:/bin")];
@@ -270,7 +279,7 @@ fn a_path_that_is_no_directory_is_refused_and_no_mytokens_is_said() {
 
 #[test]
 fn a_kept_home_tells_its_identity_and_what_is_not_the_same_login_is_not_taken_for_it() {
-    let r = Register::new("scan-kept");
+    let r = register("scan-kept");
     let home = r.path("home");
     let codex = r#"{"tokens": {"account_id": "CHATGPT-SECRET"}}"#;
     file(&home, ".codex/auth.json", codex, None);
@@ -349,4 +358,195 @@ fn a_kept_home_tells_its_identity_and_what_is_not_the_same_login_is_not_taken_fo
     let out = r.run_with(&["account", "scan"], &env, "").json;
     let why = out["mytokens_unread"].as_str().unwrap();
     assert!(why.contains("could not start"), "{why}");
+}
+
+/// A register made before tokens told their organization, as on Felix's
+/// host: a portable `claude-code` token of the Claude Max subscription a
+/// bound `claude-code-2` (~/.claude) is logged in to.
+#[test]
+fn a_token_of_a_login_s_personal_organization_is_its_copy_and_list_says_so() {
+    let r = register("scan-org");
+    let home = r.path("home");
+    let team = r.path("team-claude");
+    let login = r#"{"claudeAiOauth": {"refreshToken": "sk-ant-ort01-refresh-SECRET"}}"#;
+    let max = r#"{"oauthAccount": {"accountUuid": "UUID-FELIX-SECRET", "organizationUuid": "ORG-MAX-SECRET", "organizationType": "claude_max"}}"#;
+    file(&home, ".claude/.credentials.json", login, Some(1_000));
+    file(&home, ".claude.json", max, None);
+    let theplant = r#"{"oauthAccount": {"accountUuid": "UUID-WORK-SECRET", "organizationUuid": "ORG-TEAM-SECRET", "organizationType": "claude_team"}}"#;
+    file(&team, ".credentials.json", login, Some(2_000));
+    file(&team, ".claude.json", theplant, None);
+    let max_token = "sk-ant-oat01-org-ORG-MAX-SECRET";
+    let team_token = "sk-ant-oat01-org-ORG-TEAM-SECRET";
+    let cmd = r.kept_token("agent-account-claude-code", max_token);
+    r.ok(&[
+        "account",
+        "add",
+        "claude-code",
+        "--engine",
+        "claude-code",
+        "--token-command",
+        &cmd,
+    ]);
+    let claude = format!("{home}/.claude");
+    let machine = r.ok(&["account", "scan"])["machine"].clone();
+    let bound = [
+        "--engine",
+        "claude-code",
+        "--machine",
+        machine.as_str().unwrap(),
+        "--home",
+        &claude,
+    ];
+    r.ok(&[&["account", "add", "claude-code-2"][..], &bound].concat());
+    r.mytokens_entry(
+        "agent-account-felix",
+        &[("CLAUDE_CODE_OAUTH_TOKEN", max_token)],
+    );
+    r.mytokens_entry(
+        "agent-account-theplant",
+        &[("CLAUDE_CODE_OAUTH_TOKEN", team_token)],
+    );
+    r.mytokens_entry(
+        "agent-account-theplant-jp",
+        &[("CLAUDE_CODE_OAUTH_TOKEN", team_token)],
+    );
+    r.mytokens_entry(
+        "agent-account-other",
+        &[("CLAUDE_CODE_OAUTH_TOKEN", "sk-ant-oat01-somewhere-SECRET")],
+    );
+
+    let copy_of = || {
+        let list = r.ok(&["account", "list"]);
+        let all = list["accounts"].as_array().unwrap().clone();
+        all.iter()
+            .map(|a| json!([a["name"], a["copy_of"]]))
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(
+        copy_of(),
+        [json!(["claude-code", null]), json!(["claude-code-2", null])]
+    );
+
+    let env = [("HOME", home.as_str())];
+    let scan = |extra: &[&str]| {
+        let args = [&["account", "scan", "--path", &team][..], extra].concat();
+        let out = r.run_with(&args, &env, "");
+        assert_eq!(out.code, 0, "{}", out.json);
+        out.json
+    };
+    let before = r.ok(&["account", "list"]);
+    let dry = scan(&[]);
+    assert_eq!(
+        r.ok(&["account", "list"]),
+        before,
+        "a scan without --add wrote"
+    );
+    let tokens: Vec<_> = dry["tokens"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|t| json!([t["entry"], t["status"], t["account"], t["same_as_a_login"]]))
+        .collect();
+    assert_eq!(
+        tokens,
+        [
+            json!([
+                "agent-account-claude-code/default",
+                "registered",
+                "claude-code",
+                "claude-code-2"
+            ]),
+            json!([
+                "agent-account-felix/default",
+                "copy",
+                "claude-code-2",
+                "claude-code-2"
+            ]),
+            json!(["agent-account-other/default", "new", "other", "unknown"]),
+            json!([
+                "agent-account-theplant-jp/default",
+                "new",
+                "theplant-jp",
+                "unknown"
+            ]),
+            json!([
+                "agent-account-theplant/default",
+                "new",
+                "theplant",
+                "unknown"
+            ]),
+        ]
+    );
+    let t = &dry["tokens"];
+    let warning = |i: usize| t[i]["warning"].as_str().unwrap_or_default().to_string();
+    assert!(warning(0).contains("one of them only"), "{}", warning(0));
+    assert!(
+        warning(1).contains("claude-code-2's subscription"),
+        "{}",
+        warning(1)
+    );
+    assert_eq!(t[2]["warning"], Value::Null);
+    assert!(
+        warning(3).contains("agent-account-theplant/default") && warning(3).contains("team"),
+        "{}",
+        warning(3)
+    );
+    assert!(
+        warning(4).contains("agent-account-theplant-jp/default"),
+        "{}",
+        warning(4)
+    );
+    assert_eq!(t[0]["identity"], t[1]["identity"]);
+    assert_eq!(t[3]["identity"], t[4]["identity"]);
+    assert_ne!(t[0]["identity"], t[2]["identity"]);
+
+    // A token refused its organization is not known, and is said why.
+    let refused = [("HOME", home.as_str()), ("FAKE_CURL_FAULT", "unauthorized")];
+    let out = r.run_with(&["account", "scan"], &refused, "").json;
+    let why = out["tokens"][0]["identity_unknown"].as_str().unwrap();
+    assert!(why.contains("HTTP 401") && why.contains("refused"), "{why}");
+    assert_eq!(out["tokens"][0]["same_as_a_login"], "unknown");
+
+    // --add registers no copy, and keeps the hashes the old register lacked.
+    let added = scan(&["--add"]);
+    let statuses: Vec<_> = added["tokens"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|t| t["status"].clone())
+        .collect();
+    assert_eq!(statuses, ["registered", "copy", "added", "added", "added"]);
+    assert_eq!(r.run(&["account", "show", "felix"]).code, 1);
+    let all = copy_of();
+    assert!(
+        all.contains(&json!(["claude-code", "claude-code-2"])),
+        "{all:?}"
+    );
+    assert!(all.contains(&json!(["claude-code-2", null])), "{all:?}");
+    assert!(all.contains(&json!(["theplant", null])), "{all:?}");
+    assert!(all.contains(&json!(["theplant-jp", null])), "{all:?}");
+    let shown = r.ok(&["account", "show", "claude-code"]);
+    assert_eq!(shown["account"]["copy_of"], "claude-code-2");
+    let bound = r.ok(&["account", "show", "claude-code-2"]);
+    assert_eq!(bound["account"]["organization_type"], "claude_max");
+    assert_eq!(bound["account"]["organization"], t[0]["identity"]);
+
+    let register = std::fs::read(r.dir.join("stablehand.db")).unwrap();
+    let said = format!("{dry}{added}{}", r.stderr());
+    for secret in [
+        "ORG-MAX-SECRET",
+        "ORG-TEAM-SECRET",
+        "UUID-FELIX-SECRET",
+        "UUID-WORK-SECRET",
+        "somewhere-SECRET",
+        "00000000-0000-4000-8000-000000000000",
+    ] {
+        assert!(!said.contains(secret), "{secret} said");
+        assert!(
+            !register
+                .windows(secret.len())
+                .any(|w| w == secret.as_bytes()),
+            "{secret} kept"
+        );
+    }
 }

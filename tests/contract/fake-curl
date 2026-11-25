@@ -5,7 +5,11 @@
 # readers ask as the real ones do: the body, a newline, the HTTP status.
 # api.anthropic.com/api/oauth/usage (truefit.toml, standin "claude-code"),
 # chatgpt.com/backend-api/wham/usage (standin "pi"),
-# cli-chat-proxy.grok.com/v1/billing (standin "grok").
+# cli-chat-proxy.grok.com/v1/billing (standin "grok"),
+# api.anthropic.com/v1/messages (standin "claude-code-organization"): the
+# recorded answer's (recorded/claude-code-organization.http) organization,
+# then its status, as `--write-out '\n%header{anthropic-organization-id}\n%{http_code}'`
+# prints them; a bearer `sk-ant-oat01-org-<id>` names the organization <id>.
 #
 # FAKE_CURL_FAULT: unreachable (curl exits 6), unauthorized (401), scope
 #   (403, a `claude setup-token` token). FAKE_CURL_BODY, FAKE_CURL_WHAM_BODY:
@@ -27,6 +31,23 @@ if [ "$FAKE_CURL_FAULT" = unreachable ]; then
     echo "curl: (6) Could not resolve host: $host" >&2
     exit 6
 fi
+case "$url:$FAKE_CURL_FAULT" in
+*/v1/messages:unauthorized)
+    printf '%s\n\n401' '{"type":"error","error":{"type":"authentication_error","message":"Invalid bearer token"},"request_id":"req_011CStandin"}'
+    exit 0
+    ;;
+*/v1/messages:*)
+    recorded="$(dirname "$(readlink -f "$0")")/recorded/claude-code-organization.http"
+    bearer=$(printf '%s' "$config" | sed -n 's/.*Authorization: Bearer \([^"]*\)".*/\1/p')
+    case "$bearer" in
+    sk-ant-oat01-org-*) org=${bearer#sk-ant-oat01-org-} ;;
+    *) org=$(sed -n 's/^anthropic-organization-id: //p' "$recorded") ;;
+    esac
+    status=$(head -n 1 "$recorded" | cut -d' ' -f2)
+    printf '%s\n%s\n%s' "$(tail -n 1 "$recorded")" "$org" "$status"
+    exit 0
+    ;;
+esac
 case "$host:$FAKE_CURL_FAULT" in
 chatgpt.com:unauthorized)
     printf '%s\n401' '{"detail":"Could not parse your authentication token. Please try signing in again."}'

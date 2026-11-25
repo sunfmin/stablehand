@@ -60,13 +60,18 @@ const MIGRATIONS: &[&str] = &[
     // Each engine's command `run` starts it with, one row: `[[engine,
     // [words…]]]` as JSON (docs/adr/0003); none kept on a fresh store.
     "CREATE TABLE engine_commands (id INTEGER PRIMARY KEY CHECK (id = 1), commands TEXT NOT NULL);",
+    // A bound claude-code login's organization, its hash and its type,
+    // which a portable token's identity is compared with (stablehand#31).
+    "
+    ALTER TABLE accounts ADD COLUMN organization TEXT;
+    ALTER TABLE accounts ADD COLUMN organization_type TEXT;
+",
 ];
 
 /// How long a process waits for another's write.
 const BUSY_TIMEOUT: Duration = Duration::from_secs(30);
 
-const COLUMNS: &str =
-    "name, engine, machine, expires, home, off_by, off_at, off_reason, token_command, identity";
+const COLUMNS: &str = "name, engine, machine, expires, home, off_by, off_at, off_reason, token_command, identity, organization, organization_type";
 
 pub struct Store {
     conn: Connection,
@@ -218,6 +223,8 @@ fn account_of(row: &Row) -> rusqlite::Result<Account> {
         off,
         token_command: row.get(8)?,
         identity: row.get(9)?,
+        organization: row.get(10)?,
+        organization_type: row.get(11)?,
     })
 }
 
@@ -288,7 +295,7 @@ impl Store {
         self.conn
             .execute(
                 &format!(
-                    "{verb} accounts ({COLUMNS}) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)"
+                    "{verb} accounts ({COLUMNS}) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)"
                 ),
                 params![
                     a.name,
@@ -301,9 +308,31 @@ impl Store {
                     off.map(|o| &o.reason),
                     a.token_command,
                     a.identity,
+                    a.organization,
+                    a.organization_type,
                 ],
             )
             .map(|n| n == 1)
+            .map_err(|e| self.err(e))
+    }
+
+    /// Keeps on the account `name` the hashes `account scan` read of its
+    /// login, each only where it has none: what it had stays.
+    pub fn fill_hashes(&self, name: &str, read: &Account) -> Result<(), String> {
+        self.conn
+            .execute(
+                "UPDATE accounts SET identity = COALESCE(identity, ?2),
+                    organization = COALESCE(organization, ?3),
+                    organization_type = COALESCE(organization_type, ?4)
+                 WHERE name = ?1",
+                params![
+                    name,
+                    read.identity,
+                    read.organization,
+                    read.organization_type
+                ],
+            )
+            .map(|_| ())
             .map_err(|e| self.err(e))
     }
 

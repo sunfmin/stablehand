@@ -372,7 +372,7 @@ fn running(s: &str) -> Result<(String, u32), String> {
 enum AccountCmd {
     /// Add an account.
     ///
-    /// Answers `{"account": {"name", "engine", "login" ("portable" or "bound"), "machine", "expires", "home", "off", "token_command", "identity" (the hash of the identity `stablehand account scan` read in its login)}}`, a field it lacks null. Refuses, writing nothing, a name already kept, an unknown engine (exit {const:EXIT_USAGE}), a date that is no YYYY-MM-DD day, `--expires` or `--token-command` with `--machine` (a bound login is its engine's files, no token) and `--home` without `--machine`.
+    /// Answers `{"account": {"name", "engine", "login" ("portable" or "bound"), "machine", "expires", "home", "off", "token_command", "identity" (the hash of the identity `stablehand account scan` read in its login: a portable claude-code token's is its organization's), "organization" and "organization_type" (a bound claude-code login's organization, its hash and its `organizationType`, as scan read them), "copy_of" (the kept account whose identity this one's is: a bound login of another's identity, or a token of a bound login's personal organization)}}`, a field it lacks null. Refuses, writing nothing, a name already kept, an unknown engine (exit {const:EXIT_USAGE}), a date that is no YYYY-MM-DD day, `--expires` or `--token-command` with `--machine` (a bound login is its engine's files, no token) and `--home` without `--machine`.
     ///
     /// ## Logging in
     ///
@@ -394,7 +394,7 @@ enum AccountCmd {
     },
     /// Every account, by name.
     ///
-    /// Answers `{"accounts": [{…}, …]}`, each as `stablehand account add` answers it.
+    /// Answers `{"accounts": [{…}, …]}`, each as `stablehand account add` answers it; `copy_of` names the account one is a copy of (run sessions on one of them only).
     #[command(verbatim_doc_comment)]
     List,
     /// One account, and whether it is logged in.
@@ -423,19 +423,21 @@ enum AccountCmd {
     },
     /// Find the engine logins and the portable tokens already on this machine; with `--add`, register them, one account per subscription.
     ///
-    /// It looks in each engine's own default home under `$HOME` ({const:DEFAULT_HOMES}), and in each `--path`; never in a home another program keeps for its own use (factorium's `~/.agent-accounts`, Guild's `~/.guild/engines`) unless a `--path` names it. A home is a login when it holds its engine's login file (below). It also reads `mytokens list`, when mytokens is on PATH: each `agent-account-<name>` entry with an engine's token field (`CLAUDE_CODE_OAUTH_TOKEN`) is a portable account, its `--token-command` `mytokens get agent-account-<name> --field <that field>`; one with no token (a bound one, its `MACHINE`) is skipped. No token is read.
+    /// It looks in each engine's own default home under `$HOME` ({const:DEFAULT_HOMES}), and in each `--path`; never in a home another program keeps for its own use (factorium's `~/.agent-accounts`, Guild's `~/.guild/engines`) unless a `--path` names it. A home is a login when it holds its engine's login file (below). It also reads `mytokens list`, when mytokens is on PATH: each `agent-account-<name>` entry with an engine's token field (`CLAUDE_CODE_OAUTH_TOKEN`) is a portable account, its `--token-command` `mytokens get agent-account-<name> --field <that field>`; one with no token (a bound one, its `MACHINE`) is skipped. A claude-code token is read (its command run) only to ask its organization, and is never said or kept.
     ///
     /// ## One account per subscription
     ///
-    /// The same subscription is often logged in in several homes (pi's openai-codex and codex on one ChatGPT account). scan tells them apart by the identity each login file holds ({const:IDENTITIES}), read and compared in memory and never said: it answers, and keeps on an account it adds, the identity's hash. Of the logins of one identity, the account is the one an account already kept is (kept at that home, or holding that hash), else the most recently written; the others are copies of it. An identity it cannot read is said so (`identity_unknown`), and that login is never a copy. A portable token tells no identity (a setup token is refused `user:profile`): whether it is a home login's subscription is `unknown`.
+    /// The same subscription is often logged in in several homes (pi's openai-codex and codex on one ChatGPT account). scan tells them apart by the identity each login file holds ({const:IDENTITIES}), read and compared in memory and never said: it answers, and keeps on an account it adds, the identity's hash. Of the logins of one identity, the account is the one an account already kept is (kept at that home, or holding that hash), else the most recently written; the others are copies of it. An identity it cannot read is said so (`identity_unknown`), and that login is never a copy.
+    ///
+    /// A portable claude-code token's identity is its organization: a setup token is refused `user:profile`, but every answer to it names its organization (`anthropic-organization-id`), even the one refusing an empty `POST /v1/messages`, before any turn, so nothing is spent. A personal organization (`organizationType` `claude_max` or `claude_pro`) is its subscription, so a token of a bound login's personal organization is a `copy` of that login's account: `same_as_a_login` names it, and `--add` does not register the token. A team's organization is several people's, each with a seat of their own, so a token of one, or of no login's organization, is `unknown`; two tokens of one organization are said so in their `warning`, never copies.
     ///
     /// ## What it answers
     ///
-    /// `{"add", "machine", "logins": [{"engine", "home", "logged_in_at", "identity", "identity_unknown", "status", "account", "warning"}], "tokens": [{"entry", "engine", "token_command", "status", "account", "same_as_a_login"}], "mytokens_unread"}`. `status` is `new` (`account` the name `--add` gives it: `<engine>`, or `<engine>-2` … when the name is kept; a token its entry's `<name>`), `added` (with `--add`), `registered` (`account` is it), `copy` (of `account`; `warning` says why to run sessions on that one only) or, for a token entry, `skipped` (with `why`). `mytokens_unread` says why mytokens was not read, null when it was.
+    /// `{"add", "machine", "logins": [{"engine", "home", "logged_in_at", "identity", "identity_unknown", "status", "account", "warning"}], "tokens": [{"entry", "engine", "token_command", "status", "account", "identity", "identity_unknown", "same_as_a_login", "warning"}], "mytokens_unread"}`. `status` is `new` (`account` the name `--add` gives it: `<engine>`, or `<engine>-2` … when the name is kept; a token its entry's `<name>`), `added` (with `--add`), `registered` (`account` is it), `copy` (of `account`; `warning` says why to run sessions on that one only) or, for a token entry, `skipped` (with `why`). `mytokens_unread` says why mytokens was not read, null when it was.
     ///
     /// ## What it changes
     ///
-    /// Without `--add`, nothing. With `--add`, it adds each `new` login as `stablehand account add <name> --engine <engine> --machine <this machine> --home <its home>` would, its identity's hash kept, and each `new` token as a portable account with its token command; nothing else: an account kept is never renamed or changed, nothing is written in a home, mytokens is only listed. Run again, it adds nothing more. It refuses a `--path` that is no directory.
+    /// Without `--add`, nothing. With `--add`, it adds each `new` login as `stablehand account add <name> --engine <engine> --machine <this machine> --home <its home>` would, its identity's and organization's hashes kept, and each `new` token as a portable account with its token command and its identity's hash; on an account kept it keeps the hashes it read where it has none, and nothing else: an account kept is never renamed or otherwise changed, nothing is written in a home, mytokens is only listed and asked the tokens. Run again, it adds nothing more. It refuses a `--path` that is no directory.
     ///
     /// ## Engines
     ///
@@ -587,8 +589,9 @@ fn faults(f: Vec<String>) -> Refused {
     Refused::new(Code::BadTerms, f.join("; "))
 }
 
-fn shown(a: &Account) -> Value {
-    json!({ "account": a.shown() })
+/// `a` as answered beside the accounts kept.
+fn shown(store: &Store, a: &Account) -> Result<Value, Refused> {
+    Ok(json!({ "account": a.shown(&store.list()?) }))
 }
 
 fn now() -> Result<u64, String> {
@@ -597,11 +600,11 @@ fn now() -> Result<u64, String> {
 }
 
 /// `a` as `show` answers it: with whether it is logged in.
-fn with_status(a: &Account) -> Result<Value, Refused> {
+fn with_status(store: &Store, a: &Account) -> Result<Value, Refused> {
     let today = (now()? / 86_400) as i64;
     let mut v = serde_json::to_value(account::status(a, login::logged_in(a)?, today))
         .map_err(|e| e.to_string())?;
-    v["account"] = json!(a.shown());
+    v["account"] = json!(a.shown(&store.list()?));
     v["login_file"] = json!(login::login_file(a)?);
     Ok(v)
 }
@@ -641,14 +644,14 @@ fn run(cmd: Register) -> Result<Value, Refused> {
                         ),
                     ));
                 }
-                Ok(shown(&a))
+                shown(&store, &a)
             }
             AccountCmd::List => {
                 let all = store.list()?;
-                let shown: Vec<_> = all.iter().map(Account::shown).collect();
+                let shown: Vec<_> = all.iter().map(|a| a.shown(&all)).collect();
                 Ok(json!({ "accounts": shown }))
             }
-            AccountCmd::Show { name } => with_status(&kept(&store, &name)?),
+            AccountCmd::Show { name } => with_status(&store, &kept(&store, &name)?),
             AccountCmd::Edit {
                 name,
                 engine,
@@ -671,7 +674,7 @@ fn run(cmd: Register) -> Result<Value, Refused> {
                     let what = books::What::LoggedIn;
                     store.book(&a.name, &books::Entry { at: now()?, what })?;
                 }
-                Ok(shown(&a))
+                shown(&store, &a)
             }
             AccountCmd::Scan { add, path } => scan::scan(&store, &path, add),
             AccountCmd::Rm { name } => {
@@ -691,14 +694,14 @@ fn run(cmd: Register) -> Result<Value, Refused> {
                 reason,
             });
             store.put(&a)?;
-            Ok(shown(&a))
+            shown(&store, &a)
         }
         Register::On { name } => {
             let mut a = kept(&store, &name)?;
             if a.off.take().is_some() {
                 store.put(&a)?;
             }
-            Ok(shown(&a))
+            shown(&store, &a)
         }
         Register::Read { name, now: anyway } => {
             Ok(usage::read(&store, &chosen(&store, name)?, now()?, anyway)?)

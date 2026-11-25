@@ -156,8 +156,41 @@ pub struct Account {
     pub token_command: Option<String>,
     /// The hash of the identity its login holds, as `account scan` read it
     /// (the identity itself is kept nowhere): scan tells by it which login
-    /// found later is this account's.
+    /// found later is this account's. A portable claude-code token's is
+    /// its organization's.
     pub identity: Option<String>,
+    /// A bound claude-code login's organization, beside its identity: the
+    /// hash of its `organizationUuid`, which a token of it names
+    /// ([`copy_of`]), and its `organizationType`.
+    pub organization: Option<String>,
+    pub organization_type: Option<String>,
+}
+
+/// Whether a Claude organization of type `kind` is one person's, so its
+/// subscription: `claude_max`, `claude_pro`. A team's is several people's,
+/// each with a seat of their own.
+pub fn personal(kind: Option<&str>) -> bool {
+    matches!(kind, Some("claude_max" | "claude_pro"))
+}
+
+/// The account of `kept` that `a` is a copy of (GLOSSARY.md "Identity"):
+/// for a bound login, the first other bound one of its identity; for a
+/// portable token, the bound login whose personal organization it names.
+/// Two tokens of one organization are no copies: it may be a team's.
+pub fn copy_of<'a>(a: &Account, kept: &'a [Account]) -> Option<&'a str> {
+    let id = a.identity.as_deref()?;
+    let of = |b: &&Account| {
+        let bound = b.machine.is_some() && b.name != a.name && b.engine == a.engine;
+        bound
+            && match a.machine {
+                Some(_) => b.identity.as_deref() == Some(id) && b.name < a.name,
+                None => {
+                    b.organization.as_deref() == Some(id)
+                        && personal(b.organization_type.as_deref())
+                }
+            }
+    };
+    kept.iter().find(of).map(|b| b.name.as_str())
 }
 
 /// An account as every command answers it: its terms, and its login
@@ -167,13 +200,17 @@ pub struct Shown<'a> {
     #[serde(flatten)]
     account: &'a Account,
     login: &'static str,
+    /// The kept account it is a copy of ([`copy_of`]).
+    copy_of: Option<&'a str>,
 }
 
 impl Account {
-    pub fn shown(&self) -> Shown<'_> {
+    /// It as answered beside the accounts `kept`.
+    pub fn shown<'a>(&'a self, kept: &'a [Account]) -> Shown<'a> {
         Shown {
             account: self,
             login: self.login(),
+            copy_of: copy_of(self, kept),
         }
     }
 
@@ -233,6 +270,8 @@ pub fn new(name: &str, engine: Engine, change: Change) -> Result<Account, Vec<St
         off: None,
         token_command: None,
         identity: None,
+        organization: None,
+        organization_type: None,
     };
     let named = check_name(name);
     match (apply(&blank, change), named) {
@@ -464,5 +503,51 @@ mod tests {
         }
         assert_eq!(day_of("1970-01-01"), Some(0));
         assert_eq!(day_of("2000-03-01"), Some(11_017));
+    }
+
+    #[test]
+    fn an_account_whose_identity_is_another_s_names_it() {
+        let bound = |name: &str, identity: &str| Account {
+            machine: Some("mini".into()),
+            identity: Some(identity.into()),
+            ..new(name, Engine::ClaudeCode, Change::default()).unwrap()
+        };
+        let token = |name: &str, identity: &str| Account {
+            machine: None,
+            ..bound(name, identity)
+        };
+        let max = Account {
+            organization: Some("org-max".into()),
+            organization_type: Some("claude_max".into()),
+            ..bound("claude-code-2", "login-1")
+        };
+        let team = Account {
+            organization: Some("org-team".into()),
+            organization_type: Some("claude_team".into()),
+            ..bound("work", "login-2")
+        };
+        let kept = [
+            token("claude-code", "org-max"),
+            max,
+            token("theplant", "org-team"),
+            token("theplant-2", "org-team"),
+            bound("work-copy", "login-2"),
+            team,
+            token("alone", "org-other"),
+        ];
+        let of: Vec<_> = kept.iter().map(|a| copy_of(a, &kept)).collect();
+        assert_eq!(
+            of,
+            [
+                Some("claude-code-2"),
+                None,
+                None,
+                None,
+                Some("work"),
+                None,
+                None
+            ]
+        );
+        assert!(personal(Some("claude_pro")) && !personal(Some("claude_team")) && !personal(None));
     }
 }
