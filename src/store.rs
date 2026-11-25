@@ -57,9 +57,9 @@ const MIGRATIONS: &[&str] = &[
     // the engine it started: a row outlives a run killed before it ended,
     // and is dropped once that pid is found dead.
     "CREATE TABLE sessions (pid INTEGER PRIMARY KEY, account TEXT NOT NULL, started INTEGER NOT NULL);",
-    // Each engine's command `run` starts it with, its words as JSON
-    // (docs/adr/0003); none kept on a fresh store.
-    "CREATE TABLE engine_commands (engine TEXT PRIMARY KEY, words TEXT NOT NULL);",
+    // Each engine's command `run` starts it with, one row: `[[engine,
+    // [words…]]]` as JSON (docs/adr/0003); none kept on a fresh store.
+    "CREATE TABLE engine_commands (id INTEGER PRIMARY KEY CHECK (id = 1), commands TEXT NOT NULL);",
 ];
 
 /// How long a process waits for another's write.
@@ -323,77 +323,51 @@ impl Store {
 impl Store {
     /// The order, highest first; empty when none is set.
     pub fn order(&self) -> Result<Vec<Rank>, String> {
-        let text: Option<String> = self
-            .conn
-            .query_row("SELECT ranks FROM engine_order", [], |r| r.get(0))
-            .optional()
-            .map_err(|e| self.err(e))?;
-        text.map_or(Ok(Vec::new()), |t| {
-            serde_json::from_str(&t).map_err(|e| format!("{}: the order: {e}", self.path.display()))
-        })
+        self.one("SELECT ranks FROM engine_order", "the order")
     }
 
     /// Replaces the order with `order`.
     pub fn set_order(&self, order: &[Rank]) -> Result<(), String> {
-        let ranks = serde_json::to_string(order).map_err(|e| e.to_string())?;
+        self.set_one(
+            "REPLACE INTO engine_order (id, ranks) VALUES (1, ?1)",
+            order,
+        )
+    }
+
+    /// Each engine's kept command, its words, by engine name; empty when none is kept.
+    pub fn commands(&self) -> Result<Vec<(Engine, Vec<String>)>, String> {
+        self.one("SELECT commands FROM engine_commands", "the commands")
+    }
+
+    /// Replaces the kept commands with `commands`.
+    pub fn set_commands(&self, commands: &[(Engine, Vec<String>)]) -> Result<(), String> {
+        let sql = "REPLACE INTO engine_commands (id, commands) VALUES (1, ?1)";
+        self.set_one(sql, commands)
+    }
+
+    /// What the one-row table `sql` reads holds, as JSON; its default when empty.
+    fn one<T: serde::de::DeserializeOwned + Default>(
+        &self,
+        sql: &str,
+        what: &str,
+    ) -> Result<T, String> {
+        let text: Option<String> = self
+            .conn
+            .query_row(sql, [], |r| r.get(0))
+            .optional()
+            .map_err(|e| self.err(e))?;
+        text.map_or(Ok(T::default()), |t| {
+            serde_json::from_str(&t).map_err(|e| format!("{}: {what}: {e}", self.path.display()))
+        })
+    }
+
+    /// Replaces what the one-row table `sql` writes with `value`, as JSON.
+    fn set_one<T: serde::Serialize + ?Sized>(&self, sql: &str, value: &T) -> Result<(), String> {
+        let text = serde_json::to_string(value).map_err(|e| e.to_string())?;
         self.conn
-            .execute(
-                "REPLACE INTO engine_order (id, ranks) VALUES (1, ?1)",
-                [ranks],
-            )
+            .execute(sql, [text])
             .map(|_| ())
             .map_err(|e| self.err(e))
-    }
-}
-
-impl Store {
-    /// Each engine's kept command, its words, by engine name.
-    pub fn commands(&self) -> Result<Vec<(Engine, Vec<String>)>, String> {
-        let mut stmt = self
-            .conn
-            .prepare("SELECT engine, words FROM engine_commands ORDER BY engine")
-            .map_err(|e| self.err(e))?;
-        let rows: Vec<(String, String)> = stmt
-            .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))
-            .and_then(|rows| rows.collect())
-            .map_err(|e| self.err(e))?;
-        rows.into_iter()
-            .map(|(engine, words)| {
-                let bad =
-                    |e: String| format!("{}: the command of {engine}: {e}", self.path.display());
-                let e = clap::ValueEnum::from_str(&engine, false).map_err(bad)?;
-                let w = serde_json::from_str(&words).map_err(|e| bad(e.to_string()))?;
-                Ok((e, w))
-            })
-            .collect()
-    }
-
-    /// `engine`'s kept command, its words; empty with none kept.
-    pub fn command(&self, engine: Engine) -> Result<Vec<String>, String> {
-        let kept = self.commands()?.into_iter().find(|(e, _)| *e == engine);
-        Ok(kept.map(|(_, w)| w).unwrap_or_default())
-    }
-
-    /// Keeps each engine's command given, all in one transaction, replacing
-    /// the one kept; an empty one drops it.
-    pub fn set_commands(&self, commands: &[(Engine, Vec<String>)]) -> Result<(), String> {
-        let tx = self.conn.unchecked_transaction().map_err(|e| self.err(e))?;
-        for (engine, words) in commands {
-            tx.execute(
-                "DELETE FROM engine_commands WHERE engine = ?1",
-                [engine.name()],
-            )
-            .map_err(|e| self.err(e))?;
-            if !words.is_empty() {
-                let text = serde_json::to_string(words).map_err(|e| e.to_string())?;
-                tx.execute(
-                    "INSERT INTO engine_commands (engine, words) VALUES (?1, ?2)",
-                    params![engine.name(), text],
-                )
-                .map_err(|e| self.err(e))?;
-            }
-        }
-        tx.commit().map_err(|e| self.err(e))
     }
 }
 

@@ -108,6 +108,20 @@ pub fn kept(arg: &str) -> Result<(Engine, Vec<String>), String> {
     Ok((engine, words))
 }
 
+/// The kept commands after `command set`: each of `given` in place of its
+/// engine's in `kept`, an empty one dropping it; by engine name.
+pub fn merged(
+    mut kept: Vec<(Engine, Vec<String>)>,
+    given: Vec<(Engine, Vec<String>)>,
+) -> Vec<(Engine, Vec<String>)> {
+    for (engine, words) in given {
+        kept.retain(|(e, _)| *e != engine);
+        kept.extend((!words.is_empty()).then_some((engine, words)));
+    }
+    kept.sort_by_key(|(e, _)| e.name());
+    kept
+}
+
 /// A kept command as `command show` answers it: its words joined as `sh`
 /// splits them back.
 pub fn shown(words: &[String]) -> String {

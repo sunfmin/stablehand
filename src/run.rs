@@ -100,9 +100,10 @@ pub fn run(asked: Asked, now: u64) -> Result<ExitCode, Refused> {
     // A model the command names is left as it is.
     let added = model.filter(|_| in_command.is_none());
     let kept = match asked.bare {
-        true => Vec::new(),
-        false => store.command(engine)?,
+        true => None,
+        false => store.commands()?.into_iter().find(|(e, _)| *e == engine),
     };
+    let kept = kept.map(|(_, words)| words).unwrap_or_default();
     let (line, used) = command::line(engine, &asked.command, &kept, added);
     let mut child = Command::new(&line[0]);
     child.args(&line[1..]);

@@ -742,8 +742,8 @@ fn run(cmd: Register) -> Result<Value, Refused> {
                     let faults: Vec<_> = faults.into_iter().filter_map(Result::err).collect();
                     return Err(Refused::new(Code::BadCommand, faults.join("; ")));
                 }
-                let kept: Vec<_> = kept.into_iter().filter_map(Result::ok).collect();
-                store.set_commands(&kept)?;
+                let given = kept.into_iter().filter_map(Result::ok).collect();
+                store.set_commands(&command::merged(store.commands()?, given))?;
             }
             let shown: serde_json::Map<String, Value> = store
                 .commands()?
