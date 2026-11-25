@@ -1,0 +1,46 @@
+#!/bin/sh
+# A stand-in of each program packaging/release.sh's cut runs (gh, git, rustup,
+# cargo, lipo, ruby, sleep), linked under the program's name. Appends its
+# argv to $FAKE_ARGV_LOG; its state is files in $FAKE_STATE: `tag` while
+# origin holds the tag, `dispatched` once release.yml was run, and `views`,
+# the answers `gh run view` gives, one a poll (the last one again once
+# they are used up): `500` fails as GitHub's API does, any other line is
+# what `--jq` would print.
+me=$(basename "$0")
+[ "$me" = sleep ] || echo "$me $*" >>"${FAKE_ARGV_LOG:?}"
+state=${FAKE_STATE:?}
+case "$me $1 $2" in
+"rustup which"*) echo "$(dirname "$0")/cargo" ;;
+"cargo build"*)
+    for a; do
+        [ "$prev" = --target ] && mkdir -p "target/$a/release" && : >"target/$a/release/stablehand"
+        prev=$a
+    done
+    ;;
+"lipo -create"*)
+    printf '#!/bin/sh\necho "stablehand %s"\n' "$STABLEHAND_RELEASE" >"$3"
+    chmod +x "$3"
+    ;;
+"lipo -archs"*) echo "x86_64 arm64" ;;
+"git rev-parse"*) echo 1111111111111111111111111111111111111111 ;;
+"git ls-remote"*) [ ! -e "$state/tag" ] || printf '1111111111111111111111111111111111111111\t%s\n' "$3" ;;
+"git push"*)
+    case "$4" in
+    :*) rm -f "$state/tag" ;;
+    *) : >"$state/tag" ;;
+    esac
+    ;;
+"gh workflow run"*) : >"$state/dispatched" ;;
+"gh run list"*) [ ! -e "$state/dispatched" ] || echo 42 ;;
+"gh run view"*)
+    case "$*" in *--log-failed*) exit 0 ;; esac
+    answer=$(head -n1 "$state/views")
+    [ "$(wc -l <"$state/views")" -le 1 ] || sed -i '' 1d "$state/views"
+    if [ "$answer" = 500 ]; then
+        echo "HTTP 500: Internal Server Error (https://api.github.com/repos/x/runs/42)" >&2
+        exit 1
+    fi
+    echo "$answer"
+    ;;
+esac
+exit 0
