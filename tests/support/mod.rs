@@ -202,6 +202,10 @@ impl Register {
             .env("STABLEHAND_MACHINE", "mini")
             // A test run in a session `stablehand run` started is not on its account.
             .env_remove("STABLEHAND_ACCOUNT")
+            // Nor is it on the Claude Code session it may run in.
+            .env_remove("CLAUDE_CONFIG_DIR")
+            .env_remove("CLAUDE_CODE_OAUTH_TOKEN")
+            .env_remove("ANTHROPIC_BASE_URL")
             .envs(env.iter().copied())
             .stdout(Stdio::piped())
             .stderr(stderr_log(&self.root));
