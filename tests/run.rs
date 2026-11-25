@@ -72,6 +72,8 @@ fn a_command_starts_on_its_engine_s_pick_its_login_in_its_environment_alone() {
     );
     assert!(!line.contains("CLAUDE_CONFIG_DIR"), "{line}");
     assert_eq!(r.stderr(), "stablehand: claude-code on claude-felix\n");
+    // The account it runs on, by name, for its status line.
+    assert!(line.contains(" STABLEHAND_ACCOUNT=claude-felix "), "{line}");
 
     // No token on any argv, stdout, stderr or log: only mytokens' own store holds it.
     assert!(!out.contains(TOKEN) && !r.argv().contains(TOKEN) && !r.stderr().contains(TOKEN));

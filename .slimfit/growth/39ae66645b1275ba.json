@@ -1,0 +1,10 @@
+{
+  "tree": "0da7f9c290686d49459d2ee4fbd7b68fe9097b1a+d1fba762150c532c",
+  "lines": 74,
+  "serves": "stablehand#28",
+  "considered": "usage::status's JSON for the booked windows (the bar needs the WindowStatus fields, not JSON); run.rs's session register for the one-read-at-a-time record (a kernel flock inherited by the read frees itself when the read dies, with no pid check or cleanup)",
+  "reviewer": "codex:01a2102b-6473-7882-9e85-20fccee3bb6a:default",
+  "author": "claude-code:f4cf0675-7972-537e-8a5e-27885271b80a:opus",
+  "cut": "In src/statusline.rs, delete Shown and pass iterators over the supplied or booked windows directly to line, skipping the intermediate Vec and cloned names. Reuse one lazy account lookup and render call in both run branches, preserving when it runs relative to --then. Make start_read return Option<()> so it can drop the success flag and error strings its only caller discards while keeping the same lock and spawn behavior.",
+  "answer": "Made: Shown is now a tuple alias (struct gone); start_read returns Option<()>, its error strings and flag dropped. Kept: the Vec, since the stdin windows and the booked WindowStatus are two types and shown() must answer one owned list after the store is dropped; the two run branches already share shown(), and they differ only in what they do with its answer (print vs stderr), which their order around --then fixes."
+}

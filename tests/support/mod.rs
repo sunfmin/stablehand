@@ -200,6 +200,8 @@ impl Register {
             .env("FAKE_MYTOKENS_DIR", self.root.join("mytokens"))
             .env("FAKE_ARGV_LOG", self.root.join("argv.log"))
             .env("STABLEHAND_MACHINE", "mini")
+            // A test run in a session `stablehand run` started is not on its account.
+            .env_remove("STABLEHAND_ACCOUNT")
             .envs(env.iter().copied())
             .stdout(Stdio::piped())
             .stderr(stderr_log(&self.root));

@@ -1,13 +1,13 @@
 #!/bin/sh
 # A stand-in of an engine's session (claude, codex, agy, …), linked under the
 # engine's program: appends to $FAKE_ARGV_LOG one line, its argv, the home
-# variables it was given, its token variable's sha256 (never the token), and
+# variables it was given and STABLEHAND_ACCOUNT, its token variable's sha256 (never the token), and
 # where its home's login file links to; writes its pid to $FAKE_PID_FILE when
 # set, and sends its parent the signal $FAKE_SIGNAL_PARENT names when set.
 # Then waits until $FAKE_HOLD names no file (or holds there, killed), and
 # exits $FAKE_EXIT (default 0).
 line="$(basename "$0") $*"
-for v in CLAUDE_CONFIG_DIR CODEX_HOME KIMI_CODE_HOME GROK_HOME PI_CODING_AGENT_DIR DSH_HOME HOME; do
+for v in CLAUDE_CONFIG_DIR CODEX_HOME KIMI_CODE_HOME GROK_HOME PI_CODING_AGENT_DIR DSH_HOME HOME STABLEHAND_ACCOUNT; do
     eval "x=\${$v:-}"
     [ -n "$x" ] && line="$line $v=$x"
 done

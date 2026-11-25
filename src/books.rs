@@ -462,6 +462,12 @@ pub fn runs_out(w: &WindowStatus, running: u32, now: u64) -> Option<f64> {
 /// of it, is under [`READ_AGAIN`] old. A refused one waits for a login
 /// ([`Status::refused`]), which this does not tell.
 pub fn read_next(status: &Status, now: u64) -> Option<u64> {
+    read_after(status, READ_AGAIN, now)
+}
+
+/// When the account of `status` may be read next, its readings in force
+/// and its last try held for `again` seconds: none when it may be now.
+pub fn read_after(status: &Status, again: u64, now: u64) -> Option<u64> {
     let in_force = status
         .windows
         .iter()
@@ -469,8 +475,8 @@ pub fn read_next(status: &Status, now: u64) -> Option<u64> {
         .map(|w| w.at)
         .chain(status.balances.iter().map(|b| b.at))
         .max();
-    let after_reading = in_force.map(|at| at + READ_AGAIN + 1);
-    let after_try = status.tried_at.map(|at| at + READ_AGAIN);
+    let after_reading = in_force.map(|at| at + again + 1);
+    let after_try = status.tried_at.map(|at| at + again);
     [after_reading, after_try]
         .into_iter()
         .flatten()

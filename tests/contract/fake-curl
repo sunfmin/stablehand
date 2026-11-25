@@ -13,12 +13,14 @@
 #   instead of the one below. FAKE_CURL_GROK_PERIOD=begun: grok answers
 #   its period just begun, nothing used, as proto3 leaves the 0s out.
 #   FAKE_CURL_LOG: a file each call appends to:
-#   its arguments on one line, then its stdin.
+#   its arguments on one line, then its stdin. FAKE_CURL_HOLD: a file it
+#   waits on, once logged, until it is gone (a read held running).
 for url; do :; done
 config=$(cat)
 if [ -n "$FAKE_CURL_LOG" ]; then
     printf '%s\n%s\n' "$(printf '%s' "$*" | tr '\n' ' ')" "$config" >>"$FAKE_CURL_LOG"
 fi
+while [ -n "$FAKE_CURL_HOLD" ] && [ -e "$FAKE_CURL_HOLD" ]; do sleep 0.05; done
 host=${url#*://}
 host=${host%%/*}
 if [ "$FAKE_CURL_FAULT" = unreachable ]; then

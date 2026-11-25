@@ -100,6 +100,7 @@ pub fn run(asked: Asked, now: u64) -> Result<ExitCode, Refused> {
     let mut child = Command::new(&line[0]);
     child.args(&line[1..]);
     hand_login(&mut child, &a, asked.home.as_deref())?;
+    child.env(crate::statusline::ACCOUNT_VAR, &a.name);
     let said = model.map_or(String::new(), |m| format!(" ({m})"));
     eprintln!("stablehand: {} on {}{said}", engine.name(), a.name);
     // Held from before the child starts until its pid is known, so each is
