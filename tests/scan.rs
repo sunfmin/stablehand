@@ -530,6 +530,49 @@ fn a_token_of_a_login_s_personal_organization_is_its_copy_and_list_says_so() {
     let bound = r.ok(&["account", "show", "claude-code-2"]);
     assert_eq!(bound["account"]["organization_type"], "claude_max");
     assert_eq!(bound["account"]["organization"], t[0]["identity"]);
+    let status = r.ok(&["status", "claude-code"]);
+    assert_eq!(status["accounts"][0]["copy_of"], "claude-code-2");
+
+    // pick passes over the copy while its account is on here
+    // (stablehand#32); accounts of another or no known identity are
+    // judged as before.
+    let here = machine.as_str().unwrap();
+    let pick = |on: &str| r.ok(&["pick", "--engine", "claude-code", "--machine", on]);
+    assert_eq!(pick(here)["account"], "claude-code-2");
+    let lifts = "2099-01-01T00:00:00Z";
+    let limit = ["limit", "claude-code-2", "--resets-at", lifts];
+    r.ok(&limit);
+    for name in ["claude-code-3", "other", "theplant", "theplant-jp"] {
+        r.ok(&["off", name, "--reason", "a test"]);
+    }
+    let none = pick(here);
+    let why: Vec<_> = none["why"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|p| json!([p["account"], p["reason"]]))
+        .collect();
+    assert_eq!(
+        why,
+        [
+            json!(["claude-code", "copy"]),
+            json!(["claude-code-2", "limit"]),
+            json!(["claude-code-3", "off"]),
+            json!(["other", "off"]),
+            json!(["theplant", "off"]),
+            json!(["theplant-jp", "off"]),
+        ],
+        "{none}"
+    );
+    let copy = none["why"][0]["why"].as_str().unwrap();
+    assert!(copy.contains("a copy of claude-code-2"), "{copy}");
+    r.ok(&["on", "other"]);
+    assert_eq!(pick(here)["account"], "other");
+    r.ok(&["off", "other", "--reason", "a test"]);
+    // Its account bound to another machine, or off, the copy is picked.
+    assert_eq!(pick("elsewhere")["account"], "claude-code");
+    r.ok(&["off", "claude-code-2", "--reason", "a copy's account"]);
+    assert_eq!(pick(here)["account"], "claude-code");
 
     let register = std::fs::read(r.dir.join("stablehand.db")).unwrap();
     let said = format!("{dry}{added}{}", r.stderr());
