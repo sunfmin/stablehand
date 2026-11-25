@@ -63,14 +63,9 @@ pub fn run(account: Option<String>, then: Option<&str>) -> ExitCode {
     ExitCode::from(status.ok().and_then(|s| s.code()).unwrap_or(127) as u8)
 }
 
-/// One window as the bar shows it: its use (none once it has reset since
-/// it was read), and its reading's age, in seconds, where it is booked.
-#[derive(Debug, PartialEq)]
-struct Shown {
-    name: String,
-    used: Option<f64>,
-    age: Option<u64>,
-}
+/// One window as the bar shows it: its name, its use (none once it has
+/// reset since it was read), and its reading's age in seconds, where booked.
+type Shown = (String, Option<f64>, Option<u64>);
 
 /// Books `windows` of `name`, and answers what the bar shows: `windows`,
 /// or with none given, the books' latest as `stablehand status` has them,
@@ -78,24 +73,19 @@ struct Shown {
 fn shown(name: &str, windows: &[Window]) -> Result<Vec<Shown>, String> {
     let (store, a) = book(name, windows)?;
     if !windows.is_empty() {
-        let given = windows.iter().map(|w| Shown {
-            name: w.name.clone(),
-            used: Some(w.used_percent),
-            age: None,
-        });
+        let given = windows
+            .iter()
+            .map(|w| (w.name.clone(), Some(w.used_percent), None));
         return Ok(given.collect());
     }
     let now = crate::now()?;
     let status = books::status(&crate::usage::book_of(&store, &a)?, now);
     if !status.refused && books::read_after(&status, FRESH_SECS, now).is_none() {
         // Not started is as good as not due: the next refresh tries again.
-        let _ = start_read(&store, name);
+        start_read(&store, name);
     }
-    let booked = status.windows.into_iter().map(|w| Shown {
-        age: Some(now.saturating_sub(w.at)),
-        name: w.name,
-        used: w.used_percent,
-    });
+    let booked = (status.windows.into_iter())
+        .map(|w| (w.name, w.used_percent, Some(now.saturating_sub(w.at))));
     Ok(booked.collect())
 }
 
@@ -123,26 +113,24 @@ fn book(name: &str, windows: &[Window]) -> Result<(Store, Account), String> {
 /// its own, with no stdin, stdout or stderr, unless a read it started
 /// still runs: the read holds [`Store::reading_lock`] locked (it inherits
 /// the lock, and the kernel lets it go when the read ends, however it
-/// ends). Answers whether one started.
-fn start_read(store: &Store, name: &str) -> Result<bool, String> {
+/// ends). Answers none where none started.
+fn start_read(store: &Store, name: &str) -> Option<()> {
     use std::os::fd::AsRawFd;
     use std::os::unix::fs::OpenOptionsExt;
     use std::os::unix::process::CommandExt;
-    let path = store.reading_lock(name);
     let lock = std::fs::OpenOptions::new()
         .create(true)
         .truncate(false)
         .write(true)
         .mode(0o600)
-        .open(&path)
-        .map_err(|e| format!("{}: {e}", path.display()))?;
+        .open(store.reading_lock(name))
+        .ok()?;
     let fd = lock.as_raw_fd();
     // SAFETY: flock on a descriptor this process holds open.
     if unsafe { libc::flock(fd, libc::LOCK_EX | libc::LOCK_NB) } != 0 {
-        return Ok(false);
+        return None;
     }
-    let me = std::env::current_exe().map_err(|e| e.to_string())?;
-    let mut read = Command::new(me);
+    let mut read = Command::new(std::env::current_exe().ok()?);
     read.args(["read", "--now", name])
         .stdin(Stdio::null())
         .stdout(Stdio::null())
@@ -156,25 +144,21 @@ fn start_read(store: &Store, name: &str) -> Result<bool, String> {
             Ok(())
         });
     }
-    read.spawn().map_err(|e| e.to_string())?;
-    Ok(true)
+    read.spawn().ok().map(drop)
 }
 
 /// The bar's line: the account, and each window's use, rounded, with its
 /// age where it is past [`FRESH_SECS`].
 fn line(account: &str, windows: &[Shown]) -> String {
     let mut parts = vec![account.to_string()];
-    for w in windows {
-        let name = match w.name.as_str() {
+    for (name, used, age_secs) in windows {
+        let name = match name.as_str() {
             "five_hour" => "5h",
             "seven_day" => "7d",
             other => other,
         };
-        let used = w
-            .used
-            .map_or("reset".to_string(), |u| format!("{:.0}%", u.round()));
-        let age = w
-            .age
+        let used = used.map_or("reset".to_string(), |u| format!("{:.0}%", u.round()));
+        let age = age_secs
             .filter(|&a| a > FRESH_SECS)
             .map_or(String::new(), |a| format!(" ({} ago)", age(a)));
         parts.push(format!("{name} {used}{age}"));
@@ -196,11 +180,7 @@ mod tests {
     use super::*;
 
     fn w(name: &str, used: Option<f64>, age: Option<u64>) -> Shown {
-        Shown {
-            name: name.into(),
-            used,
-            age,
-        }
+        (name.into(), used, age)
     }
 
     #[test]
