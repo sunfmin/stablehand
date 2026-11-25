@@ -1,0 +1,15 @@
+{
+  "tree": "41cb58074f9c2bd4a58c339d7ad2a5d00366ca59+d1fba762150c532c",
+  "picker": "codex:01a210b7-c869-7f70-9915-91892cbe1c19:default",
+  "author": "claude-code:ff8247d4-57b6-5cd5-a0ab-6773f031747b:opus",
+  "picks": {
+    "rust": [
+      {
+        "name": "src/account.rs:201:37: replace && with || in copies",
+        "why": "The pick tests filter out portable accounts before this check, so they may miss status or account list incorrectly naming a portable account with the same identity and an earlier name as the original.",
+        "outcome": "killed",
+        "first_outcome": "killed"
+      }
+    ]
+  }
+}
