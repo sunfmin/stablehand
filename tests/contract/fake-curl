@@ -12,7 +12,8 @@
 # prints them; a bearer `sk-ant-oat01-org-<id>` names the organization <id>.
 #
 # FAKE_CURL_FAULT: unreachable (curl exits 6), unauthorized (401), scope
-#   (403, a `claude setup-token` token). FAKE_CURL_BODY, FAKE_CURL_WHAM_BODY:
+#   (403, a `claude setup-token` token), unnamed (api.anthropic.com/v1/messages
+#   answers 200 naming no organization). FAKE_CURL_BODY, FAKE_CURL_WHAM_BODY:
 #   a file whose body a 200 of api.anthropic.com or grok, of chatgpt.com, answers
 #   instead of the one below. FAKE_CURL_GROK_PERIOD=begun: grok answers
 #   its period just begun, nothing used, as proto3 leaves the 0s out.
@@ -34,6 +35,10 @@ fi
 case "$url:$FAKE_CURL_FAULT" in
 */v1/messages:unauthorized)
     printf '%s\n\n401' '{"type":"error","error":{"type":"authentication_error","message":"Invalid bearer token"},"request_id":"req_011CStandin"}'
+    exit 0
+    ;;
+*/v1/messages:unnamed)
+    printf '%s\n\n200' '{"type":"message"}'
     exit 0
     ;;
 */v1/messages:*)
