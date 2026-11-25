@@ -116,7 +116,7 @@ fn hash(identity: &str) -> String {
 }
 
 /// `home` as a path compares: canonical where it exists.
-fn same(a: &Path, b: &Path) -> bool {
+pub fn same(a: &Path, b: &Path) -> bool {
     let canonical = |p: &Path| std::fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf());
     canonical(a) == canonical(b)
 }

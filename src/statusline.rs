@@ -10,6 +10,7 @@ use crate::books::{self, Entry, What, Window};
 use crate::readers::claude_code;
 use crate::store::Store;
 use std::io::{Read, Write};
+use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode, Stdio};
 
 /// The variable `stablehand run` names its child's account in, and the
@@ -21,13 +22,14 @@ pub const ACCOUNT_VAR: &str = "STABLEHAND_ACCOUNT";
 const FRESH_SECS: u64 = 10 * 60;
 
 /// Reads stdin, books its windows as a reading of `account` (else
-/// [`ACCOUNT_VAR`]'s), and prints the line: `then`'s, run by `sh -c` on the
-/// same stdin, where given, exiting as it does. With no account, nothing
-/// is booked and stablehand's line is empty. A fault in booking never
-/// takes the line away: the line says it, or with `then` stderr does.
+/// [`ACCOUNT_VAR`]'s, else the [`session_s`]), and prints the line:
+/// `then`'s, run by `sh -c` on the same stdin with the account in
+/// [`ACCOUNT_VAR`], where given, exiting as it does. With no account,
+/// nothing is booked and stablehand's line is empty. A fault in booking
+/// never takes the line away: the line says it, or with `then` stderr does.
 pub fn run(account: Option<String>, then: Option<&str>) -> ExitCode {
     let account = account.or_else(|| std::env::var(ACCOUNT_VAR).ok());
-    let account = account.filter(|a| !a.is_empty());
+    let account = account.filter(|a| !a.is_empty()).or_else(session_s);
     // What could not be read is as good as not given: nothing to book.
     let mut stdin = Vec::new();
     let _ = std::io::stdin().read_to_end(&mut stdin);
@@ -46,21 +48,46 @@ pub fn run(account: Option<String>, then: Option<&str>) -> ExitCode {
     // The person's line starts first, so that booking adds nothing to its
     // time. Its exit is the answer's; 127, as sh's for a command not
     // found, where /bin/sh could not be run.
-    let status = Command::new("/bin/sh")
-        .args(["-c", then])
-        .stdin(Stdio::piped())
-        .spawn()
-        .and_then(|mut child| {
-            let mut pipe = child.stdin.take();
-            // A line that reads none of its stdin closes the pipe: no fault.
-            let feed = std::thread::spawn(move || pipe.as_mut().map(|p| p.write_all(&stdin)));
-            if let Some(Err(fault)) = account.map(|a| shown(&a, &windows)) {
-                eprintln!("stablehand: {fault}");
-            }
-            let _ = feed.join();
-            child.wait()
-        });
+    let mut sh = Command::new("/bin/sh");
+    match &account {
+        Some(account) => sh.env(ACCOUNT_VAR, account),
+        None => sh.env_remove(ACCOUNT_VAR),
+    };
+    let status = (sh.args(["-c", then]).stdin(Stdio::piped()).spawn()).and_then(|mut child| {
+        let mut pipe = child.stdin.take();
+        // A line that reads none of its stdin closes the pipe: no fault.
+        let feed = std::thread::spawn(move || pipe.as_mut().map(|p| p.write_all(&stdin)));
+        if let Some(Err(fault)) = account.map(|a| shown(&a, &windows)) {
+            eprintln!("stablehand: {fault}");
+        }
+        let _ = feed.join();
+        child.wait()
+    });
     ExitCode::from(status.ok().and_then(|s| s.code()).unwrap_or(127) as u8)
+}
+
+/// The account of the session the bar is Claude Code's, from its
+/// environment alone (no token command is run on a refresh): none on
+/// another endpoint (`ANTHROPIC_BASE_URL`) or a token (it tells no account
+/// by itself); otherwise the claude-code account bound to this machine whose
+/// home is the session's config dir, where it is not off.
+fn session_s() -> Option<String> {
+    let set = |var: &str| std::env::var_os(var).filter(|v| !v.is_empty());
+    let login = Engine::ClaudeCode.login();
+    if set("ANTHROPIC_BASE_URL").is_some() || set(login.token_var?).is_some() {
+        return None;
+    }
+    let dir = match set(login.home_var) {
+        Some(dir) => PathBuf::from(dir),
+        None => PathBuf::from(set("HOME")?).join(login.default_home),
+    };
+    let here = crate::login::this_machine().ok()?;
+    let kept = Store::open().ok()?.list().ok()?.into_iter().find(|a| {
+        a.engine == Engine::ClaudeCode
+            && a.machine.as_ref() == Some(&here)
+            && (a.home.as_ref()).is_some_and(|h| crate::scan::same(Path::new(h), &dir))
+    })?;
+    kept.off.is_none().then_some(kept.name)
 }
 
 /// One window as the bar shows it: its name, its use (none once it has

@@ -159,3 +159,104 @@ fn with_no_account_the_line_is_empty_of_stablehand_and_books_nothing() {
     assert_eq!(status(&r, "claude-felix")["windows"], json!([]));
     assert_eq!(r.stderr(), "");
 }
+
+/// A register whose bound claude-code account `claude-code-2` is kept at
+/// `~/.claude` of the test's HOME, and `claude-work` at a home of its own;
+/// answers the HOME.
+fn kept_at_homes(r: &Register) -> String {
+    let home = r.path("home");
+    for (name, dir) in [
+        ("claude-code-2", format!("{home}/.claude")),
+        ("claude-work", r.path("work")),
+    ] {
+        std::fs::create_dir_all(&dir).unwrap();
+        let add = ["account", "add", name, "--engine", "claude-code"];
+        r.ok(&[&add[..], &["--machine", "mini", "--home", &dir]].concat());
+    }
+    home
+}
+
+fn booked(r: &Register, name: &str) -> bool {
+    !status(r, name)["windows"].as_array().unwrap().is_empty()
+}
+
+#[test]
+fn with_no_account_named_it_is_the_one_kept_at_the_session_s_config_dir() {
+    let r = Register::new("statusline-found");
+    let home = kept_at_homes(&r);
+    let (code, line) = r.raw(&["statusline"], &[("HOME", &home)], RATE_LIMITS);
+    assert_eq!(
+        (code, line.as_str()),
+        (0, "claude-code-2 · 5h 24% · 7d 41%\n")
+    );
+    assert!(!booked(&r, "claude-work"));
+
+    let r = Register::new("statusline-found-dir");
+    let home = kept_at_homes(&r);
+    let work = r.path("work");
+    let link = r.path("link");
+    std::os::unix::fs::symlink(&work, &link).unwrap();
+    for dir in [&work, &link, &format!("{work}/")] {
+        let env = [("HOME", home.as_str()), ("CLAUDE_CONFIG_DIR", dir)];
+        let (code, line) = r.raw(&["statusline"], &env, RATE_LIMITS);
+        assert_eq!(
+            (code, line.as_str()),
+            (0, "claude-work · 5h 24% · 7d 41%\n"),
+            "{dir}"
+        );
+    }
+    assert!(!booked(&r, "claude-code-2"));
+}
+
+#[test]
+fn a_token_another_endpoint_or_a_dir_no_account_is_kept_at_finds_none() {
+    let r = Register::new("statusline-not-found");
+    let home = kept_at_homes(&r);
+    let elsewhere = r.path("elsewhere");
+    std::fs::create_dir_all(&elsewhere).unwrap();
+    for env in [
+        ("CLAUDE_CODE_OAUTH_TOKEN", "stand-in-token"),
+        ("ANTHROPIC_BASE_URL", "http://127.0.0.1:1"),
+        ("CLAUDE_CONFIG_DIR", elsewhere.as_str()),
+        ("CLAUDE_CONFIG_DIR", "/no/such/dir"),
+    ] {
+        let env = [("HOME", home.as_str()), env];
+        let (code, line) = r.raw(&["statusline"], &env, RATE_LIMITS);
+        assert_eq!((code, line.as_str()), (0, "\n"), "{env:?}");
+    }
+    // An account switched off is no session's.
+    r.ok(&["off", "claude-code-2", "--reason", "test"]);
+    let (code, line) = r.raw(&["statusline"], &[("HOME", &home)], RATE_LIMITS);
+    assert_eq!((code, line.as_str()), (0, "\n"));
+    assert!(!booked(&r, "claude-code-2"));
+    assert!(!booked(&r, "claude-work"));
+    assert_eq!(r.stderr(), "");
+}
+
+#[test]
+fn then_is_told_the_account_found_or_named_and_none_without() {
+    let r = Register::new("statusline-then-env");
+    let home = kept_at_homes(&r);
+    let then = [
+        "statusline",
+        "--then",
+        "echo \"${STABLEHAND_ACCOUNT-none}\"",
+    ];
+    let told = |args: &[&str], env: &[(&str, &str)]| {
+        let env = [&[("HOME", home.as_str())][..], env].concat();
+        r.raw(args, &env, RATE_LIMITS).1
+    };
+    assert_eq!(told(&then, &[]), "claude-code-2\n");
+    let named = [&then[..], &["--account", "claude-work"]].concat();
+    assert_eq!(told(&named, &[]), "claude-work\n");
+    // $STABLEHAND_ACCOUNT, as `stablehand run` sets it, outranks what is found.
+    assert_eq!(
+        told(&then, &[("STABLEHAND_ACCOUNT", "claude-work")]),
+        "claude-work\n"
+    );
+    let token = ("CLAUDE_CODE_OAUTH_TOKEN", "stand-in-token");
+    assert_eq!(told(&then, &[token]), "none\n");
+    assert_eq!(told(&then, &[token, ("STABLEHAND_ACCOUNT", "")]), "none\n");
+    // Named, it wins over a token too.
+    assert_eq!(told(&named, &[token]), "claude-work\n");
+}

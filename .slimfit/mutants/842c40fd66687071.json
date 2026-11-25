@@ -1,0 +1,6 @@
+{
+  "tree": "295e4b8035b50c17011c1d7e703e584df5f2caa6+d1fba762150c532c",
+  "picker": "codex:01a21083-52ce-70d1-933b-571b777df53a:default",
+  "author": "claude-code:dacfcc86-8288-563f-a0ac-933e10d00079:opus",
+  "none": "The tests exercise both account-selection outcomes, including explicit and environment overrides, home matching, endpoint and token exclusions, and the empty account variable, so every buildable candidate changes an asserted result."
+}

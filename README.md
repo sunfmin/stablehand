@@ -254,16 +254,23 @@ stablehand status                   # each account's windows and their pace
 ## Claude Code's status line
 
 ```json
-"statusLine": {"type": "command", "command": "stablehand statusline --then ~/.claude/statusline.sh"}
+"statusLine": {"type": "command", "command": "stablehand statusline --then 'bash \"$HOME/.claude/statusline.sh\"'"}
 ```
 
 - Set in `~/.claude/settings.json`, Claude Code runs it with its session's
   JSON on stdin; its `rate_limits` (`five_hour`, `seven_day`:
-  `used_percentage`, `resets_at`) are booked as a reading of `--account`
-  (default `$STABLEHAND_ACCOUNT`, which `stablehand run` sets in the session
-  it starts), as `read` books one, when they differ from the books' latest
+  `used_percentage`, `resets_at`) are booked as a reading of the session's
+  account, as `read` books one, when they differ from the books' latest
   entry. With no account, nothing is booked and stablehand's line is empty
   (with `--then`, the person's line alone).
+- The account is `--account`, else `$STABLEHAND_ACCOUNT` (`stablehand run`
+  sets it in the session it starts), else found from the session's
+  environment, no token command run: none with `ANTHROPIC_BASE_URL` or
+  `CLAUDE_CODE_OAUTH_TOKEN` set; otherwise the claude-code account bound to
+  this machine whose home is the session's config dir (`$CLAUDE_CONFIG_DIR`,
+  else `~/.claude`; resolved, symlinks followed), unless it is off.
+  `--then`'s command gets it in `$STABLEHAND_ACCOUNT` (unset with none), to
+  show it or read its books (`stablehand status "$STABLEHAND_ACCOUNT"`).
   Booking is local: it asks no engine and reaches no network (a few
   milliseconds a run).
 - Where stdin carries no `rate_limits` and the account was not read or
