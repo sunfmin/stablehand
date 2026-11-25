@@ -61,7 +61,7 @@ pub fn run(account: Option<String>, then: Option<&str>) -> ExitCode {
 }
 
 /// One window as the bar shows it: its use (none once it has reset since
-/// it was read), and its reading's age where that is past [`FRESH_SECS`].
+/// it was read), and its reading's age, in seconds, where it is booked.
 #[derive(Debug, PartialEq)]
 struct Shown {
     name: String,
@@ -84,7 +84,7 @@ fn shown(name: &str, windows: &[Window]) -> Result<Vec<Shown>, String> {
     let now = crate::now()?;
     let status = books::status(&crate::usage::book_of(&store, &a)?, now);
     let booked = status.windows.into_iter().map(|w| Shown {
-        age: Some(now.saturating_sub(w.at)).filter(|&age| age > FRESH_SECS),
+        age: Some(now.saturating_sub(w.at)),
         name: w.name,
         used: w.used_percent,
     });
@@ -112,7 +112,7 @@ fn book(name: &str, windows: &[Window]) -> Result<(Store, Account), String> {
 }
 
 /// The bar's line: the account, and each window's use, rounded, with its
-/// age where it is shown one.
+/// age where it is past [`FRESH_SECS`].
 fn line(account: &str, windows: &[Shown]) -> String {
     let mut parts = vec![account.to_string()];
     for w in windows {
@@ -126,6 +126,7 @@ fn line(account: &str, windows: &[Shown]) -> String {
             .map_or("reset".to_string(), |u| format!("{:.0}%", u.round()));
         let age = w
             .age
+            .filter(|&a| a > FRESH_SECS)
             .map_or(String::new(), |a| format!(" ({} ago)", age(a)));
         parts.push(format!("{name} {used}{age}"));
     }
@@ -173,12 +174,16 @@ mod tests {
             w("five_hour", None, Some(3 * 3_600 + 59)),
             w("seven_day", Some(70.0), Some(25 * 60)),
             w("seven_day_opus", Some(1.0), Some(3 * 86_400)),
+            w("fresh", Some(2.0), Some(FRESH_SECS)),
+            w("just_past", Some(3.0), Some(FRESH_SECS + 1)),
         ];
         assert_eq!(
             line("a", &windows),
-            "a · 5h reset (3h ago) · 7d 70% (25m ago) · seven_day_opus 1% (3d ago)"
+            "a · 5h reset (3h ago) · 7d 70% (25m ago) · seven_day_opus 1% (3d ago) · fresh 2% · just_past 3% (10m ago)"
         );
-        assert_eq!(age(FRESH_SECS + 1), "10m");
+        assert_eq!(age(3_599), "59m");
+        assert_eq!(age(3_600), "1h");
         assert_eq!(age(2 * 86_400 - 1), "47h");
+        assert_eq!(age(2 * 86_400), "2d");
     }
 }
