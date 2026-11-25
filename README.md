@@ -3,7 +3,9 @@
 One home for agent engine accounts: how each logs in, where it may run, and
 how much of its usage windows is left; and, from that and the order of
 engines and models kept beside them (`pick`), what one more session may
-start on now: its engine, model and account. The session itself is the
+start on now: its engine, model and account; and how this host starts
+each engine, its program and the flags it always takes (`command`). The
+rest of the session, its own arguments, its home and its protocol, is the
 caller's.
 
 stablehand is being built: its commands land one ticket at a time, each
@@ -303,9 +305,28 @@ stablehand order show   # {"order": [{"engine": "claude-code", "models": ["opus"
   ids `agy models` lists, run in the home of the first agy account bound
   to this machine (the user's own without one). Other engines' models are
   kept as given. A fault is refused (`bad_order`), writing nothing.
-- It is a preference only: the command an engine starts with, its flags,
-  its guard, and which checkout keeps to which engine stay the caller's
-  (factorium's kit commands and pins).
+- It is a preference only: the command an engine starts with is its kept
+  command's (below); its guard, and which checkout keeps to which engine,
+  stay the caller's (factorium's pins).
+
+## Each engine's command
+
+```sh
+stablehand command set 'claude-code=claude --dangerously-skip-permissions' 'grok=grok --always-approve'
+stablehand command set grok=      # drops grok's
+stablehand command show           # {"commands": {"claude-code": "claude --dangerously-skip-permissions"}}
+```
+
+- How this host starts each engine: its program, then the arguments it
+  always takes, split as `sh` would and never run through a shell. One
+  per engine per machine, kept in the register's database
+  (docs/adr/0003); `set` replaces those named, `<engine>=` drops one.
+- Its program is its engine's (`claude` claude-code, `codex`, …) or a
+  path ending in it. An unknown engine, a foreign program, an open quote,
+  or a command naming a model (the pick's) is refused (`bad_command`),
+  writing nothing.
+- A fresh store keeps none: each engine starts bare until a person keeps
+  its command (full permissions are a person's choice).
 
 ## Picking what the next session starts on
 
@@ -384,6 +405,12 @@ stablehand run --home /tmp/s1 codex  # a session home of its own, the login link
   linked login with a copy when it refreshes (docs/adr/0002).
 - The child's environment names its account, `STABLEHAND_ACCOUNT=<account>`
   (a name, never a value), so its status line shows that account's windows.
+- The engine's kept command (`command show`), unless `--bare`: with no
+  command it starts; a command of the engine's program gets its arguments
+  right after the program, before the person's (`stablehand run claude -p
+  hi` starts `claude --dangerously-skip-permissions -p hi`), and its
+  program's path where the command names the bare program. A wrapper
+  `--engine` names gets none. stderr says `, kept command` when it was used.
 - Where the command names no model, the engine's model flag and the picked
   model are added (`claude --model opus -p hi`); dsh takes none.
 - stderr gets one line of what was chosen, never a value. run waits for the

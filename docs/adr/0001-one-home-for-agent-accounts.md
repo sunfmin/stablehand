@@ -1,6 +1,6 @@
 # 0001. One home for agent accounts: logins and usage together, readers per engine
 
-Status: accepted, 2026-11-24 (Felix, control session)
+Status: accepted, 2026-11-24 (Felix, control session); the command an engine starts with is stablehand's since 0003
 
 ## Context
 

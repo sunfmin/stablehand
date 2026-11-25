@@ -29,6 +29,9 @@ pub struct Asked {
     /// The engine's home: its home variable set to it, a bound account's login files linked into it; made if missing.
     #[arg(long, verbatim_doc_comment)]
     pub home: Option<String>,
+    /// Start without the engine's kept command (`stablehand command show`): its bare program, or the command as given.
+    #[arg(long, verbatim_doc_comment)]
+    pub bare: bool,
     /// The engine's command and its arguments, after `--` where they start with `-`.
     #[arg(
         trailing_var_arg = true,
@@ -96,13 +99,19 @@ pub fn run(asked: Asked, now: u64) -> Result<ExitCode, Refused> {
     let engine = a.engine;
     // A model the command names is left as it is.
     let added = model.filter(|_| in_command.is_none());
-    let line = command::line(engine, &asked.command, added);
+    let kept = match asked.bare {
+        true => None,
+        false => store.commands()?.into_iter().find(|(e, _)| *e == engine),
+    };
+    let kept = kept.map(|(_, words)| words).unwrap_or_default();
+    let (line, used) = command::line(engine, &asked.command, &kept, added);
     let mut child = Command::new(&line[0]);
     child.args(&line[1..]);
     hand_login(&mut child, &a, asked.home.as_deref())?;
     child.env(crate::statusline::ACCOUNT_VAR, &a.name);
     let said = model.map_or(String::new(), |m| format!(" ({m})"));
-    eprintln!("stablehand: {} on {}{said}", engine.name(), a.name);
+    let kept = if used { ", kept command" } else { "" };
+    eprintln!("stablehand: {} on {}{said}{kept}", engine.name(), a.name);
     // Held from before the child starts until its pid is known, so each is
     // either stablehand's own (nothing started) or the child's.
     let unheld = hold_signals();

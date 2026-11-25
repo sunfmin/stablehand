@@ -1,0 +1,6 @@
+{
+  "tree": "28a6d72fbeaeb9d503a97706999ca14534e3f923+d1fba762150c532c",
+  "picker": "codex:01a21089-5efe-7ff2-927e-f06f969f6825:default",
+  "author": "claude-code:e4dd2126-064a-5859-8e9c-bd1469c4a7b5:opus",
+  "none": "The tests already distinguish every buildable candidate by checking command validation, stored values and deletion, engine lookup, wrapper handling, and the child’s actual arguments."
+}

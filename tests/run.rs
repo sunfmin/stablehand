@@ -354,3 +354,100 @@ fn a_signal_the_child_sends_stablehand_is_not_sent_back() {
     );
     assert_eq!(code, 4);
 }
+
+#[test]
+fn an_engine_s_command_is_kept_shown_and_dropped_and_a_foreign_one_refused() {
+    let r = kept()("command-kept");
+    // A fresh store keeps none: full permissions are a person's choice.
+    assert_eq!(
+        r.ok(&["command", "show"]),
+        serde_json::json!({"commands": {}})
+    );
+    let set = r.ok(&[
+        "command",
+        "set",
+        "claude-code=claude --dangerously-skip-permissions",
+        "grok=/opt/bin/grok --always-approve 'a b'",
+    ]);
+    let both = serde_json::json!({"commands": {
+        "claude-code": "claude --dangerously-skip-permissions",
+        "grok": "/opt/bin/grok --always-approve 'a b'",
+    }});
+    assert_eq!(set, both);
+    assert_eq!(r.ok(&["command", "show"]), both);
+    // Only those named are replaced; `<engine>=` drops one.
+    let after = r.ok(&["command", "set", "grok=", "codex=codex --full-auto"]);
+    let want = serde_json::json!({"commands": {
+        "claude-code": "claude --dangerously-skip-permissions",
+        "codex": "codex --full-auto",
+    }});
+    assert_eq!(after, want);
+    for (arg, part) in [
+        ("nope=claude", "no engine `nope`"),
+        ("claude-code=ls -la", "`ls` is not claude-code's program"),
+        ("codex=claude", "is not codex's program"),
+        ("claude-code", "<engine>=<command>"),
+        ("claude-code=claude 'open", "sh cannot split"),
+        ("claude-code=claude --model opus", "names a model"),
+        ("kimi=kimi -m k2", "names a model (k2)"),
+    ] {
+        let out = r.run(&["command", "set", arg]);
+        assert_eq!(out.code, 1, "{arg}: {}", out.json);
+        assert_eq!(out.json["code"], "bad_command", "{arg}: {}", out.json);
+        let error = out.json["error"].as_str().unwrap();
+        assert!(error.contains(part), "{arg}: {error}");
+    }
+    // A refusal writes nothing, even of the arguments that were fine.
+    let out = r.run(&["command", "set", "codex=", "claude-code=ls"]);
+    assert_eq!(out.code, 1, "{}", out.json);
+    assert!(
+        out.json["error"]
+            .as_str()
+            .unwrap()
+            .contains("`claude` claude-code")
+    );
+    assert_eq!(r.ok(&["command", "show"]), want);
+}
+
+#[test]
+fn run_starts_the_engine_s_kept_command_its_arguments_before_the_person_s() {
+    let r = kept()("run-kept");
+    r.ok(&["order", "set", "claude-code@opus"]);
+    r.ok(&[
+        "command",
+        "set",
+        "claude-code=claude --dangerously-skip-permissions",
+    ]);
+    assert_eq!(run(&r, &[], &[]).0, 0);
+    let line = started(&r);
+    assert!(
+        line.starts_with("claude --model opus --dangerously-skip-permissions "),
+        "{line}"
+    );
+    assert!(
+        r.stderr()
+            .ends_with("stablehand: claude-code on claude-felix (opus), kept command\n"),
+        "{}",
+        r.stderr()
+    );
+    assert_eq!(run(&r, &["claude", "-p", "hi"], &[]).0, 0);
+    let line = started(&r);
+    assert!(
+        line.starts_with("claude --model opus --dangerously-skip-permissions -p hi "),
+        "{line}"
+    );
+    // --bare: the kept command is not used for this run.
+    assert_eq!(run(&r, &["--bare", "claude", "-p", "hi"], &[]).0, 0);
+    let line = started(&r);
+    assert!(line.starts_with("claude --model opus -p hi "), "{line}");
+    assert!(
+        r.stderr()
+            .ends_with("stablehand: claude-code on claude-felix (opus)\n"),
+        "{}",
+        r.stderr()
+    );
+    // An engine with no kept command starts as today.
+    assert_eq!(run(&r, &["codex"], &[]).0, 0);
+    let line = started(&r);
+    assert!(line.starts_with("codex  CODEX_HOME="), "{line}");
+}
