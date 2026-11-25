@@ -737,15 +737,8 @@ fn run(cmd: Register) -> Result<Value, Refused> {
         }
         Register::Command { cmd } => {
             if let CommandCmd::Set { commands } = cmd {
-                let (kept, faults): (Vec<_>, Vec<_>) = commands
-                    .iter()
-                    .map(|c| command::kept(c))
-                    .partition(Result::is_ok);
-                if !faults.is_empty() {
-                    let faults: Vec<_> = faults.into_iter().filter_map(Result::err).collect();
-                    return Err(Refused::new(Code::BadCommand, faults.join("; ")));
-                }
-                let given = kept.into_iter().filter_map(Result::ok).collect();
+                let bad = |f: Vec<String>| Refused::new(Code::BadCommand, f.join("; "));
+                let given = command::parse(&commands).map_err(bad)?;
                 store.set_commands(&command::merged(store.commands()?, given))?;
             }
             let shown: serde_json::Map<String, Value> = store
@@ -758,28 +751,8 @@ fn run(cmd: Register) -> Result<Value, Refused> {
         Register::Order { cmd } => {
             if let OrderCmd::Set { ranks } = cmd {
                 let bad = |f: Vec<String>| Refused::new(Code::BadOrder, f.join("; "));
-                let order = order::parse(&ranks).map_err(bad)?;
-                if let Some(agy) = order
-                    .iter()
-                    .find(|r| r.engine == Engine::Agy && !r.models.is_empty())
-                {
-                    let listed =
-                        readers::agy::models(&agy_home(&store)?).map_err(|e| bad(vec![e]))?;
-                    let unknown: Vec<String> = agy
-                        .models
-                        .iter()
-                        .filter(|m| !listed.contains(m))
-                        .map(|m| {
-                            format!(
-                                "`agy models` lists no `{m}`: give one of {}",
-                                listed.join(", ")
-                            )
-                        })
-                        .collect();
-                    if !unknown.is_empty() {
-                        return Err(bad(unknown));
-                    }
-                }
+                let agy_models = || readers::agy::models(&agy_home(&store).map_err(|r| r.text)?);
+                let order = order::parse(&ranks, agy_models).map_err(bad)?;
                 store.set_order(&order)?;
             }
             Ok(json!({ "order": store.order()? }))
