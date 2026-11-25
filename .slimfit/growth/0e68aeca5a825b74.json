@@ -1,0 +1,10 @@
+{
+  "tree": "86f88777611d93f73885350ebbc553cd2b214df3+d1fba762150c532c",
+  "lines": 114,
+  "serves": "stablehand#30",
+  "considered": "Reused the order's one-row JSON table for the kept commands (store.rs one/set_one now serve both, order() and set_order() shrank), Engine::of_program for the program check, named_model for the model refusal, and the existing line() builder; shell-words for sh splitting instead of a hand parser",
+  "reviewer": "codex:01a2108f-6ff7-7302-bcdd-d3542b9f5cd6:default",
+  "author": "claude-code:e4dd2126-064a-5859-8e9c-bd1469c4a7b5:opus",
+  "cut": "In src/command.rs, build the launch line from the kept words when they apply, overriding the executable for an explicit path and appending caller arguments, and reuse the original fallback for other launches. Delete the `shown` wrapper and call `shell_words::join` directly in src/main.rs. Move the Kimi `-m` refusal case into tests/run.rs and delete the duplicate unit refusal table, keeping the direct assertions for quoted argument splitting.",
+  "answer": "Made all three: line() decides once whether the kept command applies and builds from kept+args (path override) else the old fallback; shown() deleted, main.rs calls shell_words::join; the unit refusal table deleted, kimi -m case moved into tests/run.rs's refusal table, the quoted-split and drop assertions kept"
+}
