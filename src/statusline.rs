@@ -203,8 +203,8 @@ mod tests {
             w("five_hour", None, Some(3 * 3_600 + 59)),
             w("seven_day", Some(70.0), Some(25 * 60)),
             w("seven_day_opus", Some(1.0), Some(3 * 86_400)),
-            w("fresh", Some(2.0), Some(FRESH_SECS)),
-            w("just_past", Some(3.0), Some(FRESH_SECS + 1)),
+            w("fresh", Some(2.0), Some(600)),
+            w("just_past", Some(3.0), Some(601)),
         ];
         assert_eq!(
             line("a", &windows),

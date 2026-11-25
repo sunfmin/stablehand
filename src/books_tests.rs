@@ -483,6 +483,16 @@ fn an_account_tried_in_the_last_hour_is_not_tried_again_whatever_came_of_it() {
 }
 
 #[test]
+fn the_status_line_reads_again_past_ten_minutes_of_a_reading_or_a_try() {
+    let again = |book: &[Entry]| read_after(&status(book, NOW), 10 * MINUTE, NOW);
+    let seven = &[("seven_day", 33.0, NOW + 100 * HOUR)];
+    assert_eq!(again(&[said(NOW - 10 * MINUTE, seven)]), Some(NOW + 1));
+    assert_eq!(again(&[said(NOW - 11 * MINUTE, seven)]), None);
+    let tried = [said(NOW - HOUR, seven), failed(NOW - 4 * MINUTE)];
+    assert_eq!(again(&tried), Some(NOW + 6 * MINUTE));
+}
+
+#[test]
 fn an_account_with_no_reading_in_force_is_read() {
     assert_eq!(next(None, None), None);
     // One read before its window reset is none in force.
