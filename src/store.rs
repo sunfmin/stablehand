@@ -248,6 +248,17 @@ impl Store {
         Ok(store)
     }
 
+    /// A store in memory, with the schema, for a test.
+    #[cfg(test)]
+    pub fn in_memory() -> Store {
+        let conn = Connection::open_in_memory().unwrap();
+        migrate(&conn, MIGRATIONS).unwrap();
+        Store {
+            conn,
+            path: PathBuf::from(":memory:"),
+        }
+    }
+
     fn err(&self, e: rusqlite::Error) -> String {
         format!("{}: {e}", self.path.display())
     }

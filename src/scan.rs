@@ -570,6 +570,32 @@ mod tests {
     use super::*;
 
     #[test]
+    fn a_new_one_kept_meanwhile_by_another_run_is_refused_and_the_kept_one_stays() {
+        let store = Store::in_memory();
+        let home = |h: &str| Terms {
+            machine: Some("m".into()),
+            home: Some(h.into()),
+            ..Terms::default()
+        };
+        let first = new("claude", Engine::ClaudeCode, home("/a")).unwrap();
+        assert_eq!(register(&store, false, &first), Ok("new"));
+        assert!(store.get("claude").unwrap().is_none());
+        assert_eq!(register(&store, true, &first), Ok("added"));
+        // Another run kept `claude` after this one listed the register.
+        let later = new("claude", Engine::ClaudeCode, home("/b")).unwrap();
+        let refused = register(&store, true, &later).unwrap_err();
+        assert_eq!(refused.code, Code::NameTaken);
+        assert_eq!(
+            refused.text,
+            "account `claude` was kept meanwhile: run the scan again"
+        );
+        assert_eq!(
+            store.get("claude").unwrap().unwrap().home.as_deref(),
+            Some("/a")
+        );
+    }
+
+    #[test]
     fn entries_are_the_agent_account_lines_with_their_fields() {
         let list = "agent-account-codex/default\tprofile\tserver  — fields: as about  fields: HARNESS, MACHINE\n\
                     bark/default\tstatic\tserver  — push\n\

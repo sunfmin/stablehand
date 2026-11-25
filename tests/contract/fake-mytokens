@@ -10,11 +10,17 @@ dir="${FAKE_MYTOKENS_DIR:-$(dirname "$0")/mytokens-store}"
 [ -n "$FAKE_ARGV_LOG" ] && echo "mytokens $*" >>"$FAKE_ARGV_LOG"
 case "$1" in
 list)
+    # The shell's own globs and expansions, no process per entry: scan
+    # lists once per run.
     for entry in "$dir"/*/*; do
         [ -d "$entry" ] || continue
-        fields=$(ls "$entry" | paste -sd, - | sed 's/,/, /g')
+        fields=
+        for field in "$entry"/*; do
+            [ -e "$field" ] && fields="${fields:+$fields, }${field##*/}"
+        done
+        service=${entry%/*}
         printf '%s/%s\tprofile\tserver  — a stand-in entry  fields: %s\n' \
-            "$(basename "$(dirname "$entry")")" "$(basename "$entry")" "$fields"
+            "${service##*/}" "${entry##*/}" "$fields"
     done ;;
 get)
     case "$3 $5" in

@@ -2,11 +2,11 @@
   "suites": {
     "rust": {
       "prod_lines": 6055,
-      "test_lines": 5681,
+      "test_lines": 5697,
       "tests": 171,
       "failures": 0,
       "test_seconds": 0.004,
-      "covered_lines": 4460,
+      "covered_lines": 4471,
       "uncovered_lines": 3
     }
   },
@@ -19,11 +19,18 @@
       "reason": "stablehand#25: both survivors change nothing a test can observe: SA_SIGINFO and SA_RESTART are distinct bits (| and ^ equal), and hold_signals only closes the microseconds between spawn and the child's pid being stored, a window no test can hit deterministically"
     }
   ],
-  "kept": [],
+  "kept": [
+    {
+      "suite": "rust",
+      "test": "stablehand::dsh::a_portable_login_is_read_with_its_command_s_token_and_a_bound_one_without_its_grant_fails",
+      "hash": "7b4bbc715fd98fcd",
+      "reason": "read: no assertion maps — kimi's test checks kimi's Bearer header on a different engine and curl stand-in; this one checks dsh's x-dsh-auth-token header, a refused portable grant held until --token-command is given again, and a bound dsh home without a grant failing with its DSH_HOME fix. Merging across engines would hide which reader failed."
+    }
+  ],
   "measured": {
     "rust": {
-      "uncovered_lines": 124,
-      "test_seconds": 11.786
+      "uncovered_lines": 116,
+      "test_seconds": 11.605
     }
   }
 }

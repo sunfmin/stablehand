@@ -1,0 +1,41 @@
+{
+  "tip": "d14374fd485629dad7d9c21b01fdf2ec4668b19e",
+  "from": "7afc0bb6cbf778290ebcdd3b5fc917e81dafcb79",
+  "pool": 1014,
+  "drawn": {
+    "rust": [
+      {
+        "name": "src/store.rs:88:5: replace config_dir -> Result<PathBuf, String> with Ok(Default::default())",
+        "outcome": "killed"
+      },
+      {
+        "name": "src/command.rs:117:5: replace merged -> Vec<(Engine, Vec<String>)> with vec![(Default::default(), vec![\"xyzzy\".into()])]",
+        "outcome": "unviable"
+      },
+      {
+        "name": "src/account.rs:412:36: replace + with * in day_of",
+        "outcome": "killed"
+      },
+      {
+        "name": "src/store.rs:429:9: replace Store::entries -> Result<Vec<Entry>, String> with Ok(vec![Default::default()])",
+        "outcome": "unviable"
+      },
+      {
+        "name": "src/time.rs:11:26: replace + with - in days_from_civil",
+        "outcome": "killed"
+      },
+      {
+        "name": "src/books.rs:455:5: replace runs_out -> Option<f64> with None",
+        "outcome": "killed"
+      },
+      {
+        "name": "src/readers/claude_code.rs:223:5: replace statusline -> Vec<Window> with vec![Default::default()]",
+        "outcome": "unviable"
+      },
+      {
+        "name": "src/store.rs:131:11: replace > with == in migrate",
+        "outcome": "killed"
+      }
+    ]
+  }
+}
