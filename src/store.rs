@@ -316,9 +316,9 @@ impl Store {
             .map_err(|e| self.err(e))
     }
 
-    /// Keeps on the account `name` the hashes `account scan` read of its
-    /// login, each only where it has none: what it had stays.
-    pub fn fill_hashes(&self, name: &str, read: &Account) -> Result<(), String> {
+    /// Keeps on the account of `read`'s name the hashes `account scan` read
+    /// of its login, each only where it has none: what it had stays.
+    pub fn fill_hashes(&self, read: &Account) -> Result<(), String> {
         self.conn
             .execute(
                 "UPDATE accounts SET identity = COALESCE(identity, ?2),
@@ -326,7 +326,7 @@ impl Store {
                     organization_type = COALESCE(organization_type, ?4)
                  WHERE name = ?1",
                 params![
-                    name,
+                    read.name,
                     read.identity,
                     read.organization,
                     read.organization_type

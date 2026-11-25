@@ -366,9 +366,6 @@ pub fn scan(store: &Store, paths: &[String], add: bool) -> Result<Value, Refused
     let judged = judge(&found, &kept, &machine, &mut taken);
 
     let mut out_logins = Vec::new();
-    // The kept accounts and the new logins' as `--add` keeps them: what a
-    // token may be a copy of.
-    let mut accounts = kept.clone();
     for (f, status) in found.iter().zip(&judged) {
         let (status, name) = match status {
             Status::New(n) => {
@@ -382,7 +379,8 @@ pub fn scan(store: &Store, paths: &[String], add: bool) -> Result<Value, Refused
                 a.organization = f.organization.as_ref().map(|o| o.hash.clone());
                 a.organization_type = f.organization.as_ref().and_then(|o| o.kind.clone());
                 let status = register(store, add, &a)?;
-                accounts.push(a);
+                // Beside the kept ones, what a token may be a copy of.
+                kept.push(a);
                 (status, n)
             }
             Status::Registered(n) => ("registered", n),
@@ -406,8 +404,8 @@ pub fn scan(store: &Store, paths: &[String], add: bool) -> Result<Value, Refused
         Ok(list) => (list, None),
         Err(why) => (String::new(), Some(why)),
     };
-    let mut tokens = Vec::new();
-    let mut read: Vec<Token> = Vec::new();
+    // Each entry in its order: a skipped one as answered, a token as read.
+    let mut rows: Vec<Result<Token, Value>> = Vec::new();
     for e in entries(&list) {
         let Some((engine, var)) = e.token() else {
             let why = match e.fields.contains(&"MACHINE") {
@@ -416,7 +414,9 @@ pub fn scan(store: &Store, paths: &[String], add: bool) -> Result<Value, Refused
                 }
                 false => "it holds no engine's token field",
             };
-            tokens.push(json!({ "entry": e.id, "status": "skipped", "why": why }));
+            rows.push(Err(
+                json!({ "entry": e.id, "status": "skipped", "why": why }),
+            ));
             continue;
         };
         let cmd = e.token_command(var);
@@ -449,63 +449,58 @@ pub fn scan(store: &Store, paths: &[String], add: bool) -> Result<Value, Refused
         if let Some(i) = kept_at {
             kept[i].identity.clone_from(&account.identity);
         }
-        tokens.push(Value::Null);
-        read.push(Token {
-            at: tokens.len() - 1,
+        rows.push(Ok(Token {
             entry: e.id.to_string(),
             command: cmd,
             kept: kept_at.is_some(),
             account,
             org,
-        });
+        }));
     }
-    let ids: Vec<(&str, Option<&str>)> = read
-        .iter()
-        .map(|t| (t.entry.as_str(), t.org.as_deref().ok()))
-        .collect();
-    for (i, t) in read.iter().enumerate() {
-        let a = &t.account;
-        let (status, name, same_as_a_login, warning) = match (
-            account::copy_of(a, &accounts),
-            t.kept,
-        ) {
-            (Some(login), kept) => (
-                if kept { "registered" } else { "copy" },
-                if kept { a.name.as_str() } else { login },
-                login,
-                Some(format!(
-                    "a token of {login}'s subscription (its organization is {login}'s, one person's): both spend the same windows, so run sessions on one of them only and switch the other off (`stablehand off <account>`)"
-                )),
-            ),
-            (None, kept) => {
-                let entries = of_its_org(&ids, i);
-                let warning = (!entries.is_empty()).then(|| format!(
-                    "of the organization of the token of {} too: one subscription if it is one person's, a team's seats if not, which a token does not tell; if one person's, run sessions on one of them only",
-                    entries.join(", ")
-                ));
-                let status = match kept {
-                    true => "registered",
-                    false => register(store, add, a)?,
-                };
-                (status, a.name.as_str(), "unknown", warning)
+    let mut tokens = Vec::new();
+    for row in &rows {
+        let t = match row {
+            Ok(t) => t,
+            Err(skipped) => {
+                tokens.push(skipped.clone());
+                continue;
             }
         };
-        tokens[t.at] = json!({
+        let a = &t.account;
+        let copy = account::copy_of(a, &kept);
+        let status = match (t.kept, copy) {
+            (true, _) => "registered",
+            (false, Some(_)) => "copy",
+            (false, None) => register(store, add, a)?,
+        };
+        let warning = match copy {
+            Some(login) => Some(format!(
+                "a token of {login}'s subscription (its organization is {login}'s, one person's): both spend the same windows, so run sessions on one of them only and switch the other off (`stablehand off <account>`)"
+            )),
+            None => {
+                let entries = of_its_org(&rows, t);
+                (!entries.is_empty()).then(|| format!(
+                    "of the organization of the token of {} too: one subscription if it is one person's, a team's seats if not, which a token does not tell; if one person's, run sessions on one of them only",
+                    entries.join(", ")
+                ))
+            }
+        };
+        tokens.push(json!({
             "entry": t.entry,
             "engine": a.engine.name(),
             "token_command": t.command,
             "status": status,
-            "account": name,
+            "account": copy.filter(|_| !t.kept).unwrap_or(&a.name),
             "identity": t.org.as_ref().ok(),
             "identity_unknown": t.org.as_ref().err(),
-            "same_as_a_login": same_as_a_login,
+            "same_as_a_login": copy.unwrap_or("unknown"),
             "warning": warning,
-        });
+        }));
     }
     if add {
         for (a, was) in kept.iter().zip(&stored) {
             if a != was {
-                store.fill_hashes(&a.name, a)?;
+                store.fill_hashes(a)?;
             }
         }
     }
@@ -518,25 +513,21 @@ pub fn scan(store: &Store, paths: &[String], add: bool) -> Result<Value, Refused
     }))
 }
 
-/// The other entries of `tokens` (each its entry and its organization's
-/// hash, where read) of the organization of the `i`th.
-fn of_its_org<'a>(tokens: &[(&'a str, Option<&str>)], i: usize) -> Vec<&'a str> {
-    let Some(id) = tokens[i].1 else {
+/// The other tokens of `rows` of `t`'s organization, by entry.
+fn of_its_org<'a>(rows: &'a [Result<Token, Value>], t: &Token) -> Vec<&'a str> {
+    let Ok(id) = &t.org else {
         return Vec::new();
     };
-    let same = |(j, (_, t)): &(usize, &(&str, Option<&str>))| *j != i && *t == Some(id);
-    tokens
-        .iter()
-        .enumerate()
+    let same = |o: &&'a Token| o.entry != t.entry && o.org.as_ref() == Ok(id);
+    rows.iter()
+        .flatten()
         .filter(same)
-        .map(|(_, (e, _))| *e)
+        .map(|o| o.entry.as_str())
         .collect()
 }
 
 /// A token entry as scan read it.
 struct Token {
-    /// Its place in the scan's `tokens`.
-    at: usize,
     /// `<service>/<label>`.
     entry: String,
     command: String,
@@ -685,13 +676,25 @@ mod tests {
 
     #[test]
     fn two_tokens_of_one_organization_are_said_so() {
-        let tokens = [
-            ("a", Some("team")),
-            ("b", Some("max")),
-            ("c", None),
-            ("d", Some("team")),
+        let token = |entry: &str, org: Result<&str, &str>| Token {
+            entry: entry.into(),
+            command: String::new(),
+            kept: false,
+            account: account::new("t", Engine::ClaudeCode, Change::default()).unwrap(),
+            org: org.map(String::from).map_err(String::from),
+        };
+        let rows = [
+            Ok(token("a", Ok("team"))),
+            Ok(token("b", Ok("max"))),
+            Err(Value::Null),
+            Ok(token("c", Err("not read"))),
+            Ok(token("d", Ok("team"))),
         ];
-        let of: Vec<_> = (0..tokens.len()).map(|i| of_its_org(&tokens, i)).collect();
+        let of: Vec<_> = rows
+            .iter()
+            .flatten()
+            .map(|t| of_its_org(&rows, t))
+            .collect();
         assert_eq!(of, [vec!["d"], vec![], vec![], vec!["a"]]);
         assert_ne!(org_hash("o"), hash("o"));
         assert_eq!(org_hash("o").len(), 16);
