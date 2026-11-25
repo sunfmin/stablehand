@@ -445,7 +445,7 @@ notarizes it.
 
 A Rust command-line program, edition 2024, the toolchain pinned in
 `rust-toolchain.toml`. The repo is a factorium checkout: work is a factorium
-issue (`docs/agents/issue-tracker.md`).
+issue.
 
 ```sh
 ./gate.sh   # fmt, clippy, slimfit check, the release dry run, truefit contract
