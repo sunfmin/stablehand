@@ -77,12 +77,22 @@ pub fn named_model(engine: Engine, args: &[String]) -> Option<String> {
     None
 }
 
-/// One `command set` argument, `<engine>=<command>`: the engine and its
-/// command's words, split as `sh` would (none: drop the one kept). Refused,
-/// with its fix: no `=`, an engine stablehand does not know, a command `sh`
+/// `command set`'s arguments, each `<engine>=<command>`: the engine and its
+/// command's words, split as `sh` would (none: drop the one kept); each
+/// fault, with its fix.
+pub fn parse(args: &[String]) -> Result<Vec<(Engine, Vec<String>)>, Vec<String>> {
+    let (kept, faults): (Vec<_>, Vec<_>) = args.iter().map(|a| kept(a)).partition(Result::is_ok);
+    if faults.is_empty() {
+        Ok(kept.into_iter().filter_map(Result::ok).collect())
+    } else {
+        Err(faults.into_iter().filter_map(Result::err).collect())
+    }
+}
+
+/// One `command set` argument. Refused, with its fix: no `=`, an engine stablehand does not know, a command `sh`
 /// cannot split, whose program is not the engine's (its name or a path
 /// ending in it), or that names a model (the model is the pick's).
-pub fn kept(arg: &str) -> Result<(Engine, Vec<String>), String> {
+fn kept(arg: &str) -> Result<(Engine, Vec<String>), String> {
     let (name, command) = arg
         .split_once('=')
         .ok_or_else(|| format!("`{arg}` is no command: give it as <engine>=<command>, `claude-code=claude --dangerously-skip-permissions`, or <engine>= to drop one"))?;
@@ -253,5 +263,13 @@ mod tests {
             Ok((Grok, s(&["/opt/grok", "--always-approve", "a b"])))
         );
         assert_eq!(kept("codex="), Ok((Codex, vec![])));
+    }
+
+    #[test]
+    fn a_command_set_says_every_fault_or_keeps_every_command() {
+        let given = parse(&s(&["codex=", "grok=grok -x"]));
+        assert_eq!(given, Ok(vec![(Codex, vec![]), (Grok, s(&["grok", "-x"]))]));
+        let faults = parse(&s(&["nope", "codex=", "grok=claude"])).unwrap_err();
+        assert_eq!(faults.len(), 2, "{faults:?}");
     }
 }
