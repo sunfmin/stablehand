@@ -5,11 +5,13 @@
 # empty one; and prints what the reader reads of its answer
 # (src/readers/agy.rs), and no more: the exit, the status, the error, and of
 # a success the turns taken, each group's description's shape and each
-# bucket's shape and window. Of `models`, the exit and whether each line is
-# an id and a name, a tab between.
+# bucket's shape and window: its reset a time or none (null, as agy 1.5.17
+# answers a disabled bucket), read alike. Of `models`, the exit and whether
+# each line is an id and a name, a tab between.
 program=$1
 shift
-[ -x "$(dirname "$0")/$program" ] && program="$(dirname "$0")/$program"
+# A stand-in's path is the repo's: from the repo's root, as truefit.toml names it.
+case "$program" in [!/]*/*) program="$(cd "$(dirname "$0")/../.." && pwd)/$program" ;; esac
 if [ "$AGY_SHAPE_HOME" = signed-out ]; then
     HOME=$(mktemp -d)
     export HOME
@@ -25,7 +27,7 @@ if [ "$1" = models ]; then
     exit 0
 fi
 printf '%s' "$out" | jq -r '
-    def kind: if test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:]{8}Z$") then "time" else "not a time" end;
+    def kind: if . == null then "time or none" elif test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:]{8}Z$") then "time or none" else "not a time" end;
     "status \(.status)",
     "error \(.error // "none")",
     if .status == "SUCCESS" then

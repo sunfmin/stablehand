@@ -2,7 +2,7 @@
 # Stand-in for agy as stablehand's reader runs it (src/readers/agy.rs):
 #   HOME=<home> agy -p /usage --output-format json   (stdin empty)
 #   HOME=<home> agy models                            (stdin empty)
-# It answers as agy 1.5.16 does (truefit.toml, standin "agy"): signed in
+# It answers as agy 1.5.17 does (truefit.toml, standin "agy"): signed in
 # ($HOME/.gemini/antigravity-cli/antigravity-oauth-token there), the quota of
 # each model group, or each model's id and name, a tab between, exit 0;
 # signed out, after the browser sign-in it waited for (`/usage`), an error,
@@ -12,6 +12,8 @@
 #   whose answer a signed-in home gets instead of the `/usage` one below.
 #   FAKE_AGY_LOG: a file each call appends its arguments and HOME to.
 #   FAKE_AGY_MODELS=fails: `models` fails, signed in or not.
+#   FAKE_AGY_WEEK=used-up: the Gemini group's weekly limit is hit, and its 5h
+#   bucket answers as agy 1.5.17 does then: disabled, no reset_time.
 if [ -n "$FAKE_AGY_LOG" ]; then
     echo "$* HOME=$HOME" >>"$FAKE_AGY_LOG"
 fi
@@ -40,6 +42,12 @@ if [ -z "$signed_in" ]; then
     echo "error: authentication failed or timed out" >&2
     echo '{"conversation_id":"","status":"ERROR","response":"","error":"authentication failed or timed out","duration_seconds":0,"num_turns":0,"usage":{"input_tokens":0,"output_tokens":0,"thinking_tokens":0,"cache_read_tokens":0,"total_tokens":0},"finished_reason":"error"}'
     exit 1
+fi
+if [ "$FAKE_AGY_WEEK" = used-up ]; then
+    cat <<'JSON'
+{"conversation_id":"","status":"SUCCESS","response":"Gemini Models\tWeekly Limit Remaining\t0%\t2026-12-01T01:58:11Z\nGemini Models\tFive Hour Limit Remaining\tdisabled\nClaude and GPT models\tWeekly Limit Remaining\t98%\t2026-12-01T14:44:30Z\nClaude and GPT models\tFive Hour Limit Remaining\t100%\t1970-01-01T00:00:00Z\n","duration_seconds":0,"num_turns":0,"usage":{"input_tokens":0,"output_tokens":0,"thinking_tokens":0,"cache_read_tokens":0,"total_tokens":0},"command":{"name":"usage","data":{"description":"Within each group, models share a weekly limit and a 5-hour limit.","groups":[{"name":"Gemini Models","description":"Models within this group: Gemini 4 Neon, Gemini 3.8 Flash","buckets":[{"id":"gemini-weekly","name":"Weekly Limit Remaining","description":"You have hit your weekly limit, it refreshes in 5 days, 14 hours.","window":"weekly","remaining_fraction":0,"reset_time":"2026-12-01T01:58:11Z"},{"id":"gemini-5h","name":"Five Hour Limit Remaining","description":"You have hit your weekly limit, the 5-hour limit does not currently apply.","window":"5h","disabled":true,"remaining_fraction":1}]},{"name":"Claude and GPT models","description":"Models within this group: Claude Opus 5.5, Claude Sonnet 5.5, GPT-OSS 120B","buckets":[{"id":"3p-weekly","name":"Weekly Limit Remaining","description":"You have used some of your weekly limit, it will fully refresh in 6 days, 2 hours.","window":"weekly","remaining_fraction":0.98,"reset_time":"2026-12-01T14:44:30Z"},{"id":"3p-5h","name":"Five Hour Limit Remaining","window":"5h","remaining_fraction":1,"reset_time":"1970-01-01T00:00:00Z"}]}]}}}
+JSON
+    exit 0
 fi
 if [ -n "$FAKE_AGY_BODY" ]; then
     cat "$FAKE_AGY_BODY"

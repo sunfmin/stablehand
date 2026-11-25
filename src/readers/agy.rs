@@ -198,7 +198,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn each_group_s_buckets_are_its_windows_and_1970_is_unused() {
+    fn each_group_s_buckets_are_its_windows_and_1970_or_disabled_is_unused() {
         let body = r#"{"status":"SUCCESS","num_turns":0,"command":{"name":"usage","data":{"groups":[
             {"name":"Gemini Models","buckets":[
               {"id":"gemini-weekly","window":"weekly","remaining_fraction":0.75,"reset_time":"2026-12-01T01:58:11Z"},
@@ -206,7 +206,8 @@ mod tests {
             {"name":"Claude and GPT models","buckets":[
               {"id":"3p-5h","window":"5h","remaining_fraction":1,"reset_time":"1970-01-01T00:00:00Z"},
               {"id":"3p-odd","window":"monthly","remaining_fraction":0.5},
-              {"id":"3p-none","window":"5h"}]}]}}}"#;
+              {"id":"3p-none","window":"5h"},
+              {"id":"3p-off","window":"5h","disabled":true,"remaining_fraction":1}]}]}}}"#;
         let got = windows(Some(0), body, "a", Vec::new).unwrap();
         let shown: Vec<_> = got
             .iter()
@@ -239,6 +240,7 @@ mod tests {
                 ),
                 ("3p-5h", "Claude and GPT models", 0.0, None, Some(300)),
                 ("3p-odd", "Claude and GPT models", 50.0, None, None),
+                ("3p-off", "Claude and GPT models", 0.0, None, Some(300)),
             ]
         );
     }
