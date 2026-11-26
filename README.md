@@ -1,31 +1,55 @@
 # stablehand
 
 One home for agent engine accounts: how each logs in, where it may run, and
-how much of its usage windows is left; and, from that and the order of
-engines and models kept beside them, what one more session may start on
-now, and how this host starts each engine. The rest of the session is the
-caller's.
+how much of its usage windows is left; and from that, which engine, model
+and account the next session starts on. It knows Claude Code
+(`claude-code`), Codex (`codex`), pi, Kimi Code (`kimi`), agy, Grok (`grok`)
+and dsh.
 
-The design is
-[docs/adr/0001](docs/adr/0001-one-home-for-agent-accounts.md), each later
-decision an ADR in `docs/adr/`; the words are in [GLOSSARY.md](GLOSSARY.md).
+## What you need
 
-## What it keeps where
+stablehand installed (see Install) and at least one engine logged in by its
+own login command (`claude auth login`, `codex login`, …). stablehand runs no
+login and keeps no secret: it finds the logins where the engines keep them.
 
-- **The manual** is the binary's help: `stablehand --help` lists the
-  commands, `stablehand <command> --help` says all one does, answers and
-  refuses, and `stablehand help all` is the whole of it. This README
-  describes no command.
-- **The register**, books, order and engines' commands are one SQLite file
-  (`stablehand --help` says where). It keeps no
-  token: stablehand runs no login and finds each login where its engine
-  keeps it.
+A **portable** login, a token rather than a home (`claude setup-token` makes
+one), is added with the command that prints the token. Any command that
+prints it will do: the Keychain's `security find-generic-password -s <service> -w`,
+1Password's `op read …`, or mytokens, if you use it.
 
 ```sh
-stablehand account scan --add   # register the logins on this machine
-stablehand status               # each account's windows and their pace
-stablehand run claude -p hi     # a session on the account stablehand picks
+stablehand account add claude-work --engine claude-code --expires 2027-01-31 \
+  --token-command 'security find-generic-password -s claude-work -w'
 ```
+
+## A first run
+
+```sh
+stablehand account scan                     # the logins on this machine, each with the name it would get
+stablehand account scan --add               # add them to the register (claude-code, codex, …)
+stablehand read                             # ask each account's engine for its usage windows
+stablehand status                           # what the books say now: each window, its pace
+stablehand order set claude-code@opus codex # the order to pick in: engines, and their models
+stablehand pick                             # what the next session starts on, and why not the others
+stablehand run claude -p hi                 # start claude on its pick, login handed in; or say why none
+```
+
+Each of these but `run` answers one JSON object on stdout; a refusal is
+`{"error", "code"}` with the line that fixes it.
+
+## Where it keeps things
+
+The register and the books are one SQLite file,
+`$STABLEHAND_CONFIG_DIR/stablehand.db` (default `~/.config/stablehand`). It
+holds no token: of a portable login it keeps only the command that prints
+it, run each time the token is needed.
+
+## The manual
+
+Every command's details are in the manual: `stablehand --help` (the index),
+`stablehand <command> --help`, `stablehand help <topic>`, and
+`stablehand help all` (the whole of it). The design is in
+[docs/adr/](docs/adr/); the words are in [GLOSSARY.md](GLOSSARY.md).
 
 ## Install
 
@@ -51,11 +75,7 @@ issue.
 
 The manual is assembled by [agent-help](https://github.com/sunfmin/agent-cli)
 from Markdown doc comments on the thing each fact belongs to: the root and
-each command's on clap's types in `src/main.rs`; the refusal codes on the
-`Code` enum in `src/refusal.rs`; the engines' logins from the one list of
-engines. No help is written anywhere else, and no `long_about` or
-`after_help` by hand; a test runs `agent_help::check` on it.
-
-A fact a change adds goes where it is true: a command's behaviour in its
-help, a decision and its why in an ADR, a word in the glossary. This README
-changes only when what stablehand is, or how it is built, does.
+each command's on clap's types in `src/main.rs`, the refusal codes on the
+`Code` enum in `src/refusal.rs`, the engines' logins from the one list of
+engines (`Engine`). No help is written anywhere else, and no `long_about` or
+`after_help` by hand. The test `the_manual_is_whole` checks it.

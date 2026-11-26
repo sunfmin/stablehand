@@ -1,0 +1,45 @@
+{
+  "tree": "4dcbda282602c828604b3727dcd65ef82601c733+d1fba762150c532c",
+  "picker": "codex:01a215fe-ae1f-7d40-93de-cd8867ff2c59:default",
+  "author": "claude-code:c2404843-d136-5318-99f4-39bdde71714f:opus",
+  "picks": {
+    "rust": [
+      {
+        "name": "src/store.rs:475:9: replace Store::end_session -> Result<(), String> with Ok(())",
+        "why": "The merged test starts two children in the same store, so checking the session records after the first exits could expose stale state that the launch assertions miss.",
+        "outcome": "killed",
+        "first_outcome": "killed"
+      },
+      {
+        "name": "src/pick.rs:93:53: replace > with >= in pick",
+        "why": "The launch assertions check which account is selected, and this comparison only changes the decision when its operands are equal.",
+        "outcome": "killed",
+        "first_outcome": "killed"
+      },
+      {
+        "name": "src/run.rs:302:5: replace release_signals with ()",
+        "why": "An ordinary child exit can still pass with signals left blocked, and neither launch in the diff exercises delivery of a signal.",
+        "outcome": "killed",
+        "first_outcome": "survived"
+      },
+      {
+        "name": "src/login.rs:103:5: replace written -> Option<u64> with Some(0)",
+        "why": "The merged test checks the child's credential and selected account without checking the recorded login time.",
+        "outcome": "killed",
+        "first_outcome": "killed"
+      },
+      {
+        "name": "src/order.rs:107:21: replace match guard r.models.is_empty() with false in walk",
+        "why": "The visible launches use either no order or an order with an explicit model, leaving room for a regression in an order entry that names only an engine.",
+        "outcome": "killed",
+        "first_outcome": "killed"
+      }
+    ]
+  },
+  "removed_tests": {
+    "rust": [
+      "tests/run.rs:62: a_command_starts_on_its_engine_s_pick_its_login_in_its_environment_alone",
+      "tests/run.rs:413: run_starts_the_engine_s_kept_command_its_arguments_before_the_person_s"
+    ]
+  }
+}

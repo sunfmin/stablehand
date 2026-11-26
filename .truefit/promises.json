@@ -132,12 +132,6 @@
     "sentence": "One no group of which holds the model is judged by every window, and named in the answer's `model_in_no_group`; an engine that groups no window is judged as without a model.",
     "source": "README.md:384"
   },
-  "ce73275ab4bc": {
-    "mark": "not",
-    "sentence": "This README changes only when what stablehand is, or how it is built, does.",
-    "source": "README.md:60",
-    "why": "a convention for writers of the README, not a promise of the system"
-  },
   "ceb874047196": {
     "mark": "promise",
     "sentence": "Its token lasts hours: an expired one is refreshed by grok itself (`grok models`, no model turn). Its windows are the credit period's, `weekly`: the account's, and one per product in its `group` (`Api`, `GrokBuild`): a share of the account's credits, never paced on its own.",
