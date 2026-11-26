@@ -64,16 +64,7 @@ pub fn codex(account: &Account) -> Result<Vec<Window>, String> {
     let _ = child.kill();
     let _ = child.wait();
     written.map_err(|e| format!("codex app-server: {e}"))?;
-    match answer {
-        Ok(Some(answer)) => codex_windows(&answer, &relog(account)),
-        Ok(None) => Err(
-            "codex app-server ended with no answer to account/rateLimits/read: run `codex app-server` to see why".into(),
-        ),
-        Err(_) => Err(format!(
-            "codex app-server gave no answer in {} s: try again later (`stablehand read --now`)",
-            ANSWER_WITHIN.as_secs()
-        )),
-    }
+    codex_windows(answer, &relog(account))
 }
 
 pub fn pi(account: &Account) -> Result<Vec<Window>, String> {
@@ -179,9 +170,23 @@ fn found(
     Ok(found)
 }
 
-/// The windows of the app server's answer to `account/rateLimits/read`:
-/// its `rateLimits`' `primary` and `secondary`, a `null` one not had.
-fn codex_windows(answer: &Value, relog: &str) -> Result<Vec<Window>, String> {
+/// The windows of the app server's answer to `account/rateLimits/read`, as
+/// it came within [`ANSWER_WITHIN`] (none: it ended without one): its
+/// `rateLimits`' `primary` and `secondary`, a `null` one not had.
+fn codex_windows(
+    answer: Result<Option<Value>, mpsc::RecvTimeoutError>,
+    relog: &str,
+) -> Result<Vec<Window>, String> {
+    let answer = match answer {
+        Ok(Some(answer)) => answer,
+        Ok(None) => return Err(
+            "codex app-server ended with no answer to account/rateLimits/read: run `codex app-server` to see why".into(),
+        ),
+        Err(_) => return Err(format!(
+            "codex app-server gave no answer in {} s: try again later (`stablehand read --now`)",
+            ANSWER_WITHIN.as_secs()
+        )),
+    };
     if let Some(said) = answer["error"]["message"].as_str() {
         return Err(format!("codex app-server: {said}: {relog}"));
     }
@@ -234,19 +239,32 @@ mod tests {
             "secondary":null,"credits":{"hasCredits":false}}}}"#,
         )
         .unwrap();
-        let got = codex_windows(&answer, "c").unwrap();
+        let got = codex_windows(Ok(Some(answer)), "c").unwrap();
         assert_eq!(
             shown(&got),
             [("primary", 42.0, Some(1_794_884_400), Some(300))]
         );
         let refused: Value = serde_json::from_str(r#"{"error":{"code":-32600,"message":"codex account authentication required to read rate limits"},"id":1}"#).unwrap();
-        let fault = codex_windows(&refused, "log it in again").unwrap_err();
+        let fault = codex_windows(Ok(Some(refused)), "log it in again").unwrap_err();
         assert!(
             fault.contains("authentication required") && fault.contains(": log it in again"),
             "{fault}"
         );
-        let fault = codex_windows(&serde_json::json!({"id": 1, "result": {}}), "c").unwrap_err();
+        let fault =
+            codex_windows(Ok(Some(serde_json::json!({"id": 1, "result": {}}))), "c").unwrap_err();
         assert!(fault.contains("truefit contract --real codex"), "{fault}");
+    }
+
+    #[test]
+    fn an_app_server_that_gives_no_answer_says_how_to_go_on() {
+        assert_eq!(
+            codex_windows(Ok(None), "relog"),
+            Err("codex app-server ended with no answer to account/rateLimits/read: run `codex app-server` to see why".into())
+        );
+        assert_eq!(
+            codex_windows(Err(mpsc::RecvTimeoutError::Timeout), "relog"),
+            Err("codex app-server gave no answer in 20 s: try again later (`stablehand read --now`)".into())
+        );
     }
 
     #[test]
