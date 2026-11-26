@@ -265,6 +265,15 @@ fn help_and_version_are_text_not_refusals() {
         assert!(out.status.success(), "{args:?}");
         assert!(stdout.starts_with(starts), "{args:?}: {stdout}");
     }
+    // A command with no subcommand is a usage error answering its manual.
+    let out = Command::new(env!("CARGO_BIN_EXE_stablehand"))
+        .arg("account")
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(2));
+    let json: Value = serde_json::from_slice(&out.stdout).unwrap();
+    let manual = json["error"].as_str().unwrap();
+    assert!(manual.starts_with("# `stablehand account`\n"), "{json}");
     // The whole manual holds every command; a topic it lacks is a usage error.
     let all = Command::new(env!("CARGO_BIN_EXE_stablehand"))
         .args(["help", "all"])
