@@ -63,7 +63,7 @@ stablehand account show claude-felix   # {"account": {…}, "logged_in": true, "
   `DSH_HOME`).
 - **Portable**: logged in when its `--token-command` prints its token: the
   first line of what `sh -c <cmd>` prints, run with no input, its stderr
-  dropped, stopped after 20s (`$STABLEHAND_TOKEN_COMMAND_SECS`) with all it
+  dropped, stopped past `$STABLEHAND_TOKEN_COMMAND_SECS` with all it
   started. The token stays where the person keeps secrets: the Keychain
   (`security find-generic-password -s <service> -w`), 1Password (`op read
   op://<vault>/<item>/<field>`), mytokens (`mytokens get <entry> --field
@@ -78,7 +78,7 @@ stablehand account show claude-felix   # {"account": {…}, "logged_in": true, "
 - `account show` says whether the account is logged in, `login_file`
   naming a bound one's file and when it was written (`{"path",
   "written_at"}`, null without one). For a token with `--expires` it counts
-  `days_left`, and from 30 days ahead its `warning`
+  `days_left`, and as the date nears its `warning`
   says to make a new one.
 
 ## Finding the logins on this machine
@@ -195,7 +195,7 @@ stablehand status                   # each account's windows and their pace
   scope): its reading spends one small turn instead, the question `claude -p
   --model haiku --output-format stream-json --verbose --tools ''
   --strict-mcp-config --no-session-persistence --setting-sources ''
-  --system-prompt 'Answer with one word.' quota` (about 3s, under $0.0002),
+  --system-prompt 'Answer with one word.' quota` (its cost in ADR-0004),
   the token in its `CLAUDE_CODE_OAUTH_TOKEN`, run in a new empty config dir
   (`CLAUDE_CONFIG_DIR`) removed after, so nothing of `~/.claude` is read; its
   stream's `rate_limit_event` says the windows. Such an account is asked
@@ -210,7 +210,7 @@ stablehand status                   # each account's windows and their pace
   its group's, by the ids `agy models` (run after it, in the same home)
   gives: a model named in the group's description, with any variant
   (`Claude Opus 5.5` holds `claude-opus-5-5-high`). A portable agy account is
-  refused: bind it. A home not signed in fails after agy has waited 60s for
+  refused: bind it. A home not signed in fails after agy has waited for
   a browser sign-in; an API-key login (exit 2) has no account quota.
 - dsh's reader asks DeepSeek Platform
   (`platform.deepseek.com/api/v0/users/get_user_summary`) with the grant
@@ -239,7 +239,7 @@ stablehand status                   # each account's windows and their pace
   `<home>/credentials/kimi-code.json` (its `KIMI_CODE_HOME`; `~/.kimi-code`
   without `--home`). Its windows are `limit_5h` and any other it lists
   (`limit_7d`, `limit_month_total`, `limit_month_code`). A bound login's
-  token lasts 15 minutes and only a kimi session refreshes it: read long
+  token lasts minutes and only a kimi session refreshes it: read long
   after one, it is refused (HTTP 401), said with that fix.
 - grok's reader asks `cli-chat-proxy.grok.com/v1/billing?format=credits`
   with the bearer of the grok login in the account's home
@@ -255,9 +255,8 @@ stablehand status                   # each account's windows and their pace
   engine groups them, and the `models` whose use it counts where the engine
   names them), used %, resets at, source (`read` or `limit`),
   `stale`, and pace: `tight` (at its recent rate it runs out before it
-  resets), `spare` (it resets within a quarter of its length with 20% or
-  more left), `used_up`, or `steady`. The account's pace is its worst
-  window's. The rules are Guild's ledger's: a reading over two hours old,
+  resets), `spare` (it resets soon with much left), `used_up`, or
+  `steady`. The account's pace is its worst window's. The rules are Guild's ledger's: a reading over two hours old,
   or a window under half used, is never tight on its own.
 - `account rm` removes the account's books with it.
 

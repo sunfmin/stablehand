@@ -59,33 +59,6 @@ fn started(r: &Register) -> String {
 }
 
 #[test]
-fn a_command_starts_on_its_engine_s_pick_its_login_in_its_environment_alone() {
-    let r = kept()("run-portable");
-    let (code, out) = run(&r, &["claude", "-p", "hi"], &[("FAKE_EXIT", "7")]);
-    // The child's own stdout and exit code.
-    assert_eq!((code, out.as_str()), (7, "session on stdout\n"));
-    let line = started(&r);
-    assert!(line.starts_with("claude -p hi "), "{line}");
-    assert!(
-        line.contains(&format!("token_sha={}", token_sha())),
-        "{line}"
-    );
-    assert!(!line.contains("CLAUDE_CONFIG_DIR"), "{line}");
-    assert_eq!(r.stderr(), "stablehand: claude-code on claude-felix\n");
-    // The account it runs on, by name, for its status line.
-    assert!(line.contains(" STABLEHAND_ACCOUNT=claude-felix "), "{line}");
-
-    // No token on any argv, stdout, stderr or log: only mytokens' own store holds it.
-    assert!(!out.contains(TOKEN) && !r.argv().contains(TOKEN) && !r.stderr().contains(TOKEN));
-    let held = r.holding(TOKEN);
-    assert_eq!(held.len(), 1, "{held:?}");
-    assert!(
-        held[0].contains("/mytokens/agent-account-claude-felix/"),
-        "{held:?}"
-    );
-}
-
-#[test]
 fn no_command_starts_the_order_s_pick_its_model_flag_added_or_left() {
     let r = kept()("run-order");
     r.ok(&["order", "set", "codex@gpt-9", "claude-code@opus"]);
@@ -410,8 +383,39 @@ fn an_engine_s_command_is_kept_shown_and_dropped_and_a_foreign_one_refused() {
 }
 
 #[test]
-fn run_starts_the_engine_s_kept_command_its_arguments_before_the_person_s() {
+fn a_command_starts_on_its_engine_s_pick_alone_then_its_kept_command_before_the_person_s() {
     let r = kept()("run-kept");
+    // No order, no kept command: the engine's pick, its login in its environment alone.
+    let (code, out) = run(
+        &r,
+        &["claude", "-p", "hi"],
+        &[("FAKE_EXIT", "7"), ("FAKE_SIGNAL_SELF", "USR2")],
+    );
+    // The child's own stdout and exit code.
+    assert_eq!((code, out.as_str()), (7, "session on stdout\n"));
+    let line = started(&r);
+    assert!(line.starts_with("claude -p hi "), "{line}");
+    // The signals stablehand holds while it starts the child are the child's again.
+    assert!(line.contains(" got=USR2"), "{line}");
+    assert!(
+        line.contains(&format!("token_sha={}", token_sha())),
+        "{line}"
+    );
+    assert!(!line.contains("CLAUDE_CONFIG_DIR"), "{line}");
+    assert_eq!(r.stderr(), "stablehand: claude-code on claude-felix\n");
+    // The account it runs on, by name, for its status line.
+    assert!(line.contains(" STABLEHAND_ACCOUNT=claude-felix "), "{line}");
+
+    // No token on any argv, stdout, stderr or log: only mytokens' own store holds it.
+    assert!(!out.contains(TOKEN) && !r.argv().contains(TOKEN) && !r.stderr().contains(TOKEN));
+    let held = r.holding(TOKEN);
+    assert_eq!(held.len(), 1, "{held:?}");
+    assert!(
+        held[0].contains("/mytokens/agent-account-claude-felix/"),
+        "{held:?}"
+    );
+
+    // A kept command: its arguments before the person's.
     r.ok(&["order", "set", "claude-code@opus"]);
     r.ok(&[
         "command",
