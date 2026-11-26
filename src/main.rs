@@ -525,14 +525,24 @@ fn manual() -> Help {
         .constant("ACCOUNT_VAR", statusline::ACCOUNT_VAR)
 }
 
+/// The command line, read by the manual's command tree only when the plain
+/// one does not read it as a command to run (a help, the version, a usage
+/// error): both parse alike, but the manual renders every command's help
+/// whole, most of a run's start.
+fn parse() -> Result<Result<Cli, clap::Error>, String> {
+    let plain = Cli::command()
+        .try_get_matches()
+        .and_then(|m| Cli::from_arg_matches(&m));
+    if plain.is_ok() {
+        return Ok(plain);
+    }
+    // Read alike, the manual's tree refuses it too, with the manual's text.
+    let command = manual().clap().map_err(|e| e.to_string())?;
+    Ok(command.try_get_matches().and(plain))
+}
+
 fn main() -> ExitCode {
-    let help = manual();
-    let parsed = help.clap().map_err(|e| e.to_string()).map(|command| {
-        command
-            .try_get_matches()
-            .and_then(|m| Cli::from_arg_matches(&m))
-    });
-    let cli = match parsed {
+    let cli = match parse() {
         Err(broken) => return answer(Err(broken.into())),
         Ok(Ok(cli)) => cli,
         Ok(Err(e)) if !e.use_stderr() => e.exit(),
@@ -554,6 +564,7 @@ fn main() -> ExitCode {
         }
         Cmd::Statusline { account, then } => statusline::run(account, then.as_deref()),
         Cmd::Help { topic } => {
+            let help = manual();
             let text = match topic {
                 None => help.index(),
                 Some(topic) => help.topic_help(&topic),

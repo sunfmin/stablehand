@@ -1,0 +1,6 @@
+{
+  "tree": "b28938d613317ad2ab6ad100753e7cb9ad784913+d1fba762150c532c",
+  "picker": "codex:01a21606-ab67-7441-949a-37cda6b1194b:default",
+  "author": "claude-code:5eead0b2-bc2e-5f54-a723-acc558ccaff3:opus",
+  "none": "Both candidates replace argument handling with a fixed result, which cannot satisfy the tests that require help text for help flags and exit code 2 for a missing subcommand."
+}
