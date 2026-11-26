@@ -24,8 +24,8 @@ const ORGANIZATION: &str = "anthropic-organization-id";
 
 /// The question a token refused its usage is asked: `claude` with these
 /// arguments, one turn on its smallest model, with no tools, settings,
-/// servers or kept session (afkconvoy's `WINDOWS_QUESTION`, recorded with
-/// Claude Code 2.1.326: about 3 s, under $0.0002 a time). It spends the
+/// servers or kept session (afkconvoy's `WINDOWS_QUESTION`; what it costs,
+/// and how to measure it, is docs/adr/0004). It spends the
 /// account's quota.
 pub const QUESTION: &[&str] = &[
     "-p",

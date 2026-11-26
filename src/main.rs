@@ -40,7 +40,7 @@ const LEARN: &str = "Learn";
 
 /// One home for agent engine accounts (Claude Code, Codex, pi, Kimi Code, agy, Grok, dsh): how each logs in, where it may run, and how much of its usage windows is left.
 ///
-/// stablehand runs no login and keeps no secret: a person logs an engine in by the engine itself, and stablehand finds the login where it is. A bound account is logged in when its home holds its engine's login file; a portable one when the command it names (`--token-command`) prints its token, the token kept where the person keeps secrets (the Keychain, 1Password, mytokens).
+/// stablehand runs no login and keeps no secret: a person logs an engine in by the engine itself, and stablehand finds the login where it is. A bound account is logged in when its home holds its engine's login file; a portable one when the command it names (`--token-command`) prints its token, the token kept where the person keeps secrets (the Keychain, 1Password, mytokens). stablehand runs that command each time it needs the token and writes the token nowhere: on no child's command line, in no log, not in the register. Every refusal of an account not logged in names the line that logs it in: its engine's login line with its home variable set (`CODEX_HOME=<home> codex login` on its machine), or the `stablehand account edit --token-command` that names its token.
 ///
 /// `stablehand credential <name>` hands a session's caller an account's login (a token, or the login files to link into the session's own home); `stablehand read` asks an account's engine for its windows and books the reading, `stablehand limit` books a session's report that it met the account's limit, `stablehand status` says what the books say now, each window's pace with it, and `stablehand pick` what the next session starts on: the first engine, model and account of the order (`stablehand order`) one more session may start on. How this host starts each engine, its program and the flags it always takes, is stablehand's too (`stablehand command`, docs/adr/0003): `stablehand run` starts it so. The rest of the session, its own arguments, its home and its protocol, is the caller's.
 ///
@@ -51,7 +51,7 @@ const LEARN: &str = "Learn";
 /// - Every command but `credential` of a portable login prints one JSON object on stdout. A refusal is `{"error": "…", "code": "…"}`, each fault with the line that fixes it, exit 1, and nothing written; a command line stablehand cannot read is the same with exit {const:EXIT_USAGE}. `--help`, `help` and `--version` answer text.
 /// - `stablehand statusline` answers the status bar's line: it is Claude Code's status line command, not one to run by hand.
 /// - `stablehand credential <name>` of a portable login answers shell text, an `export` line (`--json`: one object); it refuses an account no session may start on with exit {const:EXIT_USAGE}.
-/// - The register and the books are one SQLite file, `$STABLEHAND_CONFIG_DIR/stablehand.db` (default `~/.config/stablehand`). It keeps no token: of a portable login it keeps the command that prints it. The default is a released stablehand's only: a development build (`cargo build`, any version with `+`) refuses unless `STABLEHAND_CONFIG_DIR` is set, as its schema steps may not be the released ones. A store migrated by other steps than this stablehand's is refused, naming the step.
+/// - The register and the books are one SQLite file, `$STABLEHAND_CONFIG_DIR/stablehand.db` (default `~/.config/stablehand`), the file 0600 and its directory 0700. It keeps no token: of a portable login it keeps the command that prints it. The default is a released stablehand's only: a development build (`cargo build`, any version with `+`) refuses unless `STABLEHAND_CONFIG_DIR` is set, as its schema steps may not be the released ones. A store migrated by other steps than this stablehand's is refused, naming the step.
 ///
 /// ## Refusals
 ///
@@ -74,11 +74,13 @@ struct Cli {
 enum Cmd {
     /// An account's login, as a session's caller is handed it: a token, or the login files to link. It only reads, and logs nothing in.
     ///
-    /// The session's home is the caller's: it sets the engine's home variable to a home of its own and links the login into it, so nothing else of the account's home (a person's settings, hooks, skills) reaches the session. Portable: the engine's token variable (below), its value the first line the account's `--token-command` prints, run by `sh -c` with no input, its stderr dropped, stopped past {const:TOKEN_COMMAND_SECS}s (`$STABLEHAND_TOKEN_COMMAND_SECS`). Bound: the engine's login file (below) in the account's `--home`, on its machine only (`$STABLEHAND_MACHINE`, else `hostname -s`).
+    /// The session's home is the caller's: it sets the engine's home variable to a home of its own and links the login into it, so nothing else of the account's home (a person's settings, hooks, skills) reaches the session. Portable: the engine's token variable (below), its value the first line the account's `--token-command` prints, run by `sh -c` with no input, its stderr dropped, stopped past {const:TOKEN_COMMAND_SECS}s (`$STABLEHAND_TOKEN_COMMAND_SECS`) with every process it started. Bound: the engine's login file (below) in the account's `--home`, on its machine only (`$STABLEHAND_MACHINE`, else `hostname -s`).
     ///
     /// ## What it answers
     ///
-    /// Portable: one `export NAME='value'` line, the value one shell word, for a shell to read (`. <file>`, or `eval`); with `--json`, `{"name", "login": "portable", "env": {NAME: value}}`. Bound, with or without `--json`: `{"name", "login": "bound", "files": [{"path", "as"}]}`, `path` the file in the account's home and `as` where the engine's home holds it, for the caller to link `<its home>/<as>` to `path`. Written to stdout alone: no file, and no child is given a value on its command line.
+    /// Portable: one `export NAME='value'` line, the value one shell word, for a shell to read (`. <file>`, or `eval`); with `--json`, `{"name", "login": "portable", "env": {NAME: value}}`. Bound, with or without `--json`: `{"name", "login": "bound", "files": [{"path", "as"}]}`, `path` the file in the account's home and `as` where the engine's home holds it, for the caller to link `<its home>/<as>` to `path`, so a login the engine refreshes is refreshed in the account's home too. Written to stdout alone: no file, and no child is given a value on its command line.
+    ///
+    /// A caller hands a portable answer to a session unchanged: it writes stdout as it is into a new 0600 file of its own, and the session's start line reads and removes it (`. <file> && rm -f <file> && …`), so the token is on no command line. A non-zero exit is a session not started, its `error` the reason.
     ///
     /// ## What it refuses
     ///
@@ -96,7 +98,7 @@ enum Cmd {
     },
     /// Start an engine's own command on the account, and model, stablehand picks, handing it the login: `stablehand run claude -p hi`.
     ///
-    /// The engine is the command's (`claude` is claude-code's: {const:PROGRAMS}), else `--engine`'s, else `--account`'s. With no command, the whole order is walked (`stablehand order show`) and the picked engine's own program starts, interactive: `stablehand run`. The engine, model and account are `stablehand pick`'s (`--engine`, `--account`, `--model` narrow it; a model the command names, `--model opus`, narrows it too).
+    /// The engine is the command's (`claude` is claude-code's: {const:PROGRAMS}), else `--engine`'s, else `--account`'s. With no command, the whole order is walked (`stablehand order show`) and the picked engine's own program starts, interactive (dsh's is `dsh tui`): `stablehand run`. The engine, model and account are `stablehand pick`'s (`--engine`, `--account`, `--model` narrow it; a model the command names, `--model opus`, narrows it too).
     ///
     /// ## What the child gets
     ///
@@ -200,14 +202,26 @@ enum Register {
     ///
     /// ## Engines
     ///
-    /// claude-code is read for its windows: `GET api.anthropic.com/api/oauth/usage` (`read_by: "usage"`, no turn), the bearer a portable login's from its `--token-command`, a bound one's from `<home>/.credentials.json`. A token it refuses (HTTP 403 scope: a `claude setup-token` token) is asked the question instead (`read_by: "question"`): `claude -p --model haiku --output-format stream-json --verbose --tools '' --strict-mcp-config --no-session-persistence --setting-sources '' --system-prompt 'Answer with one word.' quota`, the token in its `CLAUDE_CODE_OAUTH_TOKEN`, in a new empty config dir (`CLAUDE_CONFIG_DIR`, its working directory too) removed after, so nothing of `~/.claude` is read; its stream's `rate_limit_event` says the windows. An account read by the question is asked the question again, not its usage. dsh, pay-as-you-go, is read for its balance and has no window: `GET platform.deepseek.com/api/v0/users/get_user_summary` with the grant dsh keeps (`<home>/.credentials.yaml`, its `DSH_HOME`; `~/.dsh` without `--home`), or a portable login's from its `--token-command`.
+    /// A bound account's home is its `--home`, else its engine's own default (`stablehand account scan` lists them). A bearer goes to curl on its stdin, never on a command line, where `ps` would show it.
+    ///
+    /// claude-code is read for its windows, `five_hour`, `seven_day` and any other the endpoint lists: `GET api.anthropic.com/api/oauth/usage` (`read_by: "usage"`, no turn), the bearer a portable login's from its `--token-command`, a bound one's from `<home>/.credentials.json`. A token it refuses (HTTP 403 scope: a `claude setup-token` token) is asked the question instead (`read_by: "question"`): `claude -p --model haiku --output-format stream-json --verbose --tools '' --strict-mcp-config --no-session-persistence --setting-sources '' --system-prompt 'Answer with one word.' quota`, the token in its `CLAUDE_CODE_OAUTH_TOKEN`, in a new empty config dir (`CLAUDE_CONFIG_DIR`, its working directory too) removed after, so nothing of `~/.claude` is read; its stream's `rate_limit_event` says the windows. An account read by the question is asked the question again, not its usage. dsh, pay-as-you-go, is read for its balance and has no window: `GET platform.deepseek.com/api/v0/users/get_user_summary` with the grant dsh keeps (`<home>/.credentials.yaml`, its `DSH_HOME`; `~/.dsh` without `--home`), or a portable login's from its `--token-command`, with dsh's own `x-client-*` headers. Its balance is one per wallet (`normal`, `bonus`). dsh drops its grant when it is refused, so a refusal is booked `refused`.
+    ///
+    /// codex and pi spend a ChatGPT account, read for its windows `primary` and `secondary` where it answers them (used %, length, resets at), through the engine's own bound login, on its machine: codex by its app server (`codex app-server`, `account/rateLimits/read`, in its `CODEX_HOME`; no turn), pi by `GET chatgpt.com/backend-api/wham/usage` with the bearer `pi auth print-bearer-token --provider openai-codex` gives (in its `PI_CODING_AGENT_DIR`) and its login's `ChatGPT-Account-Id`. A codex and a pi login of one ChatGPT account (one `ChatGPT-Account-Id`) are one account: register it once (`stablehand account scan` finds the copy).
+    ///
+    /// kimi is read as Kimi Code's own `/usage` reads it: `GET api.kimi.com/coding/v1/usages`, the bearer a portable login's from its `--token-command`, a bound one's from `<home>/credentials/kimi-code.json` (its `KIMI_CODE_HOME`). Its windows are `limit_5h` and any other it lists (`limit_7d`, `limit_month_total`, `limit_month_code`).
+    ///
+    /// grok is read by `GET cli-chat-proxy.grok.com/v1/billing?format=credits`, the bearer of the grok login in the account's home (`<home>/auth.json`, its `GROK_HOME`), so a grok account is bound. Its windows are the credit period's, `weekly`: the account's, and one per product, the product its `group` (`Api`, `GrokBuild`), each a share of the account's credits, never paced on its own. A period just begun, its usage not yet in the answer, is one `weekly` window with nothing used.
+    ///
+    /// agy is read by `agy -p /usage --output-format json` in the account's home (`HOME` set to `--home`; the user's own without it): no model turn, no conversation made. Its windows are each model group's buckets (`gemini-5h`, `gemini-weekly`, …), the group its `group`; a window reset in 1970 is one not yet used. Each window's `models` are its group's, by the ids `agy models` gives, run after it in the same home: a model the group's description names, with any variant after it (`Claude Opus 5.5` holds `claude-opus-5-5-high`).
     ///
     /// ## What trips you up
     ///
-    /// A claude-code account whose login is a `claude setup-token` token spends one smallest-model turn of its quota a reading (about 3s, under $0.0002): at most once an hour, unless `--now`, and each such read says `spent_turn: true`.
+    /// A claude-code account whose login is a `claude setup-token` token spends one smallest-model turn of its quota a reading: at most once an hour, unless `--now`, and each such read says `spent_turn: true`.
     ///
-    /// An agy account is read by running agy in its home, on its machine only: a portable one is refused (bind it), and a home not signed in fails only after agy has waited 60s for a browser sign-in. After its quota, `agy models` names each group's models; where it fails, the windows are booked with none, and `pick --model` judges the account by every window.
+    /// An agy account is read by running agy in its home, on its machine only: a portable one is refused (bind it), a home not signed in fails only after agy has waited 60s for a browser sign-in, and an API-key login (agy exits 2) has no account quota to read. After its quota, `agy models` names each group's models; where it fails, the windows are booked with none, and `pick --model` judges the account by every window.
     /// A codex or pi account is read through its engine's own login, bound: on its machine, in its home. A portable one, or one bound to another machine, fails with the fix.
+    ///
+    /// A bound kimi login's token lasts 15 minutes, and only a kimi session refreshes it: read long after one, it is refused (HTTP 401), said with that fix. A grok login's token lasts hours: an expired one is refreshed by grok itself (`grok models`, no model turn) before it is read.
     #[command(next_help_heading = SESSIONS, verbatim_doc_comment)]
     Read {
         /// The account to read; without it, every account.
@@ -267,6 +281,8 @@ enum Register {
     /// - any of whose windows is `--stop-percent` used, until that window resets: the rest is the margin of the sessions already running;
     /// - one of whose windows, at its present rate shared by the sessions running and one more, runs out before it resets. A reading over two hours old, or a window under half used, runs on at no rate.
     ///
+    /// How many sessions run on an account never passes it over by itself: they count only in that rate.
+    ///
     /// Of the rest, the one with the most left of its most used window; one with no reading in force, or only stale ones, after every one with one; of equals, the first by name.
     ///
     /// ## A session's model
@@ -275,7 +291,7 @@ enum Register {
     ///
     /// ## What it answers
     ///
-    /// `{"engine", "model" (null: the engine's own), "account", "why", "model_in_no_group"}`, or `{"none": true, "until": <the earliest time any passed over lifts, or null>, "why", "model_in_no_group"}`. `why` is each (engine, model, account) passed over before the answer, in the walk's order: `[{"engine", "model", "account" (null for an engine skipped), "reason", "why", "until"}]`, `reason` one of `no_account`, `off`, `elsewhere`, `copy`, `not_logged_in`, `limit`, `stopped`, `runs_out`. It refuses a `--running` name that is no account kept, and a walk with nothing in it.
+    /// `{"engine", "model" (null: the engine's own), "account", "why", "model_in_no_group"}`, or `{"none": true, "until": <the earliest time any passed over lifts, or null where none says when: off, not logged in, no account>, "why", "model_in_no_group"}`. `why` is each (engine, model, account) passed over before the answer, in the walk's order: `[{"engine", "model", "account" (null for an engine skipped), "reason", "why", "until"}]`, `reason` one of `no_account`, `off`, `elsewhere`, `copy`, `not_logged_in`, `limit`, `stopped`, `runs_out`. It refuses a `--running` name that is no account kept, and a walk with nothing in it.
     ///
     /// The order is a preference only: which caller keeps to which engine stays the caller's, and the command an engine starts with is `stablehand command`'s.
     ///
@@ -423,11 +439,11 @@ enum AccountCmd {
     },
     /// Find the engine logins and the portable tokens already on this machine; with `--add`, register them, one account per subscription.
     ///
-    /// It looks in each engine's own default home under `$HOME` ({const:DEFAULT_HOMES}), and in each `--path`; never in a home another program keeps for its own use (factorium's `~/.agent-accounts`, Guild's `~/.guild/engines`) unless a `--path` names it. A home is a login when it holds its engine's login file (below). It also reads `mytokens list`, when mytokens is on PATH: each `agent-account-<name>` entry with an engine's token field (`CLAUDE_CODE_OAUTH_TOKEN`) is a portable account, its `--token-command` `mytokens get agent-account-<name> --field <that field>`; one with no token (a bound one, its `MACHINE`) is skipped. A claude-code token is read (its command run) only to ask its organization, and is never said or kept.
+    /// It looks in each engine's own default home under `$HOME` ({const:DEFAULT_HOMES}), and in each `--path`; never in a home another program keeps for its own use (factorium's `~/.agent-accounts`, Guild's `~/.guild/engines`) unless a `--path` names it. A home is a login when it holds its engine's login file (below). It also reads `mytokens list`, when mytokens is on PATH, which names each entry's fields and never prints a value: each `agent-account-<name>` entry with an engine's token field (`CLAUDE_CODE_OAUTH_TOKEN`) is a portable account, its `--token-command` `mytokens get agent-account-<name> --field <that field>`; one with no token (a bound one, its `MACHINE`) is skipped. A claude-code token is read (its command run) only to ask its organization, and is never said or kept.
     ///
     /// ## One account per subscription
     ///
-    /// The same subscription is often logged in in several homes (pi's openai-codex and codex on one ChatGPT account). scan tells them apart by the identity each login file holds ({const:IDENTITIES}), read and compared in memory and never said: it answers, and keeps on an account it adds, the identity's hash. Of the logins of one identity, the account is the one an account already kept is (kept at that home, or holding that hash), else the most recently written; the others are copies of it. An identity it cannot read is said so (`identity_unknown`), and that login is never a copy.
+    /// The same subscription is often logged in in several homes (pi's openai-codex and codex on one ChatGPT account). scan tells them apart by the identity each login file holds ({const:IDENTITIES}), read and compared in memory and never said: it answers, and keeps on an account it adds, the identity's hash. Of the logins of one identity, the account is the one an account already kept is (kept at that home, or holding that hash), else the most recently written; the others are copies of it: run sessions on the account only, as copies of one refresh token refresh each other out. An identity it cannot read is said so (`identity_unknown`), and that login is never a copy.
     ///
     /// A portable claude-code token's identity is its organization: a setup token is refused `user:profile`, but every answer to it names its organization (`anthropic-organization-id`), even the one refusing an empty `POST /v1/messages`, before any turn, so nothing is spent. A personal organization (`organizationType` `claude_max` or `claude_pro`) is its subscription, so a token of a bound login's personal organization is a `copy` of that login's account: `same_as_a_login` names it, and `--add` does not register the token. A team's organization is several people's, each with a seat of their own, so a token of one, or of no login's organization, is `unknown`; two tokens of one organization are said so in their `warning`, never copies.
     ///
