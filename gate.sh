@@ -11,3 +11,5 @@ DIST=target/release-dry packaging/release.sh dry >/dev/null
 # Each engine's stand-in answers every case of its contract (truefit.toml);
 # the real engines' side runs outside the gate (`truefit contract --real`).
 truefit contract >/dev/null || truefit contract
+# Each document in its one home, within its budget, against .docfit/baseline.json.
+docfit check >/dev/null || docfit check
