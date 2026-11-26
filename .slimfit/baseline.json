@@ -1,12 +1,12 @@
 {
   "suites": {
     "rust": {
-      "prod_lines": 6070,
-      "test_lines": 5894,
-      "tests": 175,
+      "prod_lines": 6065,
+      "test_lines": 5893,
+      "tests": 174,
       "failures": 0,
       "test_seconds": 0.004,
-      "covered_lines": 4487,
+      "covered_lines": 4482,
       "uncovered_lines": 3
     }
   },
@@ -27,10 +27,20 @@
       "reason": "read: no assertion maps — kimi's test checks kimi's Bearer header on a different engine and curl stand-in; this one checks dsh's x-dsh-auth-token header, a refused portable grant held until --token-command is given again, and a bound dsh home without a grant failing with its DSH_HOME fix. Merging across engines would hide which reader failed."
     }
   ],
+  "kept_files": [
+    {
+      "suite": "rust",
+      "file": "src/main.rs",
+      "prod_lines": 482,
+      "commits_90d": 44,
+      "commits_total": 44,
+      "reason": "main.rs is the manual's home and the effect edge, not a shallow module: of its 482 prod lines ~290 are the clap tree's doc comments (the help, written with agent-help where each command's fact lives) and ~160 its argument definitions; the rest is one dispatch in which each command calls one module that decides it (usage, scan, login, command, order, run, statusline), with only the refusals and the store, clock and env reads of the register commands left here, as the agent-cli effect layer keeps them. Its churn is each new or changed command's help and flags; the deciding code has already moved out (command::parse, order::parse gather their own faults). Splitting the tree into another file would move that churn, not deepen anything; moving off, on, add and edit into account.rs would put effects into a pure module."
+    }
+  ],
   "measured": {
     "rust": {
       "uncovered_lines": 111,
-      "test_seconds": 6.326
+      "test_seconds": 13.281
     }
   }
 }
