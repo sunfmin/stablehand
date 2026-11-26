@@ -349,43 +349,47 @@ header = "Authorization: Bearer <grok-login>"
 header = "x-grok-client-version: 1.0.92"
 """
 
+# Promises are made where each fact lives: the manual (the doc comments on
+# clap's types in src/main.rs, the refusal codes in src/refusal.rs; `stablehand
+# help all` prints it) and the ADRs. truefit reads src/main.rs as text, so a
+# candidate may carry `///` or code beside it: mark it by its words.
 [promises]
-sources = ["README.md"]
+sources = ["src/main.rs", "src/refusal.rs", "docs/adr/*.md"]
 
 # tests/register.rs add_list_show_edit_and_rm
 [[promise]]
 name = "edit-changes-only-the-terms-given"
-says = '''`account edit` changes only the terms given; `--unset machine|expires|home|token-command` clears one.'''
-source = "README.md:35"
+says = '''Change an account's terms: only those given change.'''
+source = "src/main.rs:425"
 check = ["test"]
 
 # tests/register.rs refusals_name_the_fix_and_write_nothing
 [[promise]]
 name = "a-refusal-writes-nothing"
-says = '''A refusal prints `{"error": "…"}`, naming each fault with its fix, exits non-zero and writes nothing'''
-source = "README.md:34"
+says = '''A refusal is `{"error": "…", "code": "…"}`, each fault with the line that fixes it, exit 1, and nothing written'''
+source = "src/main.rs:51"
 check = ["test"]
 
 # tests/register.rs add_list_show_edit_and_rm
 [[promise]]
 name = "rm-twice-same-register"
-says = '''`account rm` of an account not kept answers `"removed": false`, so running it twice leaves the same register.'''
-source = "README.md:35"
+says = '''Answers `{"name": …, "removed": true}`, or false when there was none: run twice, the same register.'''
+source = "src/main.rs:472"
 check = ["test"]
 why = "twice one after the other, not at once: one rm is one DELETE, and the test runs it twice and reads the register"
 
 # tests/register.rs the_store_is_0600_in_a_0700_directory
 [[promise]]
 name = "db-file-0600-dir-0700"
-says = '''the file is 0600, the directory 0700.'''
-source = "README.md:36"
+says = '''the file 0600 and its directory 0700.'''
+source = "src/main.rs:54"
 check = ["test"]
 
 # tests/usage.rs read_books_a_bound_login_s_windows_once_an_hour_unless_now
 [[promise]]
 name = "bearer-on-curl-s-stdin"
-says = '''The bearer goes to curl on its stdin, never on a command line.'''
-source = "README.md:56"
+says = '''A bearer goes to curl on its stdin, never on a command line, where `ps` would show it.'''
+source = "src/main.rs:205"
 check = ["test"]
 
 # tests/usage.rs read_books_a_bound_login_s_windows_once_an_hour_unless_now,
@@ -393,90 +397,80 @@ check = ["test"]
 # src/books_tests.rs the_account_s_pace_is_its_worst_window_s and the pace tests
 [[promise]]
 name = "status-windows-and-pace"
-says = '''`status` answers each account's windows (each with its `group` where the engine groups them, and the `models` whose use it counts where the engine names them), used %, resets at, source (`read` or `limit`), `stale`, and pace: `tight` (at its recent rate it runs out before it resets), `spare` (it resets within a quarter of its length with 20% or more left), `used_up`, or `steady`. The account's pace is its worst window's.'''
-source = "README.md:254"
+says = '''A window's pace is `tight` (at its recent rate it runs out before it resets), `spare` (it resets within a quarter of its length with 20% or more left), `used_up`, or `steady` (neither, or it cannot be told).'''
+source = "src/main.rs:261"
 check = ["test"]
 
 # src/books_tests.rs a_reading_older_than_two_hours_makes_no_window_tight_on_its_own,
 # a_night_s_burst_in_a_week_under_half_used_is_not_tight
 [[promise]]
 name = "guild-pace-rules"
-says = '''The rules are Guild's ledger's: a reading over two hours old, or a window under half used, is never tight on its own.'''
-source = "README.md:66"
+says = '''A reading over two hours old, or a window under half used, is never tight on its own.'''
+source = "src/main.rs:261"
 check = ["test"]
 
 # tests/scan.rs scan_finds_one_account_per_subscription_and_add_registers_the_new_ones
 [[promise]]
 name = "scan-says-and-keeps-no-identity"
-says = '''read and compared in memory, never
-  printed, logged or stored'''
-source = "README.md:107"
+says = '''read and compared in memory and never said: it answers, and keeps on an account it adds, the identity's hash.'''
+source = "src/main.rs:446"
 check = ["test"]
 
 # tests/statusline.rs then_hands_the_same_stdin_to_the_person_s_own_line
 [[promise]]
 name = "statusline-then-byte-for-byte"
-says = '''With
-  `--then <cmd>`, `sh -c <cmd>` gets the same stdin byte for byte'''
-source = "README.md:166"
+says = '''With `--then <cmd>`, `sh -c <cmd>` is given the same stdin, byte for byte'''
+source = "src/main.rs:130"
 check = ["test"]
 
 # tests/login.rs a_portable_token_is_its_command_s_first_line_and_written_nowhere;
 # tests/usage.rs a_portable_login_is_read_with_its_command_s_token_and_a_setup_token_gets_a_limit
 [[promise]]
 name = "token-on-no-argv"
-says = '''it is on no child's command line, in no log and not in the register.'''
-source = "README.md:70"
+says = '''stablehand runs that command each time it needs the token and writes the token nowhere: on no child's command line, in no log, not in the register.'''
+source = "src/main.rs:43"
 check = ["test"]
 
 # tests/login.rs a_token_command_that_fails_prints_nothing_or_hangs_is_refused_naming_it
 [[promise]]
 name = "a-token-command-refused-names-only-the-command"
-says = '''A command that exits non-zero, prints no first line or runs past its
-  bound is refused naming the command, never what it printed.'''
-source = "README.md:71"
+says = '''its command exits non-zero, prints no first line or runs past the bound: the refusal names the command, never what it printed'''
+source = "src/main.rs:87"
 check = ["test"]
 
 # tests/login.rs each_not_logged_in_refusal_names_its_engine_s_login_line
 [[promise]]
 name = "not-logged-in-names-its-login-line"
-says = '''Every refusal of an account not logged in names the line that logs it
-  in'''
-source = "README.md:73"
+says = '''Every refusal of an account not logged in names the line that logs it in'''
+source = "src/main.rs:43"
 check = ["test"]
 
 # account::tests::status_counts_the_days_left_and_warns_30_ahead
 [[promise]]
 name = "warns-30-days-ahead"
-says = '''from 30 days ahead its `warning`
-  says to make a new one.'''
-source = "README.md:63"
+says = '''`warning` says from 30 days ahead to make a new token'''
+source = "src/main.rs:418"
 check = ["test"]
 
 # tests/credential.rs a_portable_account_starts_with_its_token_from_its_command
 [[promise]]
 name = "credential-portable-token"
-says = '''**Portable**: the engine's token variable (claude-code:
-  `CLAUDE_CODE_OAUTH_TOKEN`), its value the token its `--token-command`
-  prints'''
-source = "README.md:119"
+says = '''Portable: the engine's token variable (below), its value the first line the account's `--token-command` prints'''
+source = "src/main.rs:77"
 check = ["test"]
 
 # tests/credential.rs a_portable_account_starts_with_its_token_from_its_command
 [[promise]]
 name = "env-value-on-stdout-alone"
-says = '''The value is written to
-  stdout alone: no file is left behind, and no child is given it on its
-  command line.'''
-source = "README.md:84"
+says = '''Written to stdout alone: no file, and no child is given a value on its command line.'''
+source = "src/main.rs:81"
 check = ["test"]
 
 # tests/env.rs an_account_no_session_may_start_on_is_refused_with_its_fix
 [[promise]]
 name = "env-refuses-exit-2"
-says = '''It refuses, exit 2 with `{"error": "…"}` naming the fix, an account that is
-  off, not logged in, or bound to another machine'''
-source = "README.md:87"
+says = '''`credential` of an account no session may start on here: off, not logged in (its token command answers no token, its home holds no login file), with no home, bound to another machine, or of an engine with no token variable. Exit 2.'''
+source = "src/refusal.rs:15"
 check = ["test"]
 
 # tests/dsh.rs a_refused_grant_is_not_asked_again_until_a_login,
@@ -484,8 +478,8 @@ check = ["test"]
 # src/books_tests.rs a_refused_credential_is_held_until_a_login_after_it
 [[promise]]
 name = "a-refused-credential-is-not-asked-again"
-says = '''is booked `"outcome": "refused"` and never asked again'''
-source = "README.md:222"
+says = '''A credential the engine refused (dsh: HTTP 401 or code 40003) is never asked again, `--now` or not, until the account logs in again'''
+source = "src/main.rs:197"
 check = ["test"]
 
 # mytokens holds the agent-account-* entries `account scan` finds from its
@@ -582,40 +576,37 @@ header = "x-client-platform: web"
 # tests/usage.rs a_setup_token_refused_usage_is_read_by_one_small_turn_and_its_usage_not_asked_again
 [[promise]]
 name = "a-setup-token-is-asked-the-question-from-then-on"
-says = '''Such an account is asked
-  the question from then on, not its usage: at most once an hour, unless
-  `--now`.'''
-source = "README.md:171"
+says = '''An account read by the question is asked the question again, not its usage.'''
+source = "src/main.rs:207"
 check = ["test"]
 
 # tests/run.rs a_command_starts_on_its_engine_s_pick_its_login_in_its_environment_alone
 [[promise]]
 name = "run-names-the-child-s-account"
-says = '''The child's environment names its account, `STABLEHAND_ACCOUNT=<account>`'''
-source = "README.md:378"
+says = '''The account's name, never a value, in `{const:ACCOUNT_VAR}`'''
+source = "src/main.rs:106"
 check = ["test"]
 
 # tests/statusline.rs the_account_is_stablehand_run_s_where_no_account_is_named,
 # with_no_account_the_line_is_empty_of_stablehand_and_books_nothing
 [[promise]]
 name = "statusline-account-from-run"
-says = '''With no account, nothing is booked and stablehand's line is empty'''
-source = "README.md:265"
+says = '''With no account, nothing is booked and the line is empty'''
+source = "src/main.rs:130"
 check = ["test"]
 
 # tests/usage.rs the_status_line_starts_one_read_where_its_books_are_stale_and_waits_on_none
 [[promise]]
 name = "statusline-one-detached-read"
-says = '''One such read of an account runs at
-  a time'''
-source = "README.md:272"
+says = '''At most one such read of an account runs at a time'''
+source = "src/main.rs:134"
 check = ["test"]
 
 # src/store.rs only_a_released_build_opens_the_host_store_unasked
 [[promise]]
 name = "a-development-build-opens-no-host-store-unasked"
 says = '''a development build (`cargo build`, any version with `+`) refuses unless `STABLEHAND_CONFIG_DIR` is set'''
-source = "README.md:40"
+source = "src/main.rs:54"
 check = ["test"]
 
 # tests/scan.rs scan_finds_one_account_per_subscription_and_add_registers_the_new_ones
@@ -623,8 +614,8 @@ check = ["test"]
 # a_kept_home_tells_its_identity_and_what_is_not_the_same_login_is_not_taken_for_it
 [[promise]]
 name = "scan-looks-in-no-home-of-another-program-s"
-says = '''scan looks in each engine's own default home (`~/.claude`, `~/.codex`, `~/.pi/agent`, `~/.kimi-code`, agy's `$HOME`, `~/.grok`, `~/.dsh`) and in each `--path`, never in a home another program keeps for its own use (factorium's `~/.agent-accounts`, Guild's `~/.guild/engines`) unless a `--path` names it.'''
-source = "README.md:92"
+says = '''never in a home another program keeps for its own use (factorium's `~/.agent-accounts`, Guild's `~/.guild/engines`) unless a `--path` names it.'''
+source = "src/main.rs:442"
 check = ["test"]
 
 # tests/scan.rs scan_finds_one_account_per_subscription_and_add_registers_the_new_ones
@@ -632,8 +623,8 @@ check = ["test"]
 # or in the register); src/scan.rs entries_are_the_agent_account_lines_with_their_fields
 [[promise]]
 name = "scan-reads-mytokens-from-its-list-alone"
-says = '''It reads mytokens too, when it is on PATH, from `mytokens list` alone, which names each entry's fields and never prints a value: an `agent-account-<name>` entry with an engine's token field (`CLAUDE_CODE_OAUTH_TOKEN`) is a portable account `<name>`, its `--token-command` `mytokens get agent-account-<name> --field <that field>`; one with no token (a bound one, its `MACHINE`) is `skipped`. A claude-code token is read only to ask its organization, never said or kept.'''
-source = "README.md:98"
+says = '''It also reads `mytokens list`, when mytokens is on PATH, which names each entry's fields and never prints a value'''
+source = "src/main.rs:442"
 check = ["test"]
 
 # tests/scan.rs scan_finds_one_account_per_subscription_and_add_registers_the_new_ones
@@ -641,8 +632,8 @@ check = ["test"]
 # a_kept_home_tells_its_identity_and_what_is_not_the_same_login_is_not_taken_for_it
 [[promise]]
 name = "an-unread-identity-is-said-never-guessed"
-says = '''An identity it cannot read (a format it does not know; dsh's file holds none) is said as such, `identity_unknown`, never guessed.'''
-source = "README.md:114"
+says = '''An identity it cannot read is said so (`identity_unknown`), and that login is never a copy.'''
+source = "src/main.rs:446"
 check = ["test"]
 
 # tests/scan.rs scan_finds_one_account_per_subscription_and_add_registers_the_new_ones
@@ -650,16 +641,16 @@ check = ["test"]
 # --add adds and renames nothing)
 [[promise]]
 name = "scan-without-add-writes-nothing-and-renames-no-account"
-says = '''Without `--add` it writes nothing: it answers each login found (engine, home, logged in at, identity's hash, `new`, `registered` or `copy`, and the account: the one it is, or is a copy of, or the name `--add` gives, `<engine>`, or `<engine>-2` … when the name is kept). An account kept is never renamed.'''
-source = "README.md:126"
+says = '''an account kept is never renamed or otherwise changed, nothing is written in a home, mytokens is only listed and asked the tokens.'''
+source = "src/main.rs:456"
 check = ["test"]
 
 # tests/credential.rs a_bound_account_answers_its_login_files_not_its_home,
 # a_portable_account_starts_with_its_token_from_its_command
 [[promise]]
 name = "credential-hands-the-login-alone"
-says = '''`credential` hands a session's caller an account's login and nothing else of it'''
-source = "README.md:144"
+says = '''so nothing else of the account's home (a person's settings, hooks, skills) reaches the session.'''
+source = "src/main.rs:77"
 check = ["test"]
 
 # tests/credential.rs each_engine_s_login_file_is_both_what_is_linked_and_what_logs_a_home_in
@@ -667,7 +658,7 @@ check = ["test"]
 [[promise]]
 name = "credential-only-reads"
 says = '''It only reads, and logs nothing in.'''
-source = "README.md:148"
+source = "src/main.rs:75"
 check = ["test"]
 
 # tests/credential.rs a_bound_account_answers_its_login_files_not_its_home,
@@ -675,16 +666,16 @@ check = ["test"]
 # an_account_no_session_may_start_on_is_refused_with_its_fix (bound elsewhere)
 [[promise]]
 name = "credential-bound-answers-its-login-files-here-only"
-says = '''**Bound**, on its machine only: the engine's login file in the account's home (`path`) and where the engine's home holds it (`as`), one JSON object with or without `--json`'''
-source = "README.md:153"
+says = '''Bound: the engine's login file (below) in the account's `--home`, on its machine only'''
+source = "src/main.rs:77"
 check = ["test"]
 
 # tests/usage.rs an_agy_account_is_read_in_its_home_a_window_per_model_group,
 # an_agy_account_portable_or_bound_elsewhere_is_not_run
 [[promise]]
 name = "agy-is-read-in-its-home-on-its-machine-no-turn"
-says = '''agy's reader runs `agy -p /usage --output-format json` in the account's home (`HOME` set to `--home`; the user's own without it), on its machine only: no model turn, no conversation made.'''
-source = "README.md:205"
+says = '''agy is read by `agy -p /usage --output-format json` in the account's home (`HOME` set to `--home`; the user's own without it): no model turn, no conversation made.'''
+source = "src/main.rs:215"
 check = ["test"]
 
 # tests/kimi.rs read_and_status_book_a_bound_kimi_login_s_usages,
@@ -693,8 +684,8 @@ check = ["test"]
 # src/readers/kimi.rs a_refusal_names_its_fix
 [[promise]]
 name = "kimi-is-read-with-the-account-s-bearer"
-says = '''kimi's reader asks `api.kimi.com/coding/v1/usages`, as Kimi Code's own `/usage` does, with the account's bearer: a portable login's from its `--token-command`, a bound one's from `<home>/credentials/kimi-code.json` (its `KIMI_CODE_HOME`; `~/.kimi-code` without `--home`).'''
-source = "README.md:236"
+says = '''kimi is read as Kimi Code's own `/usage` reads it: `GET api.kimi.com/coding/v1/usages`, the bearer a portable login's from its `--token-command`, a bound one's from `<home>/credentials/kimi-code.json` (its `KIMI_CODE_HOME`).'''
+source = "src/main.rs:211"
 check = ["test"]
 
 # tests/usage.rs grok_s_credits_are_booked_its_weekly_window_and_one_per_product
@@ -702,15 +693,15 @@ check = ["test"]
 # tight); src/readers/grok.rs the_period_is_a_window_and_each_product_one_in_its_group
 [[promise]]
 name = "grok-refreshes-by-itself-and-a-product-is-never-paced"
-says = '''an expired one is refreshed by grok itself (`grok models`, no model turn). Its windows are the credit period's, `weekly`: the account's, and one per product in its `group` (`Api`, `GrokBuild`): a share of the account's credits, never paced on its own.'''
-source = "README.md:247"
+says = '''Its windows are the credit period's, `weekly`: the account's, and one per product, the product its `group` (`Api`, `GrokBuild`), each a share of the account's credits, never paced on its own.'''
+source = "src/main.rs:213"
 check = ["test"]
 
 # tests/statusline.rs an_account_it_cannot_book_still_gets_a_line
 [[promise]]
 name = "statusline-never-refuses"
-says = '''It never refuses: an account not kept, or not claude-code's, books nothing, and the line says why (with `--then`, stderr does).'''
-source = "README.md:299"
+says = '''It never refuses, so the bar always has a line'''
+source = "src/main.rs:136"
 check = ["test"]
 
 # src/command.rs a_kept_command_is_its_engine_s_program_and_names_no_model
@@ -719,8 +710,8 @@ check = ["test"]
 # (an open quote refused), run_starts_the_engine_s_kept_command_its_arguments_before_the_person_s
 [[promise]]
 name = "a-kept-command-is-split-as-sh-and-run-by-no-shell"
-says = '''its program, then the arguments it always takes, split as `sh` would and never run through a shell.'''
-source = "README.md:328"
+says = '''A command is split into words as `sh` splits it, never run through a shell.'''
+source = "src/main.rs:355"
 check = ["test"]
 
 # src/pick_tests.rs a_limit_that_holds_takes_no_session_until_it_lifts,
@@ -732,8 +723,8 @@ check = ["test"]
 # tests/usage.rs pick_stops_an_account_at_its_stop_percent_and_one_whose_window_would_run_out
 [[promise]]
 name = "pick-passes-over-a-limit-a-stop-and-a-run-out"
-says = '''None is picked on an account a limit holds on, until it lifts; any of whose windows is the stop percent used (`--stop-percent`, 90 unless it says), until that window resets; or one of whose windows, at its present rate shared by the sessions running and one more, runs out before it resets (a reading over two hours old, or a window under half used, runs on at no rate). How many sessions run on an account never passes it over by itself: they count only in that rate.'''
-source = "README.md:365"
+says = '''How many sessions run on an account never passes it over by itself: they count only in that rate.'''
+source = "src/main.rs:284"
 check = ["test"]
 
 # src/pick_tests.rs of_those_that_may_take_one_the_most_left_is_picked_and_no_reading_last,
@@ -741,15 +732,15 @@ check = ["test"]
 [[promise]]
 name = "pick-takes-the-most-left-no-reading-last-then-by-name"
 says = '''Of the rest, the one with the most left of its most used window; one with no reading in force, or only stale ones, after every one with one; of equals, the first by name.'''
-source = "README.md:373"
+source = "src/main.rs:286"
 check = ["test"]
 
 # tests/run.rs a_session_is_counted_while_it_runs_and_signals_pass_through;
 # tests/usage.rs pick_takes_the_engine_s_usable_accounts_and_passes_over_each_by_guild_s_rules
 [[promise]]
 name = "pick-counts-running-beside-run-s-sessions"
-says = '''`--running <account>=<n>,…` is the caller's count of the sessions now running on each account (factorium knows its workers), counted beside the sessions `stablehand run` keeps'''
-source = "README.md:376"
+says = '''`--running` is the caller's count, on this machine or wherever it knows; the sessions `stablehand run` keeps running are counted beside it, and no other.'''
+source = "src/main.rs:300"
 check = ["test"]
 
 # src/pick_tests.rs a_model_is_judged_by_its_group_s_windows_and_those_in_no_group,
@@ -758,8 +749,8 @@ check = ["test"]
 # pick_walks_the_order_and_a_used_up_gemini_group_falls_to_agy_s_opus
 [[promise]]
 name = "a-model-is-judged-by-its-group-s-windows"
-says = '''an account whose windows are grouped by model is judged only by the windows of the group holding it, and those in no group'''
-source = "README.md:380"
+says = '''an account whose windows are grouped by model (agy: `Gemini Models`, `Claude and GPT models`) is judged only by the windows of the group holding that model'''
+source = "src/main.rs:290"
 check = ["test"]
 
 # src/pick_tests.rs ungrouped_windows_know_no_model_and_every_one_decides;
@@ -767,14 +758,68 @@ check = ["test"]
 # (gpt-9 in model_in_no_group), pick_of_a_model_leaves_an_engine_with_no_groups_as_it_was
 [[promise]]
 name = "a-model-in-no-group-is-judged-by-every-window"
-says = '''One no group of which holds the model is judged by every window, and named in the answer's `model_in_no_group`; an engine that groups no window is judged as without a model.'''
-source = "README.md:384"
+says = '''One no group of which holds the model is judged by every window, and named in the answer's `model_in_no_group`.'''
+source = "src/main.rs:290"
 check = ["test"]
 
 # tests/run.rs a_command_starts_on_its_engine_s_pick_its_login_in_its_environment_alone
 # (stderr is the one line; no token on it)
 [[promise]]
 name = "run-says-its-choice-in-one-line-never-a-value"
-says = '''stderr gets one line of what was chosen, never a value.'''
-source = "README.md:428"
+says = '''stderr gets one line of what was chosen, `stablehand: claude-code on claude-felix (opus)`, and `, kept command` after it where the kept command was used, never a value.'''
+source = "src/main.rs:111"
+check = ["test"]
+
+# tests/usage.rs read_books_a_bound_login_s_windows_once_an_hour_unless_now
+[[promise]]
+name = "read-at-most-once-an-hour-unless-now"
+says = '''An account is read at most once an hour: one read or tried in the last hour waits, unless `--now`.'''
+source = "src/main.rs:197"
+check = ["test"]
+
+# tests/usage.rs the_status_line_starts_one_read_where_its_books_are_stale_and_waits_on_none
+[[promise]]
+name = "statusline-asks-no-engine-and-waits-on-none"
+says = '''It asks no engine and reaches no network itself, and never waits on one.'''
+source = "src/main.rs:120"
+check = ["test"]
+
+# tests/login.rs a_bound_home_holding_its_engines_login_file_is_logged_in
+# ("adopting wrote in the home")
+[[promise]]
+name = "show-only-looks-at-the-login-file"
+says = '''The file is only looked at, never written.'''
+source = "src/main.rs:418"
+check = ["test"]
+
+# tests/support/mod.rs reads every answer as one JSON value (serde_json
+# refuses anything after it); tests/register.rs help_and_version_are_text_not_refusals
+[[promise]]
+name = "one-json-object-on-stdout"
+says = '''Every command but `credential` of a portable login prints one JSON object on stdout.'''
+source = "src/main.rs:51"
+check = ["test"]
+
+# tests/scan.rs scan_finds_one_account_per_subscription_and_add_registers_the_new_ones
+# (mytokens asked that token alone; no token said or kept)
+[[promise]]
+name = "scan-reads-a-token-only-to-ask-its-organization"
+says = '''A claude-code token is read (its command run) only to ask its organization, and is never said or kept.'''
+source = "src/main.rs:442"
+check = ["test"]
+
+# tests/scan.rs a_token_of_a_login_s_personal_organization_is_its_copy_and_list_says_so
+[[promise]]
+name = "tokens-of-one-team-organization-are-never-copies"
+says = '''two tokens of one organization are said so in their `warning`, never copies.'''
+source = "src/main.rs:448"
+check = ["test"]
+
+# tests/run.rs no_command_starts_the_order_s_pick_its_model_flag_added_or_left,
+# a_command_starts_on_its_engine_s_pick_alone_then_its_kept_command_before_the_person_s
+[[promise]]
+name = "a-model-flag-only-where-the-command-names-none"
+says = '''the model flag is
+  added only where the command names no model.'''
+source = "docs/adr/0002-run-starts-the-engine-on-the-pick.md:24"
 check = ["test"]

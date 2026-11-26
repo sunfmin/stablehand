@@ -1,165 +1,260 @@
 {
-  "039a69eb9b10": {
-    "mark": "promise",
-    "sentence": "`status` answers each account's windows (each with its `group` where the engine groups them, and the `models` whose use it counts where the engine names them), used %, resets at, source (`read` or `limit`), `stale`, and pace: `tight` (at its recent rate it runs out before it resets), `spare` (it resets within a quarter of its length with 20% or more left), `used_up`, or `steady`. The account's pace is its worst window's.",
-    "source": "README.md:254"
-  },
-  "0c79334f1611": {
-    "mark": "promise",
-    "sentence": "`status` answers each account's windows (each with its `group` where the engine groups them), used %, resets at, source (`read` or `limit`), `stale`, and pace: `tight` (at its recent rate it runs out before it resets), `spare` (it resets within a quarter of its length with 20% or more left), `used_up`, or `steady`. The account's pace is its worst window's.",
-    "source": "README.md:61"
-  },
-  "1448c5e5efbb": {
-    "mark": "promise",
-    "sentence": "stderr gets one line of what was chosen, never a value.",
-    "source": "README.md:428"
-  },
-  "185b63601a21": {
-    "mark": "promise",
-    "sentence": "At a step with a model (agy's `claude-opus-5-5-high`, as `agy models` lists it), an account whose windows are grouped by model is judged only by the windows of the group holding it, and those in no group, so one agy account is two pools: its Gemini group used up, the walk falls to its Claude model.",
-    "source": "README.md:380"
-  },
-  "20ee0a5e4e42": {
+  "048ee116b42c": {
     "mark": "not",
-    "sentence": "stablehand is being built: today it says only its version (`stablehand --version`). Its commands land one ticket at a time, each described here as it lands.",
-    "source": "README.md:7"
+    "sentence": "A `claude setup-token` account's read spends one smallest-model turn of its quota: at most about 6 an hour while its sessions' bars refresh.",
+    "source": "src/main.rs:134",
+    "why": "restates a promise a [[promise]] registers from its manual line (the read's hour, a refused credential, a model in no group, the refusal, the session's home, the kept command, run's stderr, --running)"
   },
-  "24d140306d85": {
-    "mark": "promise",
-    "sentence": "It never refuses: an account not kept, or not claude-code's, books nothing, and the line says why (with `--then`, stderr does).",
-    "source": "README.md:299"
-  },
-  "2e9365aa7644": {
-    "mark": "promise",
-    "sentence": "agy's reader runs `agy -p /usage --output-format json` in the account's home (`HOME` set to `--home`; the user's own without it), on its machine only: no model turn, no conversation made.",
-    "source": "README.md:205"
-  },
-  "33ad5eeaaa53": {
+  "04b86a446d35": {
     "mark": "not",
-    "sentence": "A setup token is refused `user:profile`, but every answer to it names its organization (`anthropic-organization-id`), even the refusal of an empty `POST /v1/messages`, which spends nothing.",
-    "source": "README.md:116",
-    "why": "how Anthropic's API answers a setup token (another system's behaviour, held by the claude-code-question contract), not stablehand's"
+    "sentence": "A person logs an engine in by the engine itself (`codex login`, `claude setup-token`, …); stablehand never runs a login or a vendor's OAuth client.",
+    "source": "docs/adr/0001-one-home-for-agent-accounts.md:36",
+    "why": "describes, advises or records history; the word is no guarantee a check could keep"
   },
-  "45a2d71a44e3": {
-    "mark": "promise",
-    "sentence": "**Bound**, on its machine only: the engine's login file in the account's home (`path`) and where the engine's home holds it (`as`), one JSON object with or without `--json`; the caller links `<its home>/<as>` to `path`, so a login the engine refreshes is refreshed in the account's home too.",
-    "source": "README.md:153"
-  },
-  "4710d4706f73": {
-    "mark": "promise",
-    "sentence": "None is picked on an account a limit holds on, until it lifts; any of whose windows is the stop percent used (`--stop-percent`, 90 unless it says), until that window resets; or one of whose windows, at its present rate shared by the sessions running and one more, runs out before it resets (a reading over two hours old, or a window under half used, runs on at no rate). How many sessions run on an account never passes it over by itself: they count only in that rate.",
-    "source": "README.md:365"
-  },
-  "4e7133a1ce37": {
-    "mark": "promise",
-    "sentence": "An identity it cannot read (a format it does not know; dsh's file holds none) is said as such, `identity_unknown`, never guessed.",
-    "source": "README.md:114"
-  },
-  "5f8ccb1b6149": {
-    "mark": "promise",
-    "sentence": "Of the rest, the one with the most left of its most used window; one with no reading in force, or only stale ones, after every one with one; of equals, the first by name.",
-    "source": "README.md:373"
-  },
-  "6ab7f4a0e07d": {
+  "12b970d548d9": {
     "mark": "not",
-    "sentence": "It is a preference only: the command an engine starts with is its kept command's (below); its guard, and which checkout keeps to which engine, stay the caller's (factorium's pins).",
-    "source": "README.md:316",
-    "why": "where the order's job ends: what a kept command is, and what stays the caller's (factorium's pins); the kept command's use is its own promise under 'Each engine's command' and run's"
+    "sentence": "Each window's `models` are its group's, by the ids `agy models` gives, run after it in the same home: a model the group's description names, with any variant after it (`Claude Opus 5.5` holds `claude-opus-5-5-high`). /// /// ## What trips you up /// /// A claude-code account whose login is a `claude setup-token` token spends one smallest-model turn of its quota a reading: at most once an hour, unless `--now`, and each such read says `spent_turn: true`. /// /// An agy account is read by running agy in its home, on its machine only: a portable one is refused (bind it), a home not signed in fails only after agy has waited 60s for a browser sign-in, and an API-key login (agy exits 2) has no account quota to read.",
+    "source": "src/main.rs:215",
+    "why": "restates a promise a [[promise]] registers from its manual line (the read's hour, a refused credential, a model in no group, the refusal, the session's home, the kept command, run's stderr, --running)"
   },
-  "6d7add4957f9": {
-    "mark": "promise",
-    "sentence": "kimi's reader asks `api.kimi.com/coding/v1/usages`, as Kimi Code's own `/usage` does, with the account's bearer: a portable login's from its `--token-command`, a bound one's from `<home>/credentials/kimi-code.json` (its `KIMI_CODE_HOME`; `~/.kimi-code` without `--home`). Its windows are `limit_5h` and any other it lists (`limit_7d`, `limit_month_total`, `limit_month_code`). A bound login's token lasts 15 minutes and only a kimi session refreshes it: read long after one, it is refused (HTTP 401), said with that fix.",
-    "source": "README.md:236"
-  },
-  "75f5834f48d7": {
-    "mark": "promise",
-    "sentence": "The rules are Guild's ledger's: a reading over two hours old, or a window under half used, is never tight on its own.",
-    "source": "README.md:66"
-  },
-  "83f576dfaf45": {
+  "13858189c4ef": {
     "mark": "not",
-    "sentence": "One home for agent engine accounts: how each logs in, where it may run, and how much of its usage windows is left; and, from that and the order of engines and models kept beside them (`pick`), what one more session may start on now: its engine, model and account; and how this host starts each engine, its program and the flags it always takes (`command`). The rest of the session, its own arguments, its home and its protocol, is the caller's.",
-    "source": "README.md:3",
-    "why": "the README's opening: what stablehand is for, and what it leaves to its caller; a description, nothing a run could break"
+    "sentence": "The session's home is the caller's own, which links only those files into it, so nothing else of the account's home (a person's settings, hooks, skills) reaches a session.",
+    "source": "docs/adr/0001-one-home-for-agent-accounts.md:60",
+    "why": "restates a promise a [[promise]] registers from its manual line (the read's hour, a refused credential, a model in no group, the refusal, the session's home, the kept command, run's stderr, --running)"
   },
-  "8570c6660317": {
-    "mark": "promise",
-    "sentence": "scan looks in each engine's own default home (`~/.claude`, `~/.codex`, `~/.pi/agent`, `~/.kimi-code`, agy's `$HOME`, `~/.grok`, `~/.dsh`) and in each `--path`, never in a home another program keeps for its own use (factorium's `~/.agent-accounts`, Guild's `~/.guild/engines`) unless a `--path` names it.",
-    "source": "README.md:92"
-  },
-  "8c320f2bbf7e": {
-    "mark": "promise",
-    "sentence": "It only reads, and logs nothing in.",
-    "source": "README.md:148"
-  },
-  "9c9241a7b293": {
-    "mark": "promise",
-    "sentence": "`--running <account>=<n>,…` is the caller's count of the sessions now running on each account (factorium knows its workers), counted beside the sessions `stablehand run` keeps; across machines only as the caller counts.",
-    "source": "README.md:376"
-  },
-  "a08c8f71737f": {
-    "mark": "promise",
-    "sentence": "The bearer goes to curl on its stdin, never on a command line.",
-    "source": "README.md:56"
-  },
-  "a6f37d0f243d": {
-    "mark": "promise",
-    "sentence": "**Portable**: the engine's token variable (claude-code: `CLAUDE_CODE_OAUTH_TOKEN`), its value the token sesame keeps (`sesame token stablehand-<name> --json`). **Bound**: the engine's home variable set to the account's home, on its machine only.",
-    "source": "README.md:79"
-  },
-  "a717e96a5d96": {
-    "mark": "promise",
-    "sentence": "The default is a released stablehand's only: a development build (`cargo build`, any version with `+`) refuses unless `STABLEHAND_CONFIG_DIR` is set, as its schema steps may not be the released ones.",
-    "source": "README.md:40"
-  },
-  "a7b551df0ce8": {
-    "mark": "promise",
-    "sentence": "`credential` hands a session's caller an account's login and nothing else of it: the session's home is the caller's own (factorium builds a kept home per engine), so a person's settings, hooks or skills in the account's home never reach a worker.",
-    "source": "README.md:144"
-  },
-  "ad0d4a7594f1": {
-    "mark": "promise",
-    "sentence": "Without `--add` it writes nothing: it answers each login found (engine, home, logged in at, identity's hash, `new`, `registered` or `copy`, and the account: the one it is, or is a copy of, or the name `--add` gives, `<engine>`, or `<engine>-2` … when the name is kept). An account kept is never renamed.",
-    "source": "README.md:126"
-  },
-  "b253070fe11d": {
-    "mark": "promise",
-    "sentence": "How this host starts each engine: its program, then the arguments it always takes, split as `sh` would and never run through a shell.",
-    "source": "README.md:328"
-  },
-  "ba3c7442ee28": {
-    "mark": "promise",
-    "sentence": "One no group of which holds the model is judged by every window, and named in the answer's `model_in_no_group`; an engine that groups no window is judged as without a model.",
-    "source": "README.md:384"
-  },
-  "ceb874047196": {
-    "mark": "promise",
-    "sentence": "Its token lasts hours: an expired one is refreshed by grok itself (`grok models`, no model turn). Its windows are the credit period's, `weekly`: the account's, and one per product in its `group` (`Api`, `GrokBuild`): a share of the account's credits, never paced on its own.",
-    "source": "README.md:247"
-  },
-  "d44ebf590010": {
+  "143b8da270fc": {
     "mark": "not",
-    "sentence": "A login is the engine's own (docs/adr/0001): stablehand runs the engine's command, never a vendor's OAuth client.",
-    "source": "README.md:47"
+    "sentence": "/// /// The order is a preference only: which caller keeps to which engine stays the caller's, and the command an engine starts with is `stablehand command`'s.",
+    "source": "src/main.rs:295",
+    "why": "describes, advises or records history; the word is no guarantee a check could keep"
   },
-  "d46120914bb8": {
-    "mark": "promise",
-    "sentence": "It reads mytokens too, when it is on PATH, from `mytokens list` alone, which names each entry's fields and never prints a value: an `agent-account-<name>` entry with an engine's token field (`CLAUDE_CODE_OAUTH_TOKEN`) is a portable account `<name>`, its `--token-command` `mytokens get agent-account-<name> --field <that field>`; one with no token (a bound one, its `MACHINE`) is `skipped`. A claude-code token is read only to ask its organization, never said or kept.",
-    "source": "README.md:98"
+  "15a66cee64f8": {
+    "mark": "not",
+    "sentence": "**One reader per engine**, the only code that knows its endpoint or command, each held to the real engine by a truefit contract.",
+    "source": "docs/adr/0001-one-home-for-agent-accounts.md:49",
+    "why": "describes, advises or records history; the word is no guarantee a check could keep"
   },
-  "d9ec30f93c7c": {
-    "mark": "promise",
-    "sentence": "A credential the engine refused (dsh: HTTP 401 or code 40003; dsh drops its grant then) is booked `\"outcome\": \"refused\"` and never asked again, `--now` or not, until `account login`; `status` says `\"refused\": true`.",
-    "source": "README.md:151"
+  "15a8515acd47": {
+    "mark": "not",
+    "sentence": "A person, a script or factorium then had to put both together into the engine's command, its environment and home, by hand, every time.",
+    "source": "docs/adr/0002-run-starts-the-engine-on-the-pick.md:8",
+    "why": "describes, advises or records history; the word is no guarantee a check could keep"
   },
-  "daaeaf1fba2c": {
-    "mark": "promise",
-    "sentence": "mytokens is only read: nothing in it is changed or removed.",
-    "source": "README.md:83"
+  "21f046ab7dbf": {
+    "mark": "not",
+    "sentence": "Before, a portable token was kept in sesame (`stablehand-<name>`); its only portable accounts were claude-code `setup-token` tokens, which neither refresh nor read usage, so sesame was only a second copy of what mytokens already held, and is gone.",
+    "source": "docs/adr/0001-one-home-for-agent-accounts.md:45",
+    "why": "describes, advises or records history; the word is no guarantee a check could keep"
   },
-  "f56cacc4183d": {
-    "mark": "promise",
-    "sentence": "`account edit` changes only the terms given; `--unset machine|expires|home|token-command` clears one.",
-    "source": "README.md:35"
+  "24cae5b363db": {
+    "mark": "not",
+    "sentence": "How this host starts each engine, its program and the permission flags wanted on every session (`claude --dangerously-skip-permissions`, `codex --dangerously-bypass-approvals-and-sandbox`, `agy --dangerously-skip-permissions`, `grok --always-approve`), was kept in factorium's kit, while `stablehand run` started each engine's bare program (`Engine::start`). Two homes for one fact: a session started by run and one started by factorium on the same engine ran with different permissions.",
+    "source": "docs/adr/0003-an-engine-s-command-is-stablehand-s.md:8",
+    "why": "describes, advises or records history; the word is no guarantee a check could keep"
+  },
+  "282a916a08d1": {
+    "mark": "not",
+    "sentence": "With no command, the whole order is walked (`stablehand order show`) and the picked engine's own program starts, interactive (dsh's is `dsh tui`): `stablehand run`. The engine, model and account are `stablehand pick`'s (`--engine`, `--account`, `--model` narrow it; a model the command names, `--model opus`, narrows it too). /// /// ## What the child gets /// /// - Its login, in its environment alone, never on a command line: portable, the engine's token variable (`CLAUDE_CODE_OAUTH_TOKEN`) set to what the account's `--token-command` prints; bound, the engine's home variable (`CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `HOME` for agy, …) set to the account's home, the token variable cleared.",
+    "source": "src/main.rs:101",
+    "why": "describes, advises or records history; the word is no guarantee a check could keep"
+  },
+  "2956e7949bb3": {
+    "mark": "not",
+    "sentence": "/// /// Answers `{\"accounts\": [{…}, …]}`, each as `stablehand account add` answers it; `copy_of` names the account one is a copy of (run sessions on one of them only).",
+    "source": "src/main.rs:412",
+    "why": "describes, advises or records history; the word is no guarantee a check could keep"
+  },
+  "2e8f46ab5d5b": {
+    "mark": "not",
+    "sentence": "Its secure storage is `keychain-with-plaintext-fallback`: the Keychain first, service `Claude Code-credentials-<first 8 hex of sha256(<dir>)>` (unsuffixed `Claude Code-credentials` only when `CLAUDE_CONFIG_DIR` is unset); `<dir>/.credentials.json` (0600) only when the Keychain write fails.",
+    "source": "docs/adr/0002-run-starts-the-engine-on-the-pick.md:44",
+    "why": "describes, advises or records history; the word is no guarantee a check could keep"
+  },
+  "30c39ef3a986": {
+    "mark": "not",
+    "sentence": "Read { /// The account to read; without it, every account.",
+    "source": "src/main.rs:226",
+    "why": "describes, advises or records history; the word is no guarantee a check could keep"
+  },
+  "3b36d66cc8ec": {
+    "mark": "not",
+    "sentence": "Pick { /// Walk only this engine's steps; repeatable.",
+    "source": "src/main.rs:302",
+    "why": "describes, advises or records history; the word is no guarantee a check could keep"
+  },
+  "3b3e664eecc5": {
+    "mark": "not",
+    "sentence": "cmd: AccountCmd, }, /// Set or show each engine's command: its program and the flags it always takes on this host (`claude --dangerously-skip-permissions`), as `stablehand run` starts it.",
+    "source": "src/main.rs:166",
+    "why": "describes, advises or records history; the word is no guarantee a check could keep"
+  },
+  "4496ea46280b": {
+    "mark": "not",
+    "sentence": "Status { /// The account; without it, every account.",
+    "source": "src/main.rs:263",
+    "why": "describes, advises or records history; the word is no guarantee a check could keep"
+  },
+  "44e888510c6a": {
+    "mark": "not",
+    "sentence": "A session started other than by run is counted only by `--running`.",
+    "source": "docs/adr/0002-run-starts-the-engine-on-the-pick.md:78",
+    "why": "restates a promise a [[promise]] registers from its manual line (the read's hour, a refused credential, a model in no group, the refusal, the session's home, the kept command, run's stderr, --running)"
+  },
+  "4843a8e02323": {
+    "mark": "not",
+    "sentence": "**Reading is bounded**: at most once an hour per account unless a caller asks, never again on a credential the engine refused (dsh deletes its grant on a 401) until a login after it: a bound home's login file written since, or a portable account given its token command again.",
+    "source": "docs/adr/0001-one-home-for-agent-accounts.md:53",
+    "why": "restates a promise a [[promise]] registers from its manual line (the read's hour, a refused credential, a model in no group, the refusal, the session's home, the kept command, run's stderr, --running)"
+  },
+  "4b97ad489434": {
+    "mark": "not",
+    "sentence": "engine: Vec<Engine>, /// Walk only the steps of this model, by the id its engine starts it with (`agy models`: `claude-opus-5-5-high`); one not in the order is tried on each `--engine` after the rest.",
+    "source": "src/main.rs:305",
+    "why": "describes, advises or records history; the word is no guarantee a check could keep"
+  },
+  "4ce2784a970e": {
+    "mark": "not",
+    "sentence": "/// The account `name`, or every account where none is named.",
+    "source": "src/main.rs:803",
+    "why": "describes, advises or records history; the word is no guarantee a check could keep"
+  },
+  "5a5529960473": {
+    "mark": "not",
+    "sentence": "Set it in `~/.claude/settings.json`: /// /// `\"statusLine\": {\"type\": \"command\", \"command\": \"stablehand statusline --then 'bash \\\"$HOME/.claude/statusline.sh\\\"'\"}` /// /// ## How it finds the account /// /// `--account`, else `${const:ACCOUNT_VAR}` (`stablehand run` sets it in the session it starts), else from the session's environment, never by running a token command: none with `ANTHROPIC_BASE_URL` set (not an Anthropic subscription) or `CLAUDE_CODE_OAUTH_TOKEN` set (a token tells no account by itself); otherwise the claude-code account bound to this machine whose `--home` is the session's config dir, `$CLAUDE_CONFIG_DIR`, else `~/.claude` (paths compared resolved, symlinks followed). None kept there, or it is off: no account.",
+    "source": "src/main.rs:120",
+    "why": "describes, advises or records history; the word is no guarantee a check could keep"
+  },
+  "6074a330cde1": {
+    "mark": "not",
+    "sentence": "A bound claude-code account whose login is only in the Keychain (logged in at the desktop) is not logged in to stablehand, whose test is the file.",
+    "source": "docs/adr/0002-run-starts-the-engine-on-the-pick.md:73",
+    "why": "describes, advises or records history; the word is no guarantee a check could keep"
+  },
+  "64ac666f553b": {
+    "mark": "not",
+    "sentence": "The order was factorium's kit and the try-the-next loop would have been factorium's; here, every caller (factorium, a person, Guild) gets one answer.",
+    "source": "docs/adr/0001-one-home-for-agent-accounts.md:71",
+    "why": "describes, advises or records history; the word is no guarantee a check could keep"
+  },
+  "6678e19d14ab": {
+    "mark": "not",
+    "sentence": "/// /// `stablehand help all` shows the whole manual, every command in full; without a topic it shows what `stablehand --help` does.",
+    "source": "src/main.rs:147",
+    "why": "describes, advises or records history; the word is no guarantee a check could keep"
+  },
+  "685b9d377db6": {
+    "mark": "not",
+    "sentence": "/// /// Without a name, every account.",
+    "source": "src/main.rs:196",
+    "why": "describes, advises or records history; the word is no guarantee a check could keep"
+  },
+  "817ed96a8bb8": {
+    "mark": "not",
+    "sentence": "/// /// Answers `{\"commands\": {\"<engine>\": \"<command>\"}}`, only the engines with one kept; `{\"commands\": {}}` on a fresh store.",
+    "source": "src/main.rs:369",
+    "why": "describes, advises or records history; the word is no guarantee a check could keep"
+  },
+  "8f0b20a6fab9": {
+    "mark": "not",
+    "sentence": "Each read a different part, and the harnesses said grok, pi and dsh \"report none\". On 2026-11-24 every engine Felix uses was asked for its usage on this Mac, live, with no model turn:",
+    "source": "docs/adr/0001-one-home-for-agent-accounts.md:9",
+    "why": "describes, advises or records history; the word is no guarantee a check could keep"
+  },
+  "962c5d3cea7f": {
+    "mark": "not",
+    "sentence": "/// /// A portable claude-code token's identity is its organization: a setup token is refused `user:profile`, but every answer to it names its organization (`anthropic-organization-id`), even the one refusing an empty `POST /v1/messages`, before any turn, so nothing is spent.",
+    "source": "src/main.rs:447",
+    "why": "describes, advises or records history; the word is no guarantee a check could keep"
+  },
+  "9f39cd640ac4": {
+    "mark": "not",
+    "sentence": "fn engines_help() -> String { let lines = <Engine as clap::ValueEnum>::value_variants() .iter() .map(|e| { let l = e.login(); let token = l .token .map_or(\"none made\".into(), |t| format!(\"made by `{}`\", t.join(\" \"))); format!( \"- {}: bound, logged in by `{}` with {} its home; portable token {token}, in {}; login file `{}`\", e.name(), l.bound.join(\" \"), l.home_var, l.token_var.unwrap_or(\"none: bound only\"), l.file ) }); lines.collect::<Vec<_>>().join(\"\\n\") }",
+    "source": "src/main.rs:478",
+    "why": "describes, advises or records history; the word is no guarantee a check could keep"
+  },
+  "a17fbc5ea11b": {
+    "mark": "not",
+    "sentence": "A command is split as `sh` splits it and never run through a shell; its program is its engine's or a path ending in it, and it names no model (the model is the pick's). Anything else is refused (`bad_command`), writing nothing.",
+    "source": "docs/adr/0003-an-engine-s-command-is-stablehand-s.md:23",
+    "why": "restates a promise a [[promise]] registers from its manual line (the read's hour, a refused credential, a model in no group, the refusal, the session's home, the kept command, run's stderr, --running)"
+  },
+  "a4143a2e4efc": {
+    "mark": "not",
+    "sentence": "/// /// A bound kimi login's token lasts 15 minutes, and only a kimi session refreshes it: read long after one, it is refused (HTTP 401), said with that fix.",
+    "source": "src/main.rs:223",
+    "why": "describes, advises or records history; the word is no guarantee a check could keep"
+  },
+  "a6c06043c451": {
+    "mark": "not",
+    "sentence": "/// /// ## What it answers /// /// `{\"add\", \"machine\", \"logins\": [{\"engine\", \"home\", \"logged_in_at\", \"identity\", \"identity_unknown\", \"status\", \"account\", \"warning\"}], \"tokens\": [{\"entry\", \"engine\", \"token_command\", \"status\", \"account\", \"identity\", \"identity_unknown\", \"same_as_a_login\", \"warning\"}], \"mytokens_unread\"}`. `status` is `new` (`account` the name `--add` gives it: `<engine>`, or `<engine>-2` … when the name is kept; a token its entry's `<name>`), `added` (with `--add`), `registered` (`account` is it), `copy` (of `account`; `warning` says why to run sessions on that one only) or, for a token entry, `skipped` (with `why`). `mytokens_unread` says why mytokens was not read, null when it was.",
+    "source": "src/main.rs:449",
+    "why": "describes, advises or records history; the word is no guarantee a check could keep"
+  },
+  "a7589557f162": {
+    "mark": "not",
+    "sentence": "/// The command line, read by the manual's command tree only when the plain /// one does not read it as a command to run (a help, the version, a usage /// error): both parse alike, but the manual renders every command's help /// whole, most of a run's start.",
+    "source": "src/main.rs:528",
+    "why": "describes, advises or records history; the word is no guarantee a check could keep"
+  },
+  "aa0a28b68c3b": {
+    "mark": "not",
+    "sentence": "Of the logins of one identity, the account is the one an account already kept is (kept at that home, or holding that hash), else the most recently written; the others are copies of it: run sessions on the account only, as copies of one refresh token refresh each other out.",
+    "source": "src/main.rs:446",
+    "why": "describes, advises or records history; the word is no guarantee a check could keep"
+  },
+  "ada508b9b659": {
+    "mark": "not",
+    "sentence": "agy's are checked against the ids `agy models` lists, run in the home of the first agy account bound to this machine (the user's own without one). The order is a preference only: the command an engine starts with is `stablehand command`'s; its guard stays the caller's.",
+    "source": "src/main.rs:326",
+    "why": "describes, advises or records history; the word is no guarantee a check could keep"
+  },
+  "b910c1c2cef8": {
+    "mark": "not",
+    "sentence": "How this host starts each engine, its program and the flags it always takes, is stablehand's too (`stablehand command`, docs/adr/0003): `stablehand run` starts it so.",
+    "source": "src/main.rs:45",
+    "why": "describes, advises or records history; the word is no guarantee a check could keep"
+  },
+  "cd093b46d49f": {
+    "mark": "not",
+    "sentence": "It is asked at most once an hour (`stablehand read`'s wait), unless `--now`; the status line starts one such read at most every ten minutes, so at most about 6 an hour while its bars refresh.",
+    "source": "docs/adr/0004-a-setup-token-is-read-by-one-question.md:22",
+    "why": "restates a promise a [[promise]] registers from its manual line (the read's hour, a refused credential, a model in no group, the refusal, the session's home, the kept command, run's stderr, --running)"
+  },
+  "d2eb06eb57de": {
+    "mark": "not",
+    "sentence": "stderr says `, kept command` when it was used, and never its arguments.",
+    "source": "docs/adr/0003-an-engine-s-command-is-stablehand-s.md:36",
+    "why": "restates a promise a [[promise]] registers from its manual line (the read's hour, a refused credential, a model in no group, the refusal, the session's home, the kept command, run's stderr, --running)"
+  },
+  "d9798b8a4f00": {
+    "mark": "not",
+    "sentence": "After its quota, `agy models` names each group's models; where it fails, the windows are booked with none, and `pick --model` judges the account by every window.",
+    "source": "src/main.rs:221",
+    "why": "restates a promise a [[promise]] registers from its manual line (the read's hour, a refused credential, a model in no group, the refusal, the session's home, the kept command, run's stderr, --running)"
+  },
+  "e1c3cdcd322b": {
+    "mark": "not",
+    "sentence": "`refused` is true when the last try's credential was refused and the account has not logged in since: it is read again only after it logs in again (its home's login file written since, or `stablehand account edit --token-command`), whatever `read_next` says.",
+    "source": "src/main.rs:257",
+    "why": "restates a promise a [[promise]] registers from its manual line (the read's hour, a refused credential, a model in no group, the refusal, the session's home, the kept command, run's stderr, --running)"
+  },
+  "e632c0486ff8": {
+    "mark": "not",
+    "sentence": "/// Why stablehand refused, as a refusal's `code`. Each refusal's `error` names every fault with the line that fixes it.",
+    "source": "src/refusal.rs:4",
+    "why": "restates a promise a [[promise]] registers from its manual line (the read's hour, a refused credential, a model in no group, the refusal, the session's home, the kept command, run's stderr, --running)"
+  },
+  "e639a2b9d6a0": {
+    "mark": "not",
+    "sentence": "One turn of Claude Code answers them: its stream's `rate_limit_event`. A turn spends the account's quota and money, so reading this way is worth it only if a turn is small enough to ask every hour.",
+    "source": "docs/adr/0004-a-setup-token-is-read-by-one-question.md:10",
+    "why": "describes, advises or records history; the word is no guarantee a check could keep"
+  },
+  "e73d3207b305": {
+    "mark": "not",
+    "sentence": "terms: Terms, }, /// Every account, by name.",
+    "source": "src/main.rs:409",
+    "why": "describes, advises or records history; the word is no guarantee a check could keep"
   }
 }
