@@ -18,18 +18,16 @@
   files in a home of that account's on one machine (`auth.json`,
   `~/.gemini`), written and refreshed by the engine itself; a home holding
   its engine's login file is logged in, as of when it was written.
-- **Identity**: the subscription a bound login's files say they are of
-  (ChatGPT's account id, Claude's account and organization): what tells
-  two logins of one account apart from two accounts. `account scan` reads
-  it in memory and keeps only its hash. A portable claude-code token's is
-  its **organization**, which every answer to it names
-  (`anthropic-organization-id`), read by an empty `POST /v1/messages` that
-  is refused before any turn; a personal one (`claude_max`, `claude_pro`)
-  is its subscription, a team's is several people's seats. Two logins of
-  one identity are **copies**: one is the account, the others are left
-  unused, since copies of one refresh token refresh each other out; so is
-  a token of a bound login's personal organization, since both spend the
-  same windows.
+- **Identity**: the subscription a login says it is of (ChatGPT's account
+  id, Claude's account and organization): what tells two logins of one
+  account apart from two accounts. Kept only as its hash; how `account
+  scan` reads it is in its help.
+- **Organization**: a portable claude-code token's identity, named by every
+  answer to it. A personal one (`claude_max`, `claude_pro`) is its
+  subscription; a team's is several people's seats.
+- **Copy**: a login of an account's identity, or a token of a bound login's
+  personal organization: it spends the account's windows, so it is left
+  unused (copies of one refresh token refresh each other out).
 - **Window**: one span of an account's use as its engine names it
   (`five_hour`, `seven_day`, `primary`, `gemini-5h`): how much is used, 0 to
   100, and when it resets. An account may have several **groups** of windows
@@ -54,7 +52,7 @@
 - **Pick**: the answer to "what may one more session start on now": the
   first engine, model and account of the order whose account takes it,
   or none with until when and why. The session itself is the caller's.
-  A copy (see Identity) gives way to its account while that one is on
+  A copy gives way to its account while that one is on
   here: one subscription takes sessions under one name.
 - **Kept command**: how this host starts an engine, its program and the
   flags it always takes (`claude --dangerously-skip-permissions`), one per
