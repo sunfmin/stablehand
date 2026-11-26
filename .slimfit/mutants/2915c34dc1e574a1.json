@@ -1,0 +1,6 @@
+{
+  "tree": "c9a6160a541afadb3c25e2b779fed682609600fe+d1fba762150c532c",
+  "picker": "codex:01a21534-f1b0-78c0-999f-6fe3a2f61ff9:default",
+  "author": "claude-code:9e40d859-7c24-5b4c-9469-58d0dc926120:opus",
+  "none": "The booking failure test requires an error, which the Store::put_booking stub suppresses, and the run stub returns null for every command, making it unlikely to survive any test that checks command output or effects."
+}
