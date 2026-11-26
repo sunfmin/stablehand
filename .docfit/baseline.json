@@ -4,17 +4,6 @@
       "auth.json"
     ]
   },
-  "README.md": {
-    "bytes": 28255,
-    "measurements": 6,
-    "paragraph": 832,
-    "pointers": [
-      ".credentials.json",
-      ".credentials.yaml",
-      "auth.json",
-      "credentials/kimi-code.json"
-    ]
-  },
   "docs/adr/0001-one-home-for-agent-accounts.md": {
     "bytes": 5229,
     "paragraph": 1081
