@@ -668,12 +668,13 @@ fn run(cmd: Register) -> Result<Value, Refused> {
                     },
                 )
                 .map_err(faults)?;
-                store.put(&a)?;
-                if given_command {
-                    // A new login: a credential its engine refused is asked again.
-                    let what = books::What::LoggedIn;
-                    store.book(&a.name, &books::Entry { at: now()?, what })?;
-                }
+                // A new login: a credential its engine refused is asked again.
+                let what = books::What::LoggedIn;
+                let login = match given_command {
+                    true => Some(books::Entry { at: now()?, what }),
+                    false => None,
+                };
+                store.put_booking(&a, login.as_ref())?;
                 shown(&store, &a)
             }
             AccountCmd::Scan { add, path } => scan::scan(&store, &path, add),

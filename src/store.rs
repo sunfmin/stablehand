@@ -301,6 +301,17 @@ impl Store {
         self.write("REPLACE INTO", account).map(|_| ())
     }
 
+    /// Replaces the account of `account`'s name with it and books `entry`,
+    /// when given, in its books: both are written or neither.
+    pub fn put_booking(&self, account: &Account, entry: Option<&Entry>) -> Result<(), String> {
+        let tx = self.conn.unchecked_transaction().map_err(|e| self.err(e))?;
+        self.put(account)?;
+        if let Some(entry) = entry {
+            self.book(&account.name, entry)?;
+        }
+        tx.commit().map_err(|e| self.err(e))
+    }
+
     fn write(&self, verb: &str, a: &Account) -> Result<bool, String> {
         let off = a.off.as_ref();
         self.conn
@@ -481,8 +492,43 @@ impl Store {
 
 #[cfg(test)]
 mod tests {
-    use super::{Connection, MIGRATIONS, config_dir, migrate};
+    use super::{Connection, MIGRATIONS, Store, config_dir, migrate};
+    use crate::account::{self, Change, Engine, Terms};
+    use crate::books::{Entry, What};
     use std::path::PathBuf;
+
+    #[test]
+    fn a_put_whose_booking_fails_leaves_the_account_as_it_was() {
+        // stablehand#45: the account and its login's entry, both or neither.
+        let store = Store::in_memory();
+        let terms = |command: &str| Change {
+            terms: Terms {
+                token_command: Some(command.into()),
+                ..Terms::default()
+            },
+            ..Change::default()
+        };
+        let before = account::new("c", Engine::Codex, terms("old")).unwrap();
+        store.put(&before).unwrap();
+        store
+            .conn
+            .execute_batch(
+                "CREATE TRIGGER no_books BEFORE INSERT ON books BEGIN SELECT RAISE(ABORT, 'closed'); END;",
+            )
+            .unwrap();
+        let after = account::new("c", Engine::Codex, terms("new")).unwrap();
+        let entry = Entry {
+            at: 1,
+            what: What::LoggedIn,
+        };
+        let fault = store.put_booking(&after, Some(&entry)).unwrap_err();
+        assert!(fault.contains("closed"), "{fault}");
+        assert_eq!(store.get("c").unwrap(), Some(before));
+        assert_eq!(store.entries("c").unwrap(), vec![]);
+        // Unbooked, the put alone is written.
+        store.put_booking(&after, None).unwrap();
+        assert_eq!(store.get("c").unwrap(), Some(after));
+    }
 
     fn version(conn: &Connection) -> i64 {
         conn.query_row("PRAGMA user_version", [], |r| r.get(0))
