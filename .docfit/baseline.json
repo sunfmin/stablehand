@@ -6,10 +6,9 @@
     ]
   },
   "README.md": {
-    "bytes": 28255,
+    "bytes": 28202,
     "copies": 1,
-    "measurements": 6,
-    "paragraph": 832,
+    "paragraph": 829,
     "pointers": [
       ".credentials.json",
       ".credentials.yaml",
