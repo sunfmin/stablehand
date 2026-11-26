@@ -536,10 +536,9 @@ fn parse() -> Result<Result<Cli, clap::Error>, String> {
     if plain.is_ok() {
         return Ok(plain);
     }
+    // Read alike, the manual's tree refuses it too, with the manual's text.
     let command = manual().clap().map_err(|e| e.to_string())?;
-    Ok(command
-        .try_get_matches()
-        .and_then(|m| Cli::from_arg_matches(&m)))
+    Ok(command.try_get_matches().and(plain))
 }
 
 fn main() -> ExitCode {
