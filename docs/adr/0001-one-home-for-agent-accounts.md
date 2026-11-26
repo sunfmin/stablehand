@@ -31,8 +31,7 @@ None of these endpoints is documented for outside use.
 - **An account is a subscription, not an engine.** Engines that spend one
   account (pi and codex on one ChatGPT account) read and book into the same
   account.
-- **stablehand runs no login and keeps no secret** (stablehand#20, Felix,
-  2026-11-24). The register is stablehand's: an account's engine, where it
+- **stablehand runs no login and keeps no secret** (Felix, 2026-11-24). The register is stablehand's: an account's engine, where it
   runs, its terms. A secret stays where the person keeps it, and stablehand
   keeps the command that reads it. A person logs an engine in by the engine
   itself (`codex login`, `claude setup-token`, …); stablehand never runs a
@@ -64,7 +63,7 @@ None of these endpoints is documented for outside use.
   what a caller links is what makes a bound home logged in.
 - **The pick is stablehand's**: the stop percent, the pace and the sessions
   already running decide it here, so no caller computes it again.
-- **So is the order, and the whole pick** (stablehand#24, Felix, control
+- **So is the order, and the whole pick** (Felix, control
   session, 2026-11-24). stablehand answers the accounts, their usage, and
   what the next session starts on: which engine, which model and which
   account, the first of the **order** (engines and their models, highest

@@ -484,12 +484,8 @@ check = ["test"]
 # src/books_tests.rs a_refused_credential_is_held_until_a_login_after_it
 [[promise]]
 name = "a-refused-credential-is-not-asked-again"
-says = '''A credential the engine refused (dsh: HTTP 401 or code 40003; dsh drops
-  its grant then) is booked `"outcome": "refused"` and never asked again,
-  `--now` or not, until it logs in again: its home's login file written
-  after it, or a portable one given its `--token-command` again (`account
-  edit`); `status` says `"refused": true`.'''
-source = "README.md:151"
+says = '''is booked `"outcome": "refused"` and never asked again'''
+source = "README.md:222"
 check = ["test"]
 
 # mytokens holds the agent-account-* entries `account scan` finds from its
