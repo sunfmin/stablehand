@@ -1,0 +1,41 @@
+{
+  "tip": "532a69cbdc30be52967c80d20542df7459244c1d",
+  "from": "d14374fd485629dad7d9c21b01fdf2ec4668b19e",
+  "pool": 12,
+  "drawn": {
+    "rust": [
+      {
+        "name": "src/command.rs:84:5: replace parse -> Result<Vec<(Engine, Vec<String>)>, Vec<String>> with Ok(vec![(Default::default(), vec![\"xyzzy\".into()])])",
+        "outcome": "unviable"
+      },
+      {
+        "name": "src/order.rs:29:5: replace parse -> Result<Vec<Rank>, Vec<String>> with Ok(vec![Default::default()])",
+        "outcome": "unviable"
+      },
+      {
+        "name": "src/command.rs:84:5: replace parse -> Result<Vec<(Engine, Vec<String>)>, Vec<String>> with Ok(vec![(Default::default(), vec![])])",
+        "outcome": "unviable"
+      },
+      {
+        "name": "src/store.rs:307:9: replace Store::put_booking -> Result<(), String> with Ok(())",
+        "outcome": "killed"
+      },
+      {
+        "name": "src/order.rs:74:43: replace && with || in parse",
+        "outcome": "killed"
+      },
+      {
+        "name": "src/order.rs:79:60: delete ! in parse",
+        "outcome": "killed"
+      },
+      {
+        "name": "src/order.rs:29:5: replace parse -> Result<Vec<Rank>, Vec<String>> with Ok(vec![])",
+        "outcome": "killed"
+      },
+      {
+        "name": "src/order.rs:74:28: replace == with != in parse",
+        "outcome": "killed"
+      }
+    ]
+  }
+}
