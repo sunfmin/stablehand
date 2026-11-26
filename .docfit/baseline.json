@@ -1,0 +1,55 @@
+{
+  "GLOSSARY.md": {
+    "paragraph": 779,
+    "pointers": [
+      "auth.json"
+    ]
+  },
+  "README.md": {
+    "bytes": 28255,
+    "copies": 1,
+    "measurements": 6,
+    "paragraph": 832,
+    "pointers": [
+      ".credentials.json",
+      ".credentials.yaml",
+      "auth.json",
+      "credentials/kimi-code.json"
+    ]
+  },
+  "docs/adr/0001-one-home-for-agent-accounts.md": {
+    "bytes": 5261,
+    "local_refs": 2,
+    "paragraph": 1096
+  },
+  "docs/adr/0002-run-starts-the-engine-on-the-pick.md": {
+    "bytes": 4510,
+    "local_refs": 1,
+    "paragraph": 934,
+    "pointers": [
+      ".credentials.json"
+    ]
+  },
+  "docs/adr/0003-an-engine-s-command-is-stablehand-s.md": {
+    "local_refs": 1,
+    "paragraph": 629
+  },
+  "rust-toolchain.toml": {
+    "local_refs": 1
+  },
+  "src/pick_tests.rs": {
+    "local_refs": 3
+  },
+  "src/store.rs": {
+    "local_refs": 4
+  },
+  "tests/register.rs": {
+    "local_refs": 1
+  },
+  "tests/scan.rs": {
+    "local_refs": 1
+  },
+  "tests/usage.rs": {
+    "local_refs": 1
+  }
+}

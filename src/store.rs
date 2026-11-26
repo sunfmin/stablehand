@@ -499,7 +499,7 @@ mod tests {
 
     #[test]
     fn a_put_whose_booking_fails_leaves_the_account_as_it_was() {
-        // stablehand#45: the account and its login's entry, both or neither.
+        // The account and its login's entry: both or neither.
         let store = Store::in_memory();
         let terms = |command: &str| Change {
             terms: Terms {
