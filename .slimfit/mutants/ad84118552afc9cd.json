@@ -1,0 +1,15 @@
+{
+  "tree": "3c09689435318910dfd3327dd9ea71b0be1efc72+d1fba762150c532c",
+  "picker": "codex:01a215fe-fc07-79b0-b056-1882e9eff3d0:default",
+  "author": "claude-code:0c11ef89-6525-51cf-9592-de003ced69d5:opus",
+  "picks": {
+    "rust": [
+      {
+        "name": "src/readers/chatgpt.rs:36:5: replace codex -> Result<Vec<Window>, String> with Ok(vec![])",
+        "why": "The shown tests call codex_windows directly, so they can pass even if codex skips the app server and always returns no windows.",
+        "outcome": "killed",
+        "first_outcome": "killed"
+      }
+    ]
+  }
+}
