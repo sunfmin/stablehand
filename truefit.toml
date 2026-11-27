@@ -70,7 +70,7 @@ name = "claude-code-question"
 run = ["tests/contract/question-shape", "fake-claude"]
 real = ["tests/contract/question-shape", "real-claude"]
 needs = "claude, jq and optokens on PATH, and a `claude setup-token` token in optokens (profile claude-theplant-jp, or the one STABLEHAND_CONTRACT_SETUP_TOKEN names)"
-ready = ["sh", "-c", "command -v claude >/dev/null && optokens list 2>/dev/null | jq -e --arg s \"${STABLEHAND_CONTRACT_SETUP_TOKEN:-claude-theplant-jp}\" '.secrets[] | select(.service==$s and .account==\"default\")' >/dev/null"]
+ready = ["tests/contract/setup-token-ready", "claude"]
 version = ["claude", "--version"]
 faults = ["refused"]
 fault_env = "FAKE_CLAUDE_FAULT"
@@ -101,7 +101,7 @@ name = "claude-code-organization"
 run = ["tests/contract/organization-shape", "fake-curl"]
 real = ["tests/contract/organization-shape", "real-curl"]
 needs = "curl, jq and optokens on PATH, and a `claude setup-token` token in optokens (profile claude-theplant-jp, or the one STABLEHAND_CONTRACT_SETUP_TOKEN names)"
-ready = ["sh", "-c", "command -v curl >/dev/null && optokens list 2>/dev/null | jq -e --arg s \"${STABLEHAND_CONTRACT_SETUP_TOKEN:-claude-theplant-jp}\" '.secrets[] | select(.service==$s and .account==\"default\")' >/dev/null"]
+ready = ["tests/contract/setup-token-ready", "curl"]
 version = ["sh", "-c", "curl --version | head -n 1"]
 faults = ["unauthorized"]
 fault_env = "FAKE_CURL_FAULT"

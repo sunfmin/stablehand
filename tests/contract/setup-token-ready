@@ -1,0 +1,7 @@
+#!/bin/sh
+# Ready for a real run of a `claude setup-token` token through the program
+# $1 (real-claude, real-curl): $1 on PATH, and the optokens profile
+# $STABLEHAND_CONTRACT_SETUP_TOKEN (default claude-theplant-jp) in its vault.
+command -v "$1" >/dev/null &&
+    optokens list 2>/dev/null | jq -e --arg s "${STABLEHAND_CONTRACT_SETUP_TOKEN:-claude-theplant-jp}" \
+        '.secrets[] | select(.service==$s and .account=="default")' >/dev/null

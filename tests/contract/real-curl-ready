@@ -1,8 +1,6 @@
 #!/bin/sh
-# Ready for `truefit contract --real claude-code`: curl and jq on PATH, a
-# Claude Code login in ~/.claude/.credentials.json, and the optokens profile
-# of a `claude setup-token` token (see real-curl).
-command -v curl >/dev/null && command -v jq >/dev/null && command -v optokens >/dev/null &&
-    jq -e '.claudeAiOauth.accessToken' "$HOME/.claude/.credentials.json" >/dev/null 2>&1 &&
-    optokens list 2>/dev/null | jq -e --arg s "${STABLEHAND_CONTRACT_SETUP_TOKEN:-claude-theplant-jp}" \
-        '.secrets[] | select(.service==$s and .account=="default")' >/dev/null
+# Ready for `truefit contract --real claude-code`: a Claude Code login in
+# ~/.claude/.credentials.json, and curl with the setup token's profile
+# (setup-token-ready, see real-curl).
+jq -e '.claudeAiOauth.accessToken' "$HOME/.claude/.credentials.json" >/dev/null 2>&1 &&
+    "$(dirname "$0")/setup-token-ready" curl

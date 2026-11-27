@@ -258,64 +258,54 @@ fn judge(found: &[Found], kept: &[Account], machine: &str, taken: &mut Vec<Strin
 
 const PREFIX: &str = "agent-account-";
 
-/// One `agent-account-*` Secret as `optokens list` lists it.
-#[derive(Debug, PartialEq)]
-struct Entry {
-    /// `<service>/<account>`.
-    id: String,
-    service: String,
-    label: String,
-    fields: Vec<String>,
-}
-
-/// A Secret of `optokens list`'s answer, `{"secrets":[…]}`: its fields'
+/// One `agent-account-*` Secret as `optokens list` lists it: its fields'
 /// labels, `null` for a single value.
 #[derive(serde::Deserialize)]
-struct Secret {
+struct Entry {
     service: String,
     account: String,
     fields: Option<Vec<String>>,
 }
 
-/// The `agent-account-*` entries of `optokens list`'s JSON, or why it is
-/// not that JSON.
+/// The `agent-account-*` entries of `optokens list`'s JSON,
+/// `{"secrets":[…]}`, or why it is not that JSON.
 fn entries(list: &str) -> Result<Vec<Entry>, String> {
     #[derive(serde::Deserialize)]
     struct List {
-        secrets: Vec<Secret>,
+        secrets: Vec<Entry>,
     }
-    let list: List = serde_json::from_str(list)
+    let mut list: List = serde_json::from_str(list)
         .map_err(|e| format!("`optokens list` answered no list of Secrets: {e}"))?;
-    Ok(list
-        .secrets
-        .into_iter()
-        .filter(|s| {
-            s.service
-                .strip_prefix(PREFIX)
-                .is_some_and(|n| !n.is_empty())
-        })
-        .map(|s| Entry {
-            id: format!("{}/{}", s.service, s.account),
-            service: s.service,
-            label: s.account,
-            fields: s.fields.unwrap_or_default(),
-        })
-        .collect())
+    list.secrets.retain(|s| {
+        s.service
+            .strip_prefix(PREFIX)
+            .is_some_and(|n| !n.is_empty())
+    });
+    Ok(list.secrets)
 }
 
 impl Entry {
+    /// `<service>/<account>`.
+    fn id(&self) -> String {
+        format!("{}/{}", self.service, self.account)
+    }
+
+    fn has(&self, field: &str) -> bool {
+        self.fields.iter().flatten().any(|f| f == field)
+    }
+
     /// The engine whose token variable is one of its fields, and that field.
     fn token(&self) -> Option<(Engine, &'static str)> {
         let engines = <Engine as clap::ValueEnum>::value_variants();
         engines.iter().find_map(|&e| {
             let var = e.login().token_var?;
-            self.fields.iter().any(|f| f == var).then_some((e, var))
+            self.has(var).then_some((e, var))
         })
     }
 
     /// The `optokens get` that prints its token field `var`.
     fn token_command(&self, var: &str) -> String {
-        let account = match self.label.as_str() {
+        let account = match self.account.as_str() {
             "default" => String::new(),
             label => format!(" --account '{}'", label.replace('\'', "'\\''")),
         };
@@ -347,9 +337,8 @@ fn optokens_list() -> Result<Vec<Entry>, String> {
 fn failed(stdout: &[u8]) -> String {
     let said: Vec<String> = serde_json::from_slice::<Value>(stdout)
         .ok()
-        .and_then(|v| v["error"].as_array().cloned())
-        .unwrap_or_default()
         .iter()
+        .flat_map(|v| v["error"].as_array().into_iter().flatten())
         .filter_map(|e| Some(format!("{} ({})", e["fault"].as_str()?, e["fix"].as_str()?)))
         .collect();
     match said.is_empty() {
@@ -444,21 +433,21 @@ pub fn scan(store: &Store, paths: &[String], add: bool) -> Result<Value, Refused
     let mut rows: Vec<Result<Token, Value>> = Vec::new();
     for e in &list {
         let Some((engine, var)) = e.token() else {
-            let why = match e.fields.iter().any(|f| f == "MACHINE") {
+            let why = match e.has("MACHINE") {
                 true => {
                     "bound: its login is in a home of factorium's (~/.agent-accounts), which scan does not look in; `--path` that home to find it"
                 }
                 false => "it holds no engine's token field",
             };
             rows.push(Err(
-                json!({ "entry": e.id, "status": "skipped", "why": why }),
+                json!({ "entry": e.id(), "status": "skipped", "why": why }),
             ));
             continue;
         };
         let cmd = e.token_command(var);
         let legacy = format!(
             "optokens get {} --account {} --field {var}",
-            e.service, e.label
+            e.service, e.account
         );
         let kept_at = kept.iter().position(|a| {
             a.machine.is_none()
@@ -486,7 +475,7 @@ pub fn scan(store: &Store, paths: &[String], add: bool) -> Result<Value, Refused
             kept[i].identity.clone_from(&account.identity);
         }
         rows.push(Ok(Token {
-            entry: e.id.to_string(),
+            entry: e.id(),
             command: cmd,
             kept: kept_at.is_some(),
             account,
@@ -640,22 +629,13 @@ mod tests {
             {"service":"agent-account-x","account":"work","kind":"profile","description":"none","meta":null,"fields":null}
         ]}"#;
         let all = entries(list).unwrap();
-        let entry = |id: &str, service: &str, label: &str, fields: &[&str]| Entry {
-            id: id.into(),
-            service: service.into(),
-            label: label.into(),
-            fields: fields.iter().map(|f| f.to_string()).collect(),
-        };
+        let ids: Vec<_> = all.iter().map(|e| (e.id(), e.fields.clone())).collect();
+        let fields = Some(vec!["HARNESS".to_string(), "MACHINE".to_string()]);
         assert_eq!(
-            all,
+            ids,
             [
-                entry(
-                    "agent-account-codex/default",
-                    "agent-account-codex",
-                    "default",
-                    &["HARNESS", "MACHINE"]
-                ),
-                entry("agent-account-x/work", "agent-account-x", "work", &[]),
+                ("agent-account-codex/default".to_string(), fields),
+                ("agent-account-x/work".to_string(), None),
             ]
         );
         assert_eq!(all[0].token(), None);
