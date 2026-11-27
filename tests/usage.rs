@@ -491,17 +491,21 @@ fn usage_failing_otherwise_is_read_by_the_question_for_that_read_only() {
         .join("tests/contract/recorded/claude-code-usage-429.http")
         .display()
         .to_string();
-    let overloaded = b.root.join("overloaded.http");
-    std::fs::write(
-        &overloaded,
-        "HTTP/2 529 \ncontent-type: application/json\n\n{\"type\":\"error\",\"error\":{\"type\":\"overloaded_error\",\"message\":\"Overloaded\"}}\n",
-    )
-    .unwrap();
-    let overloaded = overloaded.display().to_string();
+    // A 5xx, and a 403 for another reason than the scope: each the
+    // answer's status line, a blank line and its body.
+    let answer = |name: &str, status: u16, error: &str| {
+        let file = b.root.join(name);
+        let body = json!({ "type": "error", "error": { "type": error, "message": "Stand-in" } });
+        std::fs::write(&file, format!("HTTP/2 {status} \n\n{body}\n")).unwrap();
+        file.display().to_string()
+    };
+    let overloaded = answer("overloaded.http", 529, "overloaded_error");
+    let forbidden = answer("forbidden.http", 403, "permission_error");
     let mut asked = 0;
     for (key, value) in [
         ("FAKE_CURL_RECORDED", recorded.as_str()),
         ("FAKE_CURL_RECORDED", overloaded.as_str()),
+        ("FAKE_CURL_RECORDED", forbidden.as_str()),
         ("FAKE_CURL_FAULT", "unreachable"),
     ] {
         b.question_answers(0.06, 0.55);
@@ -528,7 +532,7 @@ fn usage_failing_otherwise_is_read_by_the_question_for_that_read_only() {
         asked += 1;
         assert_eq!(b.log().matches("oauth/usage").count(), asked);
     }
-    assert_eq!(b.claude_log().matches(" quota\n").count(), 3);
+    assert_eq!(b.claude_log().matches(" quota\n").count(), 4);
 
     // Both failing, the try fails, naming the 429 and the question's refusal.
     b.set("FAKE_CURL_RECORDED", &recorded);
