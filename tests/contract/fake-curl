@@ -17,6 +17,9 @@
 #   a file whose body a 200 of api.anthropic.com or grok, of chatgpt.com, answers
 #   instead of the one below. FAKE_CURL_GROK_PERIOD=begun: grok answers
 #   its period just begun, nothing used, as proto3 leaves the 0s out.
+#   FAKE_CURL_RECORDED: a recorded answer of api.anthropic.com/api/oauth/usage
+#   (recorded/claude-code-usage-429.http: its status line, headers, a blank
+#   line, its body) it answers instead: that body and that status.
 #   FAKE_CURL_LOG: a file each call appends to:
 #   its arguments on one line, then its stdin. FAKE_CURL_HOLD: a file it
 #   waits on, once logged, until it is gone (a read held running).
@@ -31,6 +34,15 @@ host=${host%%/*}
 if [ "$FAKE_CURL_FAULT" = unreachable ]; then
     echo "curl: (6) Could not resolve host: $host" >&2
     exit 6
+fi
+if [ -n "$FAKE_CURL_RECORDED" ] && [ "${url%/api/oauth/usage}" != "$url" ]; then
+    status= last=
+    while IFS= read -r line || [ -n "$line" ]; do
+        [ -n "$status" ] || { status=${line#* }; status=${status%% *}; }
+        last=$line
+    done <"$FAKE_CURL_RECORDED"
+    printf '%s\n%s' "$last" "$status"
+    exit 0
 fi
 case "$url:$FAKE_CURL_FAULT" in
 */v1/messages:unauthorized)

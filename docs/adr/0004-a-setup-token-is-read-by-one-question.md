@@ -14,11 +14,19 @@ turn is small enough to ask every hour.
 
 ## Decision
 
-- A token the endpoint refuses is asked the question instead, one turn on
-  the smallest model with no tools, settings, servers or kept session
-  (`QUESTION` in `src/readers/claude_code.rs`), in a new empty config
-  dir removed after; once read so, it is asked the question again, not
-  its usage.
+- Where the endpoint fails in any way (any non-2xx status, an answer with
+  no window, curl failing), the account is asked the question instead in
+  the same read, one turn on the smallest model with no tools, settings,
+  servers or kept session (`QUESTION` in `src/readers/claude_code.rs`), in
+  a new empty config dir removed after. The read fails only if both fail,
+  saying both.
+- Only a token the endpoint refuses its scope (HTTP 403
+  `oauth_scope_insufficient`) is asked the question again, not its usage,
+  once read so. Any other failure (a 429, a 5xx) is temporary: the next
+  read asks usage first again, since staying on the question would spend
+  a turn an hour on a token usage reads for free. Revisited 2026-11-27,
+  when usage answered a portable token HTTP 429 (`retry-after` about an
+  hour) three reads running while the question read its windows.
 - It is asked at most once an hour (`stablehand read`'s wait), unless
   `--now`; the status line starts one such read at most every ten
   minutes, so at most about 6 an hour while its bars refresh.

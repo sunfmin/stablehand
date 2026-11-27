@@ -1,0 +1,6 @@
+HTTP/2 429 
+content-type: application/json
+retry-after: 3544
+request-id: req_011CStandin
+
+{"error":{"type":"rate_limit_error","message":"Rate limited. Please try again later."}}

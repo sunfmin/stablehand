@@ -56,8 +56,9 @@ pub fn read(
         let after = books::status(&book_of(store, a)?, now);
         let mut shown = json!({ "account": a.name, "outcome": outcome, "windows": windows(&after), "balances": balances(&after) });
         if outcome == "read" {
-            shown["read_by"] = json!(after.read_by);
-            shown["spent_turn"] = json!(after.read_by == Some(ReadBy::Question));
+            let by = after.read_by.map(ReadBy::said);
+            shown["read_by"] = json!(by);
+            shown["spent_turn"] = json!(by == Some(ReadBy::Question));
         }
         if let Some((key, value)) = said {
             shown[key] = json!(value);
@@ -130,7 +131,7 @@ pub fn status(store: &Store, accounts: &[Account], now: u64) -> Result<Value, St
                 "resets_at": l.resets_at.map(utc),
             })),
             "read_at": s.read_at.map(utc),
-            "read_by": s.read_by,
+            "read_by": s.read_by.map(ReadBy::said),
             "tried_at": s.tried_at.map(utc),
             "failed": s.failed,
             "refused": s.refused,

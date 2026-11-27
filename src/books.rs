@@ -37,15 +37,29 @@ pub struct Window {
 }
 
 /// How claude-code's reader asked for a reading: its account's usage
-/// (`/api/oauth/usage`, no turn), or, for a token that usage refuses (a
-/// `claude setup-token` one), the question that spends one turn on the
-/// smallest model. An account read by the question is asked it again, not
-/// its usage.
+/// (`/api/oauth/usage`, no turn), or the question that spends one turn on
+/// the smallest model.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ReadBy {
     Usage,
+    /// The question, for a token usage refuses its scope (a `claude
+    /// setup-token` one): it is asked the question again, not its usage.
     Question,
+    /// The question, usage having failed otherwise (a 429, a 5xx, curl
+    /// failing): for this reading only, usage is asked first again.
+    QuestionOnce,
+}
+
+impl ReadBy {
+    /// How it is said to a caller: `usage` or `question`, whichever the
+    /// question was asked for.
+    pub fn said(self) -> ReadBy {
+        match self {
+            ReadBy::QuestionOnce => ReadBy::Question,
+            by => by,
+        }
+    }
 }
 
 /// One wallet's balance of a pay-as-you-go account (dsh) as its reader
