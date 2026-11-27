@@ -1,21 +1,23 @@
 #!/bin/sh
-# Runs a contract case of mytokens on the program $1, reading only: each line
-# of stdin is one step. `list`: the shape of each agent-account-* line (its
-# name and its about left out), each shape once. `get <FIELD>`: `get` of that
+# Runs a contract case of optokens on the program $1, reading only: each line
+# of stdin is one step. `list`: the shape of each agent-account-* Secret of its
+# JSON (its name left out), `agent-account-<name>/<account> fields: <labels>`,
+# each shape once. `get <FIELD>`: `get` of that
 # field of every agent-account-* entry, each answer's exit code and shape once;
 # a value is never printed, only whether it is an engine's name, a Claude
 # token (sk-ant-oat01-…), or other text, and how it ends.
 prog=$1
 # A stand-in's path is the repo's: from the repo's root, as truefit.toml names it.
 case "$prog" in [!/]*/*) prog="$(cd "$(dirname "$0")/../.." && pwd)/$prog" ;; esac
-entries() { "$prog" list </dev/null 2>/dev/null | grep '^agent-account-' | cut -f1; }
+agents='.secrets[] | select(.service | startswith("agent-account-"))'
+entries() { "$prog" list </dev/null 2>/dev/null | jq -r "$agents | \"\\(.service)/\\(.account)\""; }
 while read -r step field; do
     case "$step" in
     list)
         out=$("$prog" list </dev/null 2>/dev/null); code=$?
         echo "\$ list -> exit $code"
-        printf '%s\n' "$out" | grep '^agent-account-' |
-            sed -E 's#^agent-account-[^/]+/([^	]+)	.*  fields: (.*)$#agent-account-<name>/\1 fields: \2#' | sort -u ;;
+        printf '%s\n' "$out" |
+            jq -r "$agents | \"agent-account-<name>/\\(.account) fields: \\((.fields // []) | join(\", \"))\"" | sort -u ;;
     get)
         echo "\$ get <each>/<label> --field $field"
         for id in $(entries); do

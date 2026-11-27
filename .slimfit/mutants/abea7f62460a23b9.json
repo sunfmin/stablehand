@@ -1,0 +1,28 @@
+{
+  "tree": "5fd270b878ea7b1e939ba35f260b4a358a94c0fa+d1fba762150c532c",
+  "picker": "codex:01a21cde-782b-7c00-b296-77f5cc1c44e2:default",
+  "author": "claude-code:8c825240-97e9-58fa-8475-94b7649e12ec:opus",
+  "picks": {
+    "rust": [
+      {
+        "name": "src/scan.rs:294:48: replace == with != in Entry::has",
+        "why": "The bound fixture has both MACHINE and HARNESS, so the inverted check still classifies it as bound and may go undetected for a tokenless entry with HARNESS alone. (Picked as src/scan.rs:447:55 in scan; the growth cut moved that comparison into Entry::has.)",
+        "outcome": "killed",
+        "first_outcome": "killed"
+      },
+      {
+        "name": "src/main.rs:500:5: replace default_homes -> String with String::new()",
+        "why": "The updated scan help could lose its default-home list while the tests still pass by checking discovery behavior alone.",
+        "outcome": "killed",
+        "first_outcome": "killed"
+      }
+    ]
+  },
+  "removed_tests": {
+    "rust": [
+      "src/scan.rs:599: entries_are_the_agent_account_lines_with_their_fields",
+      "tests/scan.rs:254: a_path_that_is_no_directory_is_refused_and_no_mytokens_is_said"
+    ]
+  },
+  "added_lines": 63
+}

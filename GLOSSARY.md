@@ -12,7 +12,7 @@
   off; one SQLite file, holding no token.
 - **Login**: how an account's credential is held; stablehand runs none and
   keeps no secret. **Portable**: a long-lived token (`claude setup-token`)
-  kept where the person keeps secrets (the Keychain, 1Password, mytokens);
+  kept where the person keeps secrets (the Keychain, 1Password, optokens);
   stablehand keeps only its **token command**, which prints it, and the
   account is logged in when that answers. **Bound**: the engine's own login
   files in a home of that account's on one machine (`auth.json`,

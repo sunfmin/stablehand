@@ -30,7 +30,7 @@ pub fn this_machine() -> Result<String, String> {
 
 /// Commands that print a token kept where people keep secrets, as the
 /// help and each refusal for a portable account not logged in name them.
-pub const TOKEN_COMMANDS: &str = "the Keychain's `security find-generic-password -s <service> -w`, 1Password's `op read op://<vault>/<item>/<field>`, or mytokens' `mytokens get <entry> --field <field>`";
+pub const TOKEN_COMMANDS: &str = "the Keychain's `security find-generic-password -s <service> -w`, 1Password's `op read op://<vault>/<item>/<field>`, or optokens' `optokens get <entry> --field <field>`";
 
 /// The line that logs `a` in, as a fix names it: bound, its engine's own
 /// login with its home variable set to the account's home, run on its

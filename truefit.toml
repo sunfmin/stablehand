@@ -18,7 +18,7 @@ standins = ["tests/contract/fake-*"]
 name = "claude-code"
 run = ["tests/contract/usage-shape", "fake-curl"]
 real = ["tests/contract/usage-shape", "real-curl"]
-needs = "curl and jq on PATH, a Claude Code login in ~/.claude/.credentials.json, a `claude setup-token` token in mytokens (profile claude-theplant-jp, or the one STABLEHAND_CONTRACT_SETUP_TOKEN names), and no call of this host's to the endpoint in the last hour"
+needs = "curl and jq on PATH, a Claude Code login in ~/.claude/.credentials.json, a `claude setup-token` token in optokens (profile claude-theplant-jp, or the one STABLEHAND_CONTRACT_SETUP_TOKEN names), and no call of this host's to the endpoint in the last hour"
 ready = ["tests/contract/real-curl-ready"]
 version = ["sh", "-c", "curl --version | head -n 1"]
 faults = ["unauthorized", "scope", "unreachable"]
@@ -69,8 +69,8 @@ header = "anthropic-beta: oauth-2025-04-20"
 name = "claude-code-question"
 run = ["tests/contract/question-shape", "fake-claude"]
 real = ["tests/contract/question-shape", "real-claude"]
-needs = "claude, jq and mytokens on PATH, and a `claude setup-token` token in mytokens (profile claude-theplant-jp, or the one STABLEHAND_CONTRACT_SETUP_TOKEN names)"
-ready = ["sh", "-c", "command -v claude >/dev/null && command -v jq >/dev/null && mytokens list 2>/dev/null | grep -q \"^${STABLEHAND_CONTRACT_SETUP_TOKEN:-claude-theplant-jp}/\""]
+needs = "claude, jq and optokens on PATH, and a `claude setup-token` token in optokens (profile claude-theplant-jp, or the one STABLEHAND_CONTRACT_SETUP_TOKEN names)"
+ready = ["tests/contract/setup-token-ready", "claude"]
 version = ["claude", "--version"]
 faults = ["refused"]
 fault_env = "FAKE_CLAUDE_FAULT"
@@ -100,8 +100,8 @@ args = ["-p", "--model", "haiku", "--output-format", "stream-json", "--verbose",
 name = "claude-code-organization"
 run = ["tests/contract/organization-shape", "fake-curl"]
 real = ["tests/contract/organization-shape", "real-curl"]
-needs = "curl, jq and mytokens on PATH, and a `claude setup-token` token in mytokens (profile claude-theplant-jp, or the one STABLEHAND_CONTRACT_SETUP_TOKEN names)"
-ready = ["sh", "-c", "command -v curl >/dev/null && command -v jq >/dev/null && mytokens list 2>/dev/null | grep -q \"^${STABLEHAND_CONTRACT_SETUP_TOKEN:-claude-theplant-jp}/\""]
+needs = "curl, jq and optokens on PATH, and a `claude setup-token` token in optokens (profile claude-theplant-jp, or the one STABLEHAND_CONTRACT_SETUP_TOKEN names)"
+ready = ["tests/contract/setup-token-ready", "curl"]
 version = ["sh", "-c", "curl --version | head -n 1"]
 faults = ["unauthorized"]
 fault_env = "FAKE_CURL_FAULT"
@@ -482,20 +482,21 @@ says = '''A credential the engine refused (dsh: HTTP 401 or code 40003) is never
 source = "src/main.rs:197"
 check = ["test"]
 
-# mytokens holds the agent-account-* entries `account scan` finds from its
-# `list` alone; a portable account's token command is its entry's `get` of
-# CLAUDE_CODE_OAUTH_TOKEN (tests/contract/mytokens-steps). It only reads, and prints no value: a real
+# optokens holds the agent-account-* entries `account scan` finds from its
+# `list` (one JSON object) alone; a portable account's token command is its
+# entry's `get` of CLAUDE_CODE_OAUTH_TOKEN (tests/contract/optokens-steps).
+# It only reads, and prints no value: a real
 # run reads this host's own entries, so it needs at least one portable entry
 # with a token and one bound to a machine.
 [[standin]]
-name = "mytokens"
-run = ["tests/contract/mytokens-steps", "tests/contract/fake-mytokens"]
-real = ["tests/contract/mytokens-steps", "mytokens"]
-needs = "mytokens on PATH holding agent-account-* entries: one with CLAUDE_CODE_OAUTH_TOKEN, one with MACHINE"
-ready = ["mytokens", "list"]
-version = ["sh", "-c", "mytokens list >/dev/null && echo mytokens"]
+name = "optokens"
+run = ["tests/contract/optokens-steps", "tests/contract/fake-optokens"]
+real = ["tests/contract/optokens-steps", "optokens"]
+needs = "optokens on PATH, its vault holding agent-account-* entries: one with CLAUDE_CODE_OAUTH_TOKEN, one with MACHINE"
+ready = ["optokens", "list"]
+version = ["sh", "-c", "optokens --version"]
 faults = ["get-fails"]
-fault_env = "FAKE_MYTOKENS_FAULT"
+fault_env = "FAKE_OPTOKENS_FAULT"
 
 [[standin.case]]
 name = "entries-and-their-fields"
@@ -619,11 +620,11 @@ source = "src/main.rs:442"
 check = ["test"]
 
 # tests/scan.rs scan_finds_one_account_per_subscription_and_add_registers_the_new_ones
-# (mytokens is called `list` and the one token's `get` alone; no secret said
-# or in the register); src/scan.rs entries_are_the_agent_account_lines_with_their_fields
+# (optokens is called `list` and the one token's `get` alone; no secret said
+# or in the register); src/scan.rs entries_are_the_agent_account_secrets_with_their_fields
 [[promise]]
-name = "scan-reads-mytokens-from-its-list-alone"
-says = '''It also reads `mytokens list`, when mytokens is on PATH, which names each entry's fields and never prints a value'''
+name = "scan-reads-optokens-from-its-list-alone"
+says = '''It also reads `optokens list`, when optokens is on PATH, which names each entry's fields and never prints a value'''
 source = "src/main.rs:442"
 check = ["test"]
 
@@ -641,7 +642,7 @@ check = ["test"]
 # --add adds and renames nothing)
 [[promise]]
 name = "scan-without-add-writes-nothing-and-renames-no-account"
-says = '''an account kept is never renamed or otherwise changed, nothing is written in a home, mytokens is only listed and asked the tokens.'''
+says = '''an account kept is never renamed or otherwise changed, nothing is written in a home, optokens is only listed and asked the tokens.'''
 source = "src/main.rs:456"
 check = ["test"]
 
@@ -801,7 +802,7 @@ source = "src/main.rs:51"
 check = ["test"]
 
 # tests/scan.rs scan_finds_one_account_per_subscription_and_add_registers_the_new_ones
-# (mytokens asked that token alone; no token said or kept)
+# (optokens asked that token alone; no token said or kept)
 [[promise]]
 name = "scan-reads-a-token-only-to-ask-its-organization"
 says = '''A claude-code token is read (its command run) only to ask its organization, and is never said or kept.'''

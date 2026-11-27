@@ -15,7 +15,7 @@ login and keeps no secret: it finds the logins where the engines keep them.
 A **portable** login, a token rather than a home (`claude setup-token` makes
 one), is added with the command that prints the token. Any command that
 prints it will do: the Keychain's `security find-generic-password -s <service> -w`,
-1Password's `op read …`, or mytokens, if you use it.
+1Password's `op read …`, or optokens, if you use it.
 
 ```sh
 stablehand account add claude-work --engine claude-code --expires 2027-01-31 \

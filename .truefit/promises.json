@@ -143,6 +143,12 @@
     "source": "src/main.rs:147",
     "why": "describes, advises or records history; the word is no guarantee a check could keep"
   },
+  "6840ede4a5d2": {
+    "mark": "not",
+    "sentence": "/// /// ## What it answers /// /// `{\"add\", \"machine\", \"logins\": [{\"engine\", \"home\", \"logged_in_at\", \"identity\", \"identity_unknown\", \"status\", \"account\", \"warning\"}], \"tokens\": [{\"entry\", \"engine\", \"token_command\", \"status\", \"account\", \"identity\", \"identity_unknown\", \"same_as_a_login\", \"warning\"}], \"optokens_unread\"}`. `status` is `new` (`account` the name `--add` gives it: `<engine>`, or `<engine>-2` … when the name is kept; a token its entry's `<name>`), `added` (with `--add`), `registered` (`account` is it), `copy` (of `account`; `warning` says why to run sessions on that one only) or, for a token entry, `skipped` (with `why`). `optokens_unread` says why optokens was not read (not on PATH, not started, or the faults and fixes its failing `list` answered), null when it was.",
+    "source": "src/main.rs:449",
+    "why": "describes, advises or records history; the word is no guarantee a check could keep"
+  },
   "685b9d377db6": {
     "mark": "not",
     "sentence": "/// /// Without a name, every account.",

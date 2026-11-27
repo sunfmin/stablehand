@@ -1,5 +1,5 @@
 //! A register of a test's own, run through the binary: its config dir, and a
-//! PATH whose `mytokens` and engines are the stand-ins (tests/contract,
+//! PATH whose `optokens` and engines are the stand-ins (tests/contract,
 //! tests/engines), each appending its argv to `argv.log`; stablehand's
 //! stderr is kept in `stderr.log`.
 #![allow(dead_code)]
@@ -29,7 +29,7 @@ impl Register {
         let tests = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests");
         let link =
             |to: &str, name: &str| std::os::unix::fs::symlink(tests.join(to), bin.join(name));
-        link("contract/fake-mytokens", "mytokens").unwrap();
+        link("contract/fake-optokens", "optokens").unwrap();
         for engine in ["claude", "codex"] {
             link("engines/fake-engine", engine).unwrap();
         }
@@ -49,20 +49,20 @@ impl Register {
         std::fs::read_to_string(self.root.join("argv.log")).unwrap_or_default()
     }
 
-    /// An entry `service`/default in mytokens' stand-in, with its fields.
-    pub fn mytokens_entry(&self, service: &str, fields: &[(&str, &str)]) {
-        let entry = self.root.join("mytokens").join(service).join("default");
+    /// An entry `service`/default in optokens' stand-in, with its fields.
+    pub fn optokens_entry(&self, service: &str, fields: &[(&str, &str)]) {
+        let entry = self.root.join("optokens").join(service).join("default");
         std::fs::create_dir_all(&entry).unwrap();
         for (field, value) in fields {
             std::fs::write(entry.join(field), value).unwrap();
         }
     }
 
-    /// `token` kept in mytokens' stand-in as `service`'s
+    /// `token` kept in optokens' stand-in as `service`'s
     /// CLAUDE_CODE_OAUTH_TOKEN, and the token command that prints it.
     pub fn kept_token(&self, service: &str, token: &str) -> String {
-        self.mytokens_entry(service, &[("CLAUDE_CODE_OAUTH_TOKEN", token)]);
-        format!("mytokens get {service} --account default --field CLAUDE_CODE_OAUTH_TOKEN")
+        self.optokens_entry(service, &[("CLAUDE_CODE_OAUTH_TOKEN", token)]);
+        format!("optokens get {service} --account default --field CLAUDE_CODE_OAUTH_TOKEN")
     }
 
     /// What stablehand wrote to its stderr, every run of it.
@@ -197,7 +197,7 @@ impl Register {
             .args(args)
             .env("STABLEHAND_CONFIG_DIR", &self.dir)
             .env("USER", "tester")
-            .env("FAKE_MYTOKENS_DIR", self.root.join("mytokens"))
+            .env("FAKE_OPTOKENS_DIR", self.root.join("optokens"))
             .env("FAKE_ARGV_LOG", self.root.join("argv.log"))
             .env("STABLEHAND_MACHINE", "mini")
             // A test run in a session `stablehand run` started is not on its account.

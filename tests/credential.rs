@@ -1,6 +1,6 @@
 //! `credential`: an account's login as a session's caller is handed it (a
 //! token, or the login files to link), through the binary, against the
-//! stand-in of mytokens its token command reads.
+//! stand-in of optokens its token command reads.
 mod support;
 
 use serde_json::json;
@@ -47,7 +47,7 @@ fn a_portable_account_starts_with_its_token_from_its_command() {
     let held = r.holding(TOKEN);
     assert_eq!(held.len(), 1, "{held:?}");
     assert!(
-        held[0].contains("/mytokens/agent-account-claude-felix/"),
+        held[0].contains("/optokens/agent-account-claude-felix/"),
         "{held:?}"
     );
 }

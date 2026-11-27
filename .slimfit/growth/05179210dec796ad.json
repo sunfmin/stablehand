@@ -1,0 +1,10 @@
+{
+  "tree": "5fd270b878ea7b1e939ba35f260b4a358a94c0fa+d1fba762150c532c",
+  "lines": 119,
+  "serves": "stablehand#61",
+  "considered": "src/scan.rs's text parser of mytokens list (replaced, not kept beside it); serde_json already a dependency; a second Secret struct (cut); the three copies of the setup-token readiness shell (cut to one script)",
+  "reviewer": "codex:01a21ce2-43aa-7333-8f1f-a2d83d6414ca:default",
+  "author": "claude-code:8c825240-97e9-58fa-8475-94b7649e12ec:opus",
+  "cut": "src/scan.rs: deserialize optokens items directly into Entry with an account field and optional fields, retain entries with a nonempty agent-account- suffix, and format service/account once per row instead of storing it in a second struct; borrow the failure array from the parsed JSON instead of cloning it. tests/contract/real-curl-ready and truefit.toml: reuse one optokens profile readiness check across all three Claude contracts, keeping the local login check specific to the usage contract.",
+  "answer": "Made all of them: Entry is deserialized directly (account, fields: Option) and retained by prefix, its id formatted per row; failed() borrows the error array; tests/contract/setup-token-ready is the one readiness check, used by claude-code-question, claude-code-organization and real-curl-ready (which keeps the login check)."
+}
