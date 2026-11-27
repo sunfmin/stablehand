@@ -1,11 +1,13 @@
 //! claude-code's reader. It asks `GET https://api.anthropic.com/api/oauth/usage`
 //! with the account's OAuth bearer and `anthropic-beta: oauth-2025-04-20`:
 //! its windows are the answer's objects with a `utilization` and a
-//! `resets_at`, `five_hour`, `seven_day`, and any other it lists. A `claude
-//! setup-token` token is refused it (HTTP 403, `oauth_scope_insufficient`):
-//! such a token is asked the [`QUESTION`] instead, one turn on the smallest
-//! model, whose stream's `rate_limit_event` says the windows; and, once read
-//! so ([`ReadBy::Question`]), it is asked the question again, not its usage.
+//! `resets_at`, `five_hour`, `seven_day`, and any other it lists. Where it
+//! gives none, the [`QUESTION`] is asked instead, one turn on the smallest
+//! model, whose stream's `rate_limit_event` says the windows. A `claude
+//! setup-token` token is refused usage (HTTP 403, `oauth_scope_insufficient`):
+//! once read so ([`ReadBy::Question`]), it is asked the question again, not
+//! its usage. Usage failing otherwise (a 429, a 5xx, curl failing), the
+//! question is asked for that reading only ([`ReadBy::QuestionOnce`]).
 use crate::account::Account;
 use crate::books::{ReadBy, Window};
 use crate::bounded;
@@ -22,7 +24,7 @@ const BETA: &str = "anthropic-beta: oauth-2025-04-20";
 const MESSAGES: &str = "https://api.anthropic.com/v1/messages";
 const ORGANIZATION: &str = "anthropic-organization-id";
 
-/// The question a token refused its usage is asked: `claude` with these
+/// The question a token is asked where usage gives no windows: `claude` with these
 /// arguments, one turn on its smallest model, with no tools, settings,
 /// servers or kept session (afkconvoy's `WINDOWS_QUESTION`; what it costs,
 /// and how to measure it, is docs/adr/0004). It spends the
@@ -50,23 +52,39 @@ pub const QUESTION: &[&str] = &[
 const QUESTION_LIMIT: Duration = Duration::from_secs(90);
 
 /// `account`'s windows: asked of its usage, unless its latest reading was by
-/// the question (`read_by`) or its usage refuses its token; then by the
-/// question.
+/// the question because usage refused its token (`read_by`); then, or when
+/// usage refuses its token now, by the question, from then on. Usage
+/// failing otherwise, the question is asked for this reading only; the try
+/// fails only if both do, saying both.
 pub fn read(account: &Account, read_by: Option<ReadBy>) -> Result<Vec<Window>, String> {
     let bearer = bearer(account)?;
-    if read_by != Some(ReadBy::Question) {
-        let (status, body) = curl::get(
-            USAGE,
-            &[format!("Authorization: Bearer {bearer}"), BETA.to_string()],
-        )?;
-        let answer: serde_json::Value = serde_json::from_str(&body).unwrap_or_default();
-        // A `claude setup-token` token is refused its scope.
-        let scope = answer["error"]["details"]["error_code"] == "oauth_scope_insufficient";
-        if !(status == 403 && scope) {
-            return windows(status, &answer);
-        }
+    if read_by == Some(ReadBy::Question) {
+        return question(account, &bearer, ReadBy::Question);
     }
-    question(account, &bearer)
+    let failed = match usage(&bearer) {
+        Ok(found) => return Ok(found),
+        Err(None) => return question(account, &bearer, ReadBy::Question),
+        Err(Some(why)) => why,
+    };
+    question(account, &bearer, ReadBy::QuestionOnce)
+        .map_err(|asked| format!("{failed}; the question asked instead: {asked}"))
+}
+
+/// The windows usage answers `bearer`; or `None` where it refuses the
+/// token its scope (a `claude setup-token` token), else why it gave none,
+/// with the fix.
+fn usage(bearer: &str) -> Result<Vec<Window>, Option<String>> {
+    let (status, body) = curl::get(
+        USAGE,
+        &[format!("Authorization: Bearer {bearer}"), BETA.to_string()],
+    )
+    .map_err(Some)?;
+    let answer: serde_json::Value = serde_json::from_str(&body).unwrap_or_default();
+    let scope = answer["error"]["details"]["error_code"] == "oauth_scope_insufficient";
+    if status == 403 && scope {
+        return Err(None);
+    }
+    windows(status, &answer).map_err(Some)
 }
 
 /// The organization `bearer`'s answers name, which a `claude setup-token`
@@ -97,7 +115,7 @@ pub fn organization(bearer: &str) -> Result<String, String> {
 /// own, new and empty, which it is also run in and which is removed after:
 /// nothing of a person's `~/.claude`, nor of the directory stablehand runs
 /// in, is read.
-fn question(account: &Account, bearer: &str) -> Result<Vec<Window>, String> {
+fn question(account: &Account, bearer: &str, by: ReadBy) -> Result<Vec<Window>, String> {
     let nanos = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |d| d.as_nanos());
@@ -127,14 +145,19 @@ fn question(account: &Account, bearer: &str) -> Result<Vec<Window>, String> {
     );
     let _ = std::fs::remove_dir_all(&dir);
     let (code, stdout) = ran?;
-    stream(code, &stdout, account)
+    stream(code, &stdout, account, by)
 }
 
 /// The windows of the question's stream, its exit `code` and `stdout`: the
 /// last `rate_limit_event`'s `rate_limit_info.unifiedWindows`, each a
 /// `utilization` from 0 to 1 and a `resetsAt` (seconds since the Unix
-/// epoch); or why it gave none, with the fix.
-fn stream(code: Option<i32>, stdout: &str, account: &Account) -> Result<Vec<Window>, String> {
+/// epoch), each read `by`; or why it gave none, with the fix.
+fn stream(
+    code: Option<i32>,
+    stdout: &str,
+    account: &Account,
+    by: ReadBy,
+) -> Result<Vec<Window>, String> {
     // The latest record of `kind`, the stream read from its end.
     let last = |kind: &str| {
         stdout
@@ -157,7 +180,7 @@ fn stream(code: Option<i32>, stdout: &str, account: &Account) -> Result<Vec<Wind
                 used_percent: (w["utilization"].as_f64()? * 10_000.0).round() / 100.0,
                 resets_at: w["resetsAt"].as_f64().map(|at| at as u64),
                 minutes: minutes(name),
-                read_by: Some(ReadBy::Question),
+                read_by: Some(by),
             })
         })
         .collect();
@@ -349,7 +372,7 @@ mod tests {
     #[test]
     fn the_question_s_windows_are_its_last_rate_limit_event_s_unified_windows() {
         let recorded = include_str!("../../tests/contract/recorded/claude-code-question.jsonl");
-        let got = stream(Some(0), recorded, &portable()).unwrap();
+        let got = stream(Some(0), recorded, &portable(), ReadBy::Question).unwrap();
         let shown: Vec<_> = got
             .iter()
             .map(|w| {
@@ -375,7 +398,7 @@ mod tests {
     #[test]
     fn a_question_with_no_windows_says_why_with_its_fix() {
         let refused = r#"{"type":"result","is_error":true,"api_error_status":401,"result":"Failed to authenticate. API Error: 401 OAuth access token is invalid."}"#;
-        let fault = stream(Some(1), refused, &portable()).unwrap_err();
+        let fault = stream(Some(1), refused, &portable(), ReadBy::Question).unwrap_err();
         assert!(
             fault.contains("exited 1: Failed to authenticate")
                 && fault.contains("claude setup-token")
@@ -386,10 +409,11 @@ mod tests {
             Some(0),
             r#"{"type":"result","result":"Unknown"}"#,
             &portable(),
+            ReadBy::Question,
         )
         .unwrap_err();
         assert!(fault.contains("its stream has changed"), "{fault}");
-        let fault = stream(None, "", &portable()).unwrap_err();
+        let fault = stream(None, "", &portable(), ReadBy::Question).unwrap_err();
         assert!(
             fault.contains("was killed: no result said: try again later"),
             "{fault}"

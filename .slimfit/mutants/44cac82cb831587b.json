@@ -1,0 +1,16 @@
+{
+  "tree": "d41a41f6b57215e786ddc720ea6e67d7b9725370+d1fba762150c532c",
+  "picker": "codex:01a21ca8-a966-7c13-a75b-5dbc9ce7fff0:default",
+  "author": "claude-code:6c70ae86-07ad-5d20-a80d-42e8fbfbde14:opus",
+  "picks": {
+    "rust": [
+      {
+        "name": "src/readers/claude_code.rs:84:22: replace && with || in usage",
+        "why": "A 403 without the scope error should retry usage on the next read, and the shown tests never exercise that case.",
+        "outcome": "killed",
+        "first_outcome": "killed"
+      }
+    ]
+  },
+  "added_lines": 48
+}

@@ -288,6 +288,10 @@ fn a_reader_s_failure_is_booked_and_said_and_the_last_windows_kept_stale() {
         "mini",
     ]);
     b.read(&["claude-mini"]);
+    // Usage failing, the question is asked instead; it fails too here, so
+    // the try fails, its error naming both failures, each with its fix.
+    b.set("FAKE_CLAUDE_FAULT", "refused");
+    let question = "`claude -p … quota` exited 1: Failed to authenticate. API Error: 401 OAuth access token is invalid.: the token was refused or has expired: `claude auth login` on mini";
     for (fault, said) in [
         (
             "unauthorized",
@@ -299,7 +303,10 @@ fn a_reader_s_failure_is_booked_and_said_and_the_last_windows_kept_stale() {
         let read = b.read(&["claude-mini", "--now"]);
         assert_eq!(read["outcome"], "failed", "{read}");
         let error = read["error"].as_str().unwrap();
-        assert!(error.contains(said), "{fault}: {error}");
+        assert!(
+            error.contains(said) && error.contains(question),
+            "{fault}: {error}"
+        );
         assert!(!error.contains(LOGIN_TOKEN), "{error}");
         let five = window(&read["windows"], "five_hour");
         assert_eq!(
@@ -474,6 +481,70 @@ fn a_setup_token_refused_usage_is_read_by_one_small_turn_and_its_usage_not_asked
     );
     let db = std::fs::read(b.root.join("config/stablehand.db")).unwrap();
     assert!(!String::from_utf8_lossy(&db).contains(PORTABLE_TOKEN));
+}
+
+#[test]
+fn usage_failing_otherwise_is_read_by_the_question_for_that_read_only() {
+    let b = Books::new("fallback");
+    b.portable("felix");
+    let recorded = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/contract/recorded/claude-code-usage-429.http")
+        .display()
+        .to_string();
+    // A 5xx, and a 403 for another reason than the scope: each the
+    // answer's status line, a blank line and its body.
+    let answer = |name: &str, status: u16, error: &str| {
+        let file = b.root.join(name);
+        let body = json!({ "type": "error", "error": { "type": error, "message": "Stand-in" } });
+        std::fs::write(&file, format!("HTTP/2 {status} \n\n{body}\n")).unwrap();
+        file.display().to_string()
+    };
+    let overloaded = answer("overloaded.http", 529, "overloaded_error");
+    let forbidden = answer("forbidden.http", 403, "permission_error");
+    let mut asked = 0;
+    for (key, value) in [
+        ("FAKE_CURL_RECORDED", recorded.as_str()),
+        ("FAKE_CURL_RECORDED", overloaded.as_str()),
+        ("FAKE_CURL_RECORDED", forbidden.as_str()),
+        ("FAKE_CURL_FAULT", "unreachable"),
+    ] {
+        b.question_answers(0.06, 0.55);
+        b.set(key, value);
+        let read = b.read(&["felix", "--now"]);
+        assert_eq!(
+            (&read["outcome"], &read["read_by"], &read["spent_turn"]),
+            (&json!("read"), &json!("question"), &json!(true)),
+            "{value}: {read}"
+        );
+        assert_eq!(window(&read["windows"], "five_hour")["used_percent"], 6.0);
+        assert_eq!(window(&read["windows"], "seven_day")["used_percent"], 55.0);
+        asked += 1;
+        assert_eq!(b.log().matches("oauth/usage").count(), asked);
+        // The next read asks usage first again, and books its windows.
+        b.set(key, "");
+        let read = b.read(&["felix", "--now"]);
+        assert_eq!(
+            (&read["read_by"], &read["spent_turn"]),
+            (&json!("usage"), &json!(false)),
+            "{value}: {read}"
+        );
+        assert_eq!(window(&read["windows"], "five_hour")["used_percent"], 22.0);
+        asked += 1;
+        assert_eq!(b.log().matches("oauth/usage").count(), asked);
+    }
+    assert_eq!(b.claude_log().matches(" quota\n").count(), 4);
+
+    // Both failing, the try fails, naming the 429 and the question's refusal.
+    b.set("FAKE_CURL_RECORDED", &recorded);
+    b.set("FAKE_CLAUDE_FAULT", "refused");
+    let read = b.read(&["felix", "--now"]);
+    let error = read["error"].as_str().unwrap();
+    assert!(
+        error.contains("answered HTTP 429: Rate limited. Please try again later.: try again later")
+            && error.contains("401 OAuth access token is invalid")
+            && error.contains("stablehand account edit felix"),
+        "{error}"
+    );
 }
 
 #[test]
