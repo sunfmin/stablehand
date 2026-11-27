@@ -18,14 +18,14 @@ fn a_portable_token_is_its_command_s_first_line_and_written_nowhere() {
     assert_eq!(show["logged_in"], false);
     assert_eq!(show["account"]["token_command"], json!(null));
 
-    // The token is kept where the person keeps secrets (mytokens' stand-in),
+    // The token is kept where the person keeps secrets (optokens' stand-in),
     // a second line after it, which is not the token.
-    r.mytokens_entry(
+    r.optokens_entry(
         "agent-account-claude-felix",
         &[("CLAUDE_CODE_OAUTH_TOKEN", &format!("{TOKEN}\nnot-it\n"))],
     );
     let cmd =
-        "mytokens get agent-account-claude-felix --account default --field CLAUDE_CODE_OAUTH_TOKEN";
+        "optokens get agent-account-claude-felix --account default --field CLAUDE_CODE_OAUTH_TOKEN";
     let edit = ["account", "edit", "claude-felix", "--token-command", cmd];
     assert_eq!(r.ok(&edit)["account"]["token_command"], cmd);
     let show = r.ok(&["account", "show", "claude-felix"]);
@@ -39,7 +39,7 @@ fn a_portable_token_is_its_command_s_first_line_and_written_nowhere() {
     // one file that holds it is the person's own secret store.
     let argv = r.argv();
     assert!(
-        argv.contains(&format!("mytokens {}", &cmd["mytokens ".len()..])),
+        argv.contains(&format!("optokens {}", &cmd["optokens ".len()..])),
         "{argv}"
     );
     assert!(!argv.contains(TOKEN) && !argv.contains("sk-ant"), "{argv}");
@@ -47,7 +47,7 @@ fn a_portable_token_is_its_command_s_first_line_and_written_nowhere() {
     let held = r.holding(TOKEN);
     assert_eq!(held.len(), 1, "{held:?}");
     assert!(
-        held[0].ends_with("mytokens/agent-account-claude-felix/default/CLAUDE_CODE_OAUTH_TOKEN")
+        held[0].ends_with("optokens/agent-account-claude-felix/default/CLAUDE_CODE_OAUTH_TOKEN")
     );
 
     // A token far from its expiry counts its days and is not warned of.
@@ -153,7 +153,7 @@ fn each_not_logged_in_refusal_names_its_engine_s_login_line() {
         ("claude-felix", "make a token with `claude setup-token`, keep it where you keep secrets, then `stablehand account edit claude-felix --token-command '<cmd>'`".to_string()),
         ("claude-felix", "security find-generic-password -s <service> -w".into()),
         ("claude-felix", "op read op://<vault>/<item>/<field>".into()),
-        ("claude-felix", "mytokens get <entry> --field <field>".into()),
+        ("claude-felix", "optokens get <entry> --field <field>".into()),
         ("codex", format!("`CODEX_HOME={} codex login` on mini", home("codex"))),
         ("claude-b", format!("`CLAUDE_CONFIG_DIR={} claude auth login` on mini", home("claude-b"))),
         ("kimi-b", format!("`KIMI_CODE_HOME={} kimi login` on mini", home("kimi-b"))),

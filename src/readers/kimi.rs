@@ -142,7 +142,7 @@ mod tests {
             expires: None,
             home: None,
             off: None,
-            token_command: Some("mytokens get kimi".into()),
+            token_command: Some("optokens get kimi".into()),
             identity: None,
             organization: None,
             organization_type: None,
@@ -178,7 +178,7 @@ mod tests {
         let bad = r#"{"error":{"message":"The API Key appears to be invalid or may have expired.","type":"invalid_authentication_error"}}"#;
         let fault = windows(401, bad, &account()).unwrap_err();
         assert!(
-            fault.contains("make a new one and keep it where `mytokens get kimi` reads it"),
+            fault.contains("make a new one and keep it where `optokens get kimi` reads it"),
             "{fault}"
         );
         let fault = windows(502, "bad gateway", &account()).unwrap_err();

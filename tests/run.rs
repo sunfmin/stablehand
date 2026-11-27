@@ -1,6 +1,6 @@
 //! `run`: an engine's own command started on the account stablehand picks,
 //! through the binary, against the session stand-in of each engine
-//! (tests/engines/fake-session) and mytokens' stand-in.
+//! (tests/engines/fake-session) and optokens' stand-in.
 mod support;
 
 use std::os::unix::process::ExitStatusExt;
@@ -21,7 +21,7 @@ fn token_sha() -> String {
 }
 
 /// A register with a portable claude-code account `claude-felix` (its
-/// token in mytokens' stand-in) and a codex account bound to this machine,
+/// token in optokens' stand-in) and a codex account bound to this machine,
 /// logged in, in `homes/codex`.
 fn kept() -> impl Fn(&str) -> Register {
     |name| {
@@ -406,12 +406,12 @@ fn a_command_starts_on_its_engine_s_pick_alone_then_its_kept_command_before_the_
     // The account it runs on, by name, for its status line.
     assert!(line.contains(" STABLEHAND_ACCOUNT=claude-felix "), "{line}");
 
-    // No token on any argv, stdout, stderr or log: only mytokens' own store holds it.
+    // No token on any argv, stdout, stderr or log: only optokens' own store holds it.
     assert!(!out.contains(TOKEN) && !r.argv().contains(TOKEN) && !r.stderr().contains(TOKEN));
     let held = r.holding(TOKEN);
     assert_eq!(held.len(), 1, "{held:?}");
     assert!(
-        held[0].contains("/mytokens/agent-account-claude-felix/"),
+        held[0].contains("/optokens/agent-account-claude-felix/"),
         "{held:?}"
     );
 

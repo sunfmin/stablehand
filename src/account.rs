@@ -151,7 +151,7 @@ pub struct Account {
     pub home: Option<String>,
     pub off: Option<Off>,
     /// The command whose first line printed is its portable login's token
-    /// (`mytokens get …`): the token stays where the person keeps it, and
+    /// (`optokens get …`): the token stays where the person keeps it, and
     /// stablehand keeps only how to read it (docs/adr/0001).
     pub token_command: Option<String>,
     /// The hash of the identity its login holds, as `account scan` read it
@@ -251,7 +251,7 @@ pub struct Terms {
     /// Its bound login's home on --machine (a bound login only).
     #[arg(long)]
     pub home: Option<String>,
-    /// The command that prints its portable token, the token its first line (a portable login only): `mytokens get agent-account-claude-felix --field CLAUDE_CODE_OAUTH_TOKEN`. Run by `sh -c` with no input, each time a token is needed.
+    /// The command that prints its portable token, the token its first line (a portable login only): `optokens get agent-account-claude-felix --field CLAUDE_CODE_OAUTH_TOKEN`. Run by `sh -c` with no input, each time a token is needed.
     #[arg(long)]
     pub token_command: Option<String>,
 }
@@ -328,7 +328,7 @@ pub fn apply(account: &Account, change: Change) -> Result<Account, Vec<String>> 
     }
     if let Some(command) = change.terms.token_command {
         if command.trim().is_empty() {
-            faults.push("--token-command is empty: give the command that prints the token (`mytokens get <entry> --field <field>`)".into());
+            faults.push("--token-command is empty: give the command that prints the token (`optokens get <entry> --field <field>`)".into());
         }
         next.token_command = Some(command);
     }

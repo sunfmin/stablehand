@@ -139,7 +139,7 @@ fn refusals_name_the_fix_and_write_nothing() {
             &["--home is empty"],
         ),
         (
-            "account|edit|claude-felix|--machine|mini|--token-command|mytokens get x",
+            "account|edit|claude-felix|--machine|mini|--token-command|optokens get x",
             1,
             &["no --token-command", "--unset token-command"],
         ),

@@ -1,5 +1,5 @@
 //! `account scan`, through the binary, over a fixture home tree and the
-//! stand-ins of mytokens and curl.
+//! stand-ins of optokens and curl.
 mod support;
 
 use serde_json::{Value, json};
@@ -7,7 +7,7 @@ use std::path::Path;
 use std::time::{Duration, UNIX_EPOCH};
 use support::Register;
 
-/// Every identity and token the fixture's login files and mytokens hold:
+/// Every identity and token the fixture's login files and optokens hold:
 /// none may reach stdout, stderr or the register.
 const SECRETS: &[&str] = &[
     "UUID-FELIX-SECRET",
@@ -73,18 +73,18 @@ fn tree(r: &Register) -> (String, String) {
     let other = r#"{"tokens": {"account_id": "OTHER-CHATGPT-SECRET"}}"#;
     file(&home, ".agent-accounts/codex/auth.json", other, None);
     file(&home, ".guild/engines/codex/auth.json", other, None);
-    r.mytokens_entry(
+    r.optokens_entry(
         "agent-account-claude-felix",
         &[
             ("HARNESS", "claude-code"),
             ("CLAUDE_CODE_OAUTH_TOKEN", TOKEN),
         ],
     );
-    r.mytokens_entry(
+    r.optokens_entry(
         "agent-account-codex",
         &[("HARNESS", "codex"), ("MACHINE", "mini")],
     );
-    r.mytokens_entry("huggingface", &[("HF_TOKEN", "hf-not-an-account")]);
+    r.optokens_entry("huggingface", &[("HF_TOKEN", "hf-not-an-account")]);
     (home, claude)
 }
 
@@ -140,7 +140,7 @@ fn scan_finds_one_account_per_subscription_and_add_registers_the_new_ones() {
             json!(["claude-code", claude, "new", "claude-code"]),
         ]
     );
-    let felix = "mytokens get agent-account-claude-felix --field CLAUDE_CODE_OAUTH_TOKEN";
+    let felix = "optokens get agent-account-claude-felix --field CLAUDE_CODE_OAUTH_TOKEN";
     assert_eq!(
         tokens,
         [
@@ -170,7 +170,7 @@ fn scan_finds_one_account_per_subscription_and_add_registers_the_new_ones() {
             .contains("no JWT")
     );
     assert_eq!(l[1]["logged_in_at"], "1970-01-01T00:50:00Z");
-    assert_eq!(dry["mytokens_unread"], Value::Null);
+    assert_eq!(dry["optokens_unread"], Value::Null);
 
     let added = scan(&["--add"]);
     let (logins, tokens) = said(&added);
@@ -224,11 +224,11 @@ fn scan_finds_one_account_per_subscription_and_add_registers_the_new_ones() {
     );
     assert_eq!(tokens[0][1], "registered");
 
-    // scan read no secret but the token, to ask its organization: mytokens
+    // scan read no secret but the token, to ask its organization: optokens
     // was listed and asked that token alone; no identity or token was said
     // or kept.
     for call in r.argv().lines() {
-        assert!(call == "mytokens list" || call == felix, "{call}");
+        assert!(call == "optokens list" || call == felix, "{call}");
     }
     let register = std::fs::read(r.dir.join("stablehand.db")).unwrap();
     let shown = format!("{dry}{added}{again}{}", r.stderr());
@@ -251,7 +251,7 @@ fn scan_finds_one_account_per_subscription_and_add_registers_the_new_ones() {
 }
 
 #[test]
-fn a_path_that_is_no_directory_is_refused_and_no_mytokens_is_said() {
+fn a_path_that_is_no_directory_is_refused_and_no_optokens_is_said() {
     let r = register("scan-refused");
     let home = r.path("empty");
     std::fs::create_dir_all(&home).unwrap();
@@ -263,7 +263,7 @@ fn a_path_that_is_no_directory_is_refused_and_no_mytokens_is_said() {
     assert_eq!(out.code, 0);
     assert_eq!(out.json["logins"], json!([]));
     assert!(
-        out.json["mytokens_unread"]
+        out.json["optokens_unread"]
             .as_str()
             .unwrap()
             .contains("not on PATH")
@@ -299,10 +299,10 @@ fn a_kept_home_tells_its_identity_and_what_is_not_the_same_login_is_not_taken_fo
     );
     file(&home, "alone/.credentials.json", "{}", None);
     // A portable account naming another entry's token is not this one's.
-    let other = "mytokens get agent-account-other --field CLAUDE_CODE_OAUTH_TOKEN";
+    let other = "optokens get agent-account-other --field CLAUDE_CODE_OAUTH_TOKEN";
     let portable = ["--engine", "claude-code", "--token-command", other];
     r.ok(&[&["account", "add", "other"][..], &portable].concat());
-    r.mytokens_entry("agent-account-felix", &[("CLAUDE_CODE_OAUTH_TOKEN", TOKEN)]);
+    r.optokens_entry("agent-account-felix", &[("CLAUDE_CODE_OAUTH_TOKEN", TOKEN)]);
 
     // An account bound to another machine is not this home's, whatever
     // its home path holds here.
@@ -334,21 +334,23 @@ fn a_kept_home_tells_its_identity_and_what_is_not_the_same_login_is_not_taken_fo
         [json!(["agent-account-felix/default", "new", "felix"])]
     );
 
-    // A mytokens that fails its list is said, and the logins still are.
+    // An optokens that fails its list is said with the fault it answered on
+    // stdout, and the logins still are.
     let failing = r.path("failing");
     file(
         &failing,
-        "mytokens",
-        "#!/bin/sh\necho broken >&2\nexit 3\n",
+        "optokens",
+        "#!/bin/sh\necho '{\"error\":[{\"fault\":\"no token to open the vault\",\"fix\":\"run optokens login\",\"kind\":\"no_token\"}]}'\nexit 2\n",
         None,
     );
-    let script = Path::new(&failing).join("mytokens");
+    let script = Path::new(&failing).join("optokens");
     std::fs::set_permissions(&script, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
     let path = format!("{failing}:/usr/bin:/bin");
     let env = [("HOME", home.as_str()), ("PATH", path.as_str())];
     let out = r.run_with(&["account", "scan"], &env, "").json;
-    assert!(
-        out["mytokens_unread"].as_str().unwrap().contains("failed"),
+    assert_eq!(
+        out["optokens_unread"],
+        "`optokens list` failed: no token to open the vault (run optokens login)",
         "{out}"
     );
     assert_eq!(out["logins"][0]["status"], "copy");
@@ -356,7 +358,7 @@ fn a_kept_home_tells_its_identity_and_what_is_not_the_same_login_is_not_taken_fo
     // One that cannot start is said so, not taken for one not on PATH.
     std::fs::set_permissions(&script, std::os::unix::fs::PermissionsExt::from_mode(0o644)).unwrap();
     let out = r.run_with(&["account", "scan"], &env, "").json;
-    let why = out["mytokens_unread"].as_str().unwrap();
+    let why = out["optokens_unread"].as_str().unwrap();
     assert!(why.contains("could not start"), "{why}");
 }
 
@@ -399,19 +401,19 @@ fn a_token_of_a_login_s_personal_organization_is_its_copy_and_list_says_so() {
         &claude,
     ];
     r.ok(&[&["account", "add", "claude-code-2"][..], &bound].concat());
-    r.mytokens_entry(
+    r.optokens_entry(
         "agent-account-felix",
         &[("CLAUDE_CODE_OAUTH_TOKEN", max_token)],
     );
-    r.mytokens_entry(
+    r.optokens_entry(
         "agent-account-theplant",
         &[("CLAUDE_CODE_OAUTH_TOKEN", team_token)],
     );
-    r.mytokens_entry(
+    r.optokens_entry(
         "agent-account-theplant-jp",
         &[("CLAUDE_CODE_OAUTH_TOKEN", team_token)],
     );
-    r.mytokens_entry(
+    r.optokens_entry(
         "agent-account-other",
         &[("CLAUDE_CODE_OAUTH_TOKEN", "sk-ant-oat01-somewhere-SECRET")],
     );

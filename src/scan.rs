@@ -1,5 +1,5 @@
 //! `account scan`: the engine logins already on this machine, and the
-//! portable tokens mytokens keeps, found and, with `--add`, registered: one
+//! portable tokens optokens keeps, found and, with `--add`, registered: one
 //! account per subscription, told apart by the identity each login file
 //! holds, a portable Claude token by the organization its answers name. An
 //! identity is read and compared in memory, and only its hash ([`hash`]) is
@@ -258,67 +258,103 @@ fn judge(found: &[Found], kept: &[Account], machine: &str, taken: &mut Vec<Strin
 
 const PREFIX: &str = "agent-account-";
 
-/// One `agent-account-*` entry as a line of `mytokens list` lists it,
-/// `<service>/<label>\t<kind>\t<level>  — <about>  fields: <F>, <F>`.
+/// One `agent-account-*` Secret as `optokens list` lists it.
 #[derive(Debug, PartialEq)]
-struct Entry<'a> {
-    /// `<service>/<label>`.
-    id: &'a str,
-    service: &'a str,
-    label: &'a str,
-    fields: Vec<&'a str>,
+struct Entry {
+    /// `<service>/<account>`.
+    id: String,
+    service: String,
+    label: String,
+    fields: Vec<String>,
 }
 
-/// The `agent-account-*` entries of `mytokens list`'s lines.
-fn entries(list: &str) -> impl Iterator<Item = Entry<'_>> {
-    list.lines().filter_map(|line| {
-        let (id, _) = line.split_once('\t')?;
-        let (service, label) = id.split_once('/')?;
-        service.strip_prefix(PREFIX).filter(|n| !n.is_empty())?;
-        let fields = line.rsplit_once("  fields: ").map_or("", |(_, f)| f);
-        Some(Entry {
-            id,
-            service,
-            label,
-            fields: fields.split(", ").filter(|f| !f.is_empty()).collect(),
+/// A Secret of `optokens list`'s answer, `{"secrets":[…]}`: its fields'
+/// labels, `null` for a single value.
+#[derive(serde::Deserialize)]
+struct Secret {
+    service: String,
+    account: String,
+    fields: Option<Vec<String>>,
+}
+
+/// The `agent-account-*` entries of `optokens list`'s JSON, or why it is
+/// not that JSON.
+fn entries(list: &str) -> Result<Vec<Entry>, String> {
+    #[derive(serde::Deserialize)]
+    struct List {
+        secrets: Vec<Secret>,
+    }
+    let list: List = serde_json::from_str(list)
+        .map_err(|e| format!("`optokens list` answered no list of Secrets: {e}"))?;
+    Ok(list
+        .secrets
+        .into_iter()
+        .filter(|s| {
+            s.service
+                .strip_prefix(PREFIX)
+                .is_some_and(|n| !n.is_empty())
         })
-    })
+        .map(|s| Entry {
+            id: format!("{}/{}", s.service, s.account),
+            service: s.service,
+            label: s.account,
+            fields: s.fields.unwrap_or_default(),
+        })
+        .collect())
 }
 
-impl Entry<'_> {
+impl Entry {
     /// The engine whose token variable is one of its fields, and that field.
     fn token(&self) -> Option<(Engine, &'static str)> {
         let engines = <Engine as clap::ValueEnum>::value_variants();
         engines.iter().find_map(|&e| {
             let var = e.login().token_var?;
-            self.fields.contains(&var).then_some((e, var))
+            self.fields.iter().any(|f| f == var).then_some((e, var))
         })
     }
 
-    /// The `mytokens get` that prints its token field `var`.
+    /// The `optokens get` that prints its token field `var`.
     fn token_command(&self, var: &str) -> String {
-        let account = match self.label {
+        let account = match self.label.as_str() {
             "default" => String::new(),
             label => format!(" --account '{}'", label.replace('\'', "'\\''")),
         };
-        format!("mytokens get {}{account} --field {var}", self.service)
+        format!("optokens get {}{account} --field {var}", self.service)
     }
 }
 
-/// `mytokens list`, or why it was not read: mytokens not on PATH, or failing.
-fn mytokens_list() -> Result<String, String> {
-    let out = Command::new("mytokens")
+/// The `agent-account-*` entries of `optokens list`, or why it was not
+/// read: optokens not on PATH, not started, or failing with the faults and
+/// fixes it answers on stdout.
+fn optokens_list() -> Result<Vec<Entry>, String> {
+    let out = Command::new("optokens")
         .arg("list")
         .stdin(Stdio::null())
-        .stderr(Stdio::inherit())
+        .stderr(Stdio::null())
         .output();
     match out {
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
             Err("not on PATH: its entries were not looked at".into())
         }
-        Err(e) => Err(format!("`mytokens list` could not start: {e}")),
-        Ok(o) if !o.status.success() => Err("`mytokens list` failed, as it said above".into()),
-        Ok(o) => Ok(String::from_utf8_lossy(&o.stdout).into_owned()),
+        Err(e) => Err(format!("`optokens list` could not start: {e}")),
+        Ok(o) if !o.status.success() => Err(failed(&o.stdout)),
+        Ok(o) => entries(&String::from_utf8_lossy(&o.stdout)),
+    }
+}
+
+/// Why `optokens list` failed: each `{fault, fix}` of the
+/// `{"error":[…]}` it answers on stdout.
+fn failed(stdout: &[u8]) -> String {
+    let said: Vec<String> = serde_json::from_slice::<Value>(stdout)
+        .ok()
+        .and_then(|v| v["error"].as_array().cloned())
+        .unwrap_or_default()
+        .iter()
+        .filter_map(|e| Some(format!("{} ({})", e["fault"].as_str()?, e["fix"].as_str()?)))
+        .collect();
+    match said.is_empty() {
+        true => "`optokens list` failed and said no fault".into(),
+        false => format!("`optokens list` failed: {}", said.join("; ")),
     }
 }
 
@@ -400,15 +436,15 @@ pub fn scan(store: &Store, paths: &[String], add: bool) -> Result<Value, Refused
             "warning": warning,
         }));
     }
-    let (list, mytokens) = match mytokens_list() {
+    let (list, unread) = match optokens_list() {
         Ok(list) => (list, None),
-        Err(why) => (String::new(), Some(why)),
+        Err(why) => (Vec::new(), Some(why)),
     };
     // Each entry in its order: a skipped one as answered, a token as read.
     let mut rows: Vec<Result<Token, Value>> = Vec::new();
-    for e in entries(&list) {
+    for e in &list {
         let Some((engine, var)) = e.token() else {
-            let why = match e.fields.contains(&"MACHINE") {
+            let why = match e.fields.iter().any(|f| f == "MACHINE") {
                 true => {
                     "bound: its login is in a home of factorium's (~/.agent-accounts), which scan does not look in; `--path` that home to find it"
                 }
@@ -421,7 +457,7 @@ pub fn scan(store: &Store, paths: &[String], add: bool) -> Result<Value, Refused
         };
         let cmd = e.token_command(var);
         let legacy = format!(
-            "mytokens get {} --account {} --field {var}",
+            "optokens get {} --account {} --field {var}",
             e.service, e.label
         );
         let kept_at = kept.iter().position(|a| {
@@ -509,7 +545,7 @@ pub fn scan(store: &Store, paths: &[String], add: bool) -> Result<Value, Refused
         "machine": machine,
         "logins": out_logins,
         "tokens": tokens,
-        "mytokens_unread": mytokens,
+        "optokens_unread": unread,
     }))
 }
 
@@ -596,34 +632,45 @@ mod tests {
     }
 
     #[test]
-    fn entries_are_the_agent_account_lines_with_their_fields() {
-        let list = "agent-account-codex/default\tprofile\tserver  — fields: as about  fields: HARNESS, MACHINE\n\
-                    bark/default\tstatic\tserver  — push\n\
-                    agent-account-/default\tprofile\tserver  — no name  fields: HARNESS\n\
-                    agent-account-x/work\tprofile\tpersonal  — none";
-        let all: Vec<_> = entries(list).collect();
+    fn entries_are_the_agent_account_secrets_with_their_fields() {
+        let list = r#"{"secrets":[
+            {"service":"agent-account-codex","account":"default","kind":"profile","description":"d","meta":null,"fields":["HARNESS","MACHINE"]},
+            {"service":"bark","account":"default","kind":"static","description":"push","meta":null,"fields":null},
+            {"service":"agent-account-","account":"default","kind":"profile","description":"no name","meta":null,"fields":["HARNESS"]},
+            {"service":"agent-account-x","account":"work","kind":"profile","description":"none","meta":null,"fields":null}
+        ]}"#;
+        let all = entries(list).unwrap();
+        let entry = |id: &str, service: &str, label: &str, fields: &[&str]| Entry {
+            id: id.into(),
+            service: service.into(),
+            label: label.into(),
+            fields: fields.iter().map(|f| f.to_string()).collect(),
+        };
         assert_eq!(
             all,
             [
-                Entry {
-                    id: "agent-account-codex/default",
-                    service: "agent-account-codex",
-                    label: "default",
-                    fields: vec!["HARNESS", "MACHINE"],
-                },
-                Entry {
-                    id: "agent-account-x/work",
-                    service: "agent-account-x",
-                    label: "work",
-                    fields: vec![],
-                },
+                entry(
+                    "agent-account-codex/default",
+                    "agent-account-codex",
+                    "default",
+                    &["HARNESS", "MACHINE"]
+                ),
+                entry("agent-account-x/work", "agent-account-x", "work", &[]),
             ]
         );
         assert_eq!(all[0].token(), None);
         assert_eq!(
             all[1].token_command("CLAUDE_CODE_OAUTH_TOKEN"),
-            "mytokens get agent-account-x --account 'work' --field CLAUDE_CODE_OAUTH_TOKEN"
+            "optokens get agent-account-x --account 'work' --field CLAUDE_CODE_OAUTH_TOKEN"
         );
+        assert!(entries("agent-account-x/default\tprofile").is_err());
+    }
+
+    #[test]
+    fn a_failed_list_says_the_faults_it_answered() {
+        let said = br#"{"error":[{"fault":"no token","fix":"sign in","kind":"no_token"}]}"#;
+        assert_eq!(failed(said), "`optokens list` failed: no token (sign in)");
+        assert_eq!(failed(b""), "`optokens list` failed and said no fault");
     }
 
     #[test]

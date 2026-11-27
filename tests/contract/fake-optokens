@@ -1,0 +1,43 @@
+#!/bin/sh
+# A stand-in of optokens (truefit.toml [[standin]] "optokens"): the calls
+# stablehand makes, `list` and `get <service> [--account <label>] --field <F>`
+# (the label `default` without --account),
+# read from $FAKE_OPTOKENS_DIR (default: optokens-store beside it), one file
+# per field, <service>/<label>/<FIELD>. `list` answers one JSON object,
+# {"secrets":[{service, account, kind, description, meta, fields}]}, and
+# never a value. With $FAKE_ARGV_LOG set, each call's argv is appended to it,
+# one line. FAKE_OPTOKENS_FAULT=get-fails: every `get` fails, as optokens
+# does reading a field the entry lacks: exit 2, {"error":[…]} on stderr.
+dir="${FAKE_OPTOKENS_DIR:-$(dirname "$0")/optokens-store}"
+[ -n "$FAKE_ARGV_LOG" ] && echo "optokens $*" >>"$FAKE_ARGV_LOG"
+case "$1" in
+list)
+    # The shell's own globs and expansions, no process per entry: scan
+    # lists once per run.
+    secrets=
+    for entry in "$dir"/*/*; do
+        [ -d "$entry" ] || continue
+        fields=
+        for field in "$entry"/*; do
+            [ -e "$field" ] && fields="${fields:+$fields,}\"${field##*/}\""
+        done
+        fields=${fields:+[$fields]}
+        service=${entry%/*}
+        secrets="${secrets:+$secrets,}{\"service\":\"${service##*/}\",\"account\":\"${entry##*/}\",\"kind\":\"profile\",\"description\":\"a stand-in entry\",\"meta\":null,\"fields\":${fields:-null}}"
+    done
+    printf '{"secrets":[%s]}\n' "$secrets" ;;
+get)
+    case "$3 $5" in
+    "--account --field") label=$4 field=$6 ;;
+    "--field ") label=default field=$4 ;;
+    *) echo "fake-optokens: no stand-in for \`$*\`" >&2; exit 2 ;;
+    esac
+    file="$dir/$2/$label/$field"
+    if [ "$FAKE_OPTOKENS_FAULT" = get-fails ] || [ ! -f "$file" ]; then
+        printf '{"error":[{"fault":"the Secret `%s/%s` has no field `%s`","fix":"name a field `optokens list` lists for it","kind":"no_such_field"}]}\n' \
+            "$2" "$label" "$field" >&2
+        exit 2
+    fi
+    cat "$file" ;;
+*) echo "fake-optokens: no stand-in for \`$*\`" >&2; exit 2 ;;
+esac

@@ -28,7 +28,7 @@ pub enum Code {
     NonePicked,
     /// `account scan --path` names no directory.
     BadPath,
-    /// Something stablehand reads or runs failed (the register, mytokens, an engine's reader): the text says what, and how to fix it.
+    /// Something stablehand reads or runs failed (the register, optokens, an engine's reader): the text says what, and how to fix it.
     Fault,
 }
 
