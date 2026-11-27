@@ -303,6 +303,8 @@ fn a_kept_home_tells_its_identity_and_what_is_not_the_same_login_is_not_taken_fo
     let portable = ["--engine", "claude-code", "--token-command", other];
     r.ok(&[&["account", "add", "other"][..], &portable].concat());
     r.optokens_entry("agent-account-felix", &[("CLAUDE_CODE_OAUTH_TOKEN", TOKEN)]);
+    // An entry with neither a token nor a MACHINE is no bound one.
+    r.optokens_entry("agent-account-notes", &[("HARNESS", "claude-code")]);
 
     // An account bound to another machine is not this home's, whatever
     // its home path holds here.
@@ -331,8 +333,13 @@ fn a_kept_home_tells_its_identity_and_what_is_not_the_same_login_is_not_taken_fo
     assert!(unknown.contains(".claude.json"), "{unknown}");
     assert_eq!(
         tokens,
-        [json!(["agent-account-felix/default", "new", "felix"])]
+        [
+            json!(["agent-account-felix/default", "new", "felix"]),
+            json!(["agent-account-notes/default", "skipped", null]),
+        ]
     );
+    let why = out["tokens"][1]["why"].as_str().unwrap();
+    assert_eq!(why, "it holds no engine's token field");
 
     // An optokens that fails its list is said with the fault it answered on
     // stdout, and the logins still are.
