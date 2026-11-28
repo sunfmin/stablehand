@@ -574,10 +574,19 @@ header = "x-dsh-auth-token: <grant>"
 header = "x-client-platform: web"
 """
 
-# tests/usage.rs a_setup_token_refused_usage_is_read_by_one_small_turn_and_its_usage_not_asked_again
+# tests/usage.rs a_setup_token_refused_usage_is_read_by_one_small_turn_and_its_usage_not_asked_again,
+# usage_failing_otherwise_is_read_by_the_question_for_that_read_only
 [[promise]]
-name = "a-setup-token-is-asked-the-question-from-then-on"
-says = '''An account read by the question is asked the question again, not its usage.'''
+name = "only-a-scope-refusal-keeps-the-question"
+says = '''Only a token usage refuses its scope (HTTP 403 `oauth_scope_insufficient`: a `claude setup-token` token) is asked the question again next time, not its usage; after any other failure, the next read asks usage first again.'''
+source = "src/main.rs:207"
+check = ["test"]
+
+# tests/usage.rs usage_failing_otherwise_is_read_by_the_question_for_that_read_only
+# (both failing), a_reader_s_failure_is_booked_and_said_and_the_last_windows_kept_stale
+[[promise]]
+name = "usage-and-question-both-fail-to-fail"
+says = '''The read fails only if both fail, its `error` naming both, each with its fix.'''
 source = "src/main.rs:207"
 check = ["test"]
 
