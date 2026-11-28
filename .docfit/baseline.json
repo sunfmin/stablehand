@@ -4,10 +4,6 @@
       "auth.json"
     ]
   },
-  "docs/adr/0001-one-home-for-agent-accounts.md": {
-    "bytes": 5229,
-    "paragraph": 1081
-  },
   "docs/adr/0002-run-starts-the-engine-on-the-pick.md": {
     "bytes": 4507,
     "paragraph": 934,
