@@ -94,9 +94,7 @@ pub fn pick(candidates: &[Candidate], stop_percent: u8, now: u64) -> Pick {
             }),
             None => {
                 let rank = Rank {
-                    resets_at: long_window(&c.status)
-                        .and_then(|w| w.resets_at)
-                        .filter(|at| *at > now),
+                    resets_at: long_window(&c.status).and_then(|w| w.resets_at),
                     left: left_percent(&c.status),
                 };
                 if best.is_none_or(|(_, first)| rank.goes_before(&first)) {
@@ -117,7 +115,7 @@ pub fn pick(candidates: &[Candidate], stop_percent: u8, now: u64) -> Pick {
 /// Where an account stands in a step's ranking.
 #[derive(Clone, Copy)]
 struct Rank {
-    /// When its long window resets, where known and still ahead.
+    /// When its long window resets, where known (the books drop one past).
     resets_at: Option<u64>,
     /// How much of its most used window is left ([`left_percent`]).
     left: Option<f64>,

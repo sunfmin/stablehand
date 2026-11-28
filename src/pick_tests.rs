@@ -599,13 +599,11 @@ fn the_account_whose_long_window_resets_first_is_picked_until_it_stops() {
             week_left("claude-code-2", code_2, Some(24 + 2)),
         ]
     };
-    let picked = |accounts: &[Candidate]| match pick(accounts, STOP_PERCENT, NOW) {
-        Pick::Account(name) => name,
-        none => panic!("none: {none:?}"),
-    };
-    assert_eq!(picked(&today(85.0, 75.0)), "claude-code-2");
-    assert_eq!(picked(&today(90.0, 75.0)), "claude-nate-ultra");
-    assert_eq!(picked(&today(90.0, 90.0)), "claude-theplant-jp");
+    let picked = |accounts: &[Candidate]| pick(accounts, STOP_PERCENT, NOW);
+    let account = |name: &str| Pick::Account(name.into());
+    assert_eq!(picked(&today(85.0, 75.0)), account("claude-code-2"));
+    assert_eq!(picked(&today(90.0, 75.0)), account("claude-nate-ultra"));
+    assert_eq!(picked(&today(90.0, 90.0)), account("claude-theplant-jp"));
 }
 
 #[test]
