@@ -618,6 +618,34 @@ fn an_account_whose_long_window_s_reset_is_not_known_comes_after_one_known() {
         pick(&accounts, STOP_PERCENT, NOW),
         Pick::Account("known".into())
     );
+    // Given the other way round, the known reset still goes first.
+    let accounts = [
+        week_left("known", 70.0, Some(5 * 24)),
+        week_left("unknown", 10.0, None),
+    ];
+    assert_eq!(
+        pick(&accounts, STOP_PERCENT, NOW),
+        Pick::Account("known".into())
+    );
+    // A reset come already tells nothing of the next one: of equals left,
+    // the first given.
+    let accounts = [
+        week_left("unknown", 10.0, None),
+        week_left("reset", 10.0, Some(0)),
+    ];
+    assert_eq!(
+        pick(&accounts, STOP_PERCENT, NOW),
+        Pick::Account("unknown".into())
+    );
+    // Of equals in both, the first given.
+    let accounts = [
+        week_left("first", 40.0, Some(5 * 24)),
+        week_left("second", 40.0, Some(5 * 24)),
+    ];
+    assert_eq!(
+        pick(&accounts, STOP_PERCENT, NOW),
+        Pick::Account("first".into())
+    );
     // Of equal resets, and of those not known, the most left.
     let accounts = [
         week_left("less", 70.0, Some(5 * 24)),
