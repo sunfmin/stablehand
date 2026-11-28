@@ -35,6 +35,14 @@
       "commits_90d": 44,
       "commits_total": 44,
       "reason": "main.rs is the manual's home and the effect edge, not a shallow module: of its 482 prod lines ~290 are the clap tree's doc comments (the help, written with agent-help where each command's fact lives) and ~160 its argument definitions; the rest is one dispatch in which each command calls one module that decides it (usage, scan, login, command, order, run, statusline), with only the refusals and the store, clock and env reads of the register commands left here, as the agent-cli effect layer keeps them. Its churn is each new or changed command's help and flags; the deciding code has already moved out (command::parse, order::parse gather their own faults). Splitting the tree into another file would move that churn, not deepen anything; moving off, on, add and edit into account.rs would put effects into a pure module."
+    },
+    {
+      "suite": "rust",
+      "file": "src/store.rs",
+      "prod_lines": 389,
+      "commits_90d": 21,
+      "commits_total": 21,
+      "reason": "store.rs is already deep: one Store whose 18 methods (get, list, insert, put, put_booking, fill_hashes, remove, order/set_order, commands/set_commands, book, entries, start/end_session, sessions, reading_lock, open) each speak the domain (Account, Entry, Rank, Engine) and are all called from main, scan, run, usage or statusline, while it hides the SQL, the schema, the hash-checked migration (refusing another build's steps) and the 0700/0600 file guard. No pass-through or shallow wrapper: put and insert share one private write, the one-row JSON tables share one/set_one. Its churn is the append-only MIGRATIONS list and one table per feature (order, commands, sessions, organization), which is where a new stored fact belongs; splitting tables into files would spread one concept, the store, over several shallow modules. Its tests stay behind the interface except one trigger injected through conn to fail a booking, an in-module test."
     }
   ],
   "kept_spans": [
