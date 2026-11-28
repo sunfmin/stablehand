@@ -1,6 +1,7 @@
 //! `read`, `limit` and `status`, run through the binary against the
 //! stand-ins of curl and the engines (tests/contract/fake-*), first on PATH;
 //! a portable token is the first line of a file its token command prints.
+mod support;
 use serde_json::{Value, json};
 use std::cell::RefCell;
 use std::path::{Path, PathBuf};
@@ -270,6 +271,8 @@ fn read_books_a_bound_login_s_windows_once_an_hour_unless_now() {
     assert_eq!(status["pace"], "steady");
     assert_eq!(status["failed"], Value::Null);
     assert_eq!(status["read_at"], status["tried_at"]);
+    assert_eq!(status["reading"], "fresh");
+    assert!(status["read_age"].is_string(), "{status}");
     assert_eq!(status["read_by"], "usage");
     assert!(status["read_next"].is_string(), "{status}");
     assert_eq!(window(&status["windows"], "seven_day")["pace"], "steady");
@@ -604,6 +607,11 @@ fn a_limit_without_a_window_uses_up_the_account_until_the_next_reading() {
         "--machine",
         "mini",
     ]);
+    let unread = b.status("claude-mini");
+    assert_eq!(
+        (&unread["pace"], &unread["reading"], &unread["read_age"]),
+        (&json!("unknown"), &json!("none"), &Value::Null)
+    );
     let limit = b.ok(&["limit", "claude-mini"]);
     assert_eq!(
         (&limit["limit"]["window"], &limit["limit"]["resets_at"]),
@@ -1701,7 +1709,7 @@ fn the_status_line_starts_one_read_where_its_books_are_stale_and_waits_on_none()
     assert_eq!(line, "claude-nate\n");
     std::fs::remove_file(&hold).unwrap();
     b.until("the reading is booked", || {
-        b.statusline(&args, "{}").0 == "claude-nate · 5h 22% · 7d 52%\n"
+        support::unclocked(&b.statusline(&args, "{}").0) == "claude-nate · 5h 22% · 7d 52%\n"
     });
     // Fresh books start none.
     std::thread::sleep(Duration::from_millis(300));
@@ -1711,7 +1719,10 @@ fn the_status_line_starts_one_read_where_its_books_are_stale_and_waits_on_none()
     b.portable("claude-other");
     let given = include_str!("statusline/rate-limits.json");
     let (line, _) = b.statusline(&["--account", "claude-other"], given);
-    assert_eq!(line, "claude-other · 5h 24% · 7d 41%\n");
+    assert_eq!(
+        support::unclocked(&line),
+        "claude-other · 5h 24% · 7d 41%\n"
+    );
     std::thread::sleep(Duration::from_millis(300));
     assert_eq!(b.calls(), 1, "{}", b.log());
 }

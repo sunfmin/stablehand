@@ -1,0 +1,10 @@
+{
+  "tree": "20f70e29c04c2dae6e859dd83dd3acbb08698859+d1fba762150c532c",
+  "lines": 89,
+  "serves": "stablehand#72",
+  "considered": "statusline::age (largest unit only; kept, its form is a different fact, tested as is), usage::windows and books::status (extended, not copied), a resets_in helper per caller (folded into time::until)",
+  "reviewer": "codex:01a2216c-5e65-7070-bc54-d2a54f41d4f4:default",
+  "author": "claude-code:e0e5d08f-fff2-5202-be51-aef36e8f8122:opus",
+  "cut": "In src/books.rs, classify the newest reading before constructing windows and assign Unknown when constructing read-sourced windows, deleting the second pass and leaving limit windows alone. In src/statusline.rs, carry resets_at through both window paths and compute the countdown once in line using the same now. In tests/support/mod.rs, preserve the age or trailing newline when stripping the countdown so unclocked can drop the separate newline removal and restoration.",
+  "answer": "Made all three: books classifies the reading before the windows and sets unknown in the one pass over read windows; statusline carries resets_at and line works out the countdown at the now it is given; unclocked strips each countdown up to what follows, with no newline handling. The rest is the issue: time::span and time::until, the reading field and Pace::Unknown, resets_in/read_age in the answer, and their tests."
+}

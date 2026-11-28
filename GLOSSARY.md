@@ -44,7 +44,8 @@
   when it lifts where the engine said: the reading of an engine whose reader
   failed.
 - **Pace**: per window, whether at its recent rate it runs out before it
-  resets (**tight**), resets with much left (**spare**), or is **used up**.
+  resets (**tight**), resets with much left (**spare**), or is **used up**;
+  **unknown** where the account's newest reading is **old**, over a day.
 - **Long window**: an account's longest window (`seven_day` beside
   `five_hour`), where it has a shorter one; a pick spends first the account
   whose long window resets soonest.
