@@ -44,7 +44,8 @@
   when it lifts where the engine said: the reading of an engine whose reader
   failed.
 - **Pace**: per window, whether at its recent rate it runs out before it
-  resets (**tight**), resets with much left (**spare**), or is **used up**.
+  resets (**tight**), resets with much left (**spare**), or is **used up**;
+  **unknown** where the account's newest reading is **old**, over a day.
 - **Order**: the engines, and of each the models, the next session starts
   on, highest first (`claude-code@opus codex grok agy@gemini-4-neon-high,claude-opus-5-5-high`);
   one per machine, kept beside the accounts. A preference only: the

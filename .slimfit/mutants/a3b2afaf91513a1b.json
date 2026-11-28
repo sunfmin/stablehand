@@ -1,0 +1,16 @@
+{
+  "tree": "20f70e29c04c2dae6e859dd83dd3acbb08698859+d1fba762150c532c",
+  "picker": "codex:01a2216c-661a-70c3-8ce3-9d6d863b5185:default",
+  "author": "claude-code:e0e5d08f-fff2-5202-be51-aef36e8f8122:opus",
+  "picks": {
+    "rust": [
+      {
+        "name": "src/books.rs:230:31: replace * with +",
+        "why": "The cutoff assertions use OLD_AFTER itself, so they still pass if the threshold drops to 3,624 seconds. The three-day reading is old under either threshold.",
+        "outcome": "killed",
+        "first_outcome": "killed"
+      }
+    ]
+  },
+  "added_lines": 106
+}

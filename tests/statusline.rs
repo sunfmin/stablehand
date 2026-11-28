@@ -4,7 +4,7 @@
 //! windows have not reset when the test reads them).
 mod support;
 use serde_json::{Value, json};
-use support::Register;
+use support::{Register, unclocked};
 
 const RATE_LIMITS: &str = include_str!("statusline/rate-limits.json");
 const NO_RATE_LIMITS: &str = include_str!("statusline/no-rate-limits.json");
@@ -28,8 +28,12 @@ fn the_status_line_books_its_rate_limits_and_prints_one_line() {
     let args = ["statusline", "--account", "claude-felix"];
 
     let (code, line) = r.raw(&args, &[], RATE_LIMITS);
+    assert!(
+        line.starts_with("claude-felix · 5h 24% resets in "),
+        "{line}"
+    );
     assert_eq!(
-        (code, line.as_str()),
+        (code, unclocked(&line).as_str()),
         (0, "claude-felix · 5h 24% · 7d 41%\n")
     );
     let s = status(&r, "claude-felix");
@@ -49,7 +53,7 @@ fn the_status_line_books_its_rate_limits_and_prints_one_line() {
     // is the account's latest books, and the books keep what they had.
     let (code, line) = r.raw(&args, &[], NO_RATE_LIMITS);
     assert_eq!(
-        (code, line.as_str()),
+        (code, unclocked(&line).as_str()),
         (0, "claude-felix · 5h 24% · 7d 41%\n")
     );
     assert_eq!(status(&r, "claude-felix"), s);
@@ -132,12 +136,12 @@ fn the_account_is_stablehand_run_s_where_no_account_is_named() {
     let env = [("STABLEHAND_ACCOUNT", "claude-felix")];
     let (code, line) = r.raw(&["statusline"], &env, RATE_LIMITS);
     assert_eq!(
-        (code, line.as_str()),
+        (code, unclocked(&line).as_str()),
         (0, "claude-felix · 5h 24% · 7d 41%\n")
     );
     let (code, line) = r.raw(&["statusline"], &env, "{}");
     assert_eq!(
-        (code, line.as_str()),
+        (code, unclocked(&line).as_str()),
         (0, "claude-felix · 5h 24% · 7d 41%\n")
     );
     // --account outranks it.
@@ -186,7 +190,7 @@ fn with_no_account_named_it_is_the_one_kept_at_the_session_s_config_dir() {
     let home = kept_at_homes(&r);
     let (code, line) = r.raw(&["statusline"], &[("HOME", &home)], RATE_LIMITS);
     assert_eq!(
-        (code, line.as_str()),
+        (code, unclocked(&line).as_str()),
         (0, "claude-code-2 · 5h 24% · 7d 41%\n")
     );
     assert!(!booked(&r, "claude-work"));
@@ -200,7 +204,7 @@ fn with_no_account_named_it_is_the_one_kept_at_the_session_s_config_dir() {
         let env = [("HOME", home.as_str()), ("CLAUDE_CONFIG_DIR", dir)];
         let (code, line) = r.raw(&["statusline"], &env, RATE_LIMITS);
         assert_eq!(
-            (code, line.as_str()),
+            (code, unclocked(&line).as_str()),
             (0, "claude-work · 5h 24% · 7d 41%\n"),
             "{dir}"
         );

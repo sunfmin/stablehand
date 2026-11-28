@@ -9,7 +9,7 @@ use crate::pick::{self, Candidate, Pick, Reason};
 use crate::readers;
 use crate::refusal::{Code, Refused};
 use crate::store::Store;
-use crate::time::utc;
+use crate::time::{span, utc};
 use serde_json::{Value, json};
 
 /// `a`'s books, with its login as an entry ([`What::LoggedIn`]) where its
@@ -54,7 +54,7 @@ pub fn read(
             }
         };
         let after = books::status(&book_of(store, a)?, now);
-        let mut shown = json!({ "account": a.name, "outcome": outcome, "windows": windows(&after), "balances": balances(&after) });
+        let mut shown = json!({ "account": a.name, "outcome": outcome, "windows": windows(&after, now), "balances": balances(&after) });
         if outcome == "read" {
             let by = after.read_by.map(ReadBy::said);
             shown["read_by"] = json!(by);
@@ -123,7 +123,7 @@ pub fn status(store: &Store, accounts: &[Account], now: u64) -> Result<Value, St
             "off": a.off.is_some(),
             "copy_of": account::copy_of(a, &kept),
             "pace": s.pace,
-            "windows": windows(&s),
+            "windows": windows(&s, now),
             "balances": balances(&s),
             "limit": s.limit.as_ref().map(|l| json!({
                 "at": utc(l.at),
@@ -131,6 +131,8 @@ pub fn status(store: &Store, accounts: &[Account], now: u64) -> Result<Value, St
                 "resets_at": l.resets_at.map(utc),
             })),
             "read_at": s.read_at.map(utc),
+            "read_age": s.read_at.map(|at| span(now.saturating_sub(at))),
+            "reading": s.reading,
             "read_by": s.read_by.map(ReadBy::said),
             "tried_at": s.tried_at.map(utc),
             "failed": s.failed,
@@ -141,16 +143,21 @@ pub fn status(store: &Store, accounts: &[Account], now: u64) -> Result<Value, St
     Ok(json!({ "accounts": shown }))
 }
 
-fn windows(s: &Status) -> Vec<Value> {
+/// `s`'s windows as answered at `now`: each with how long until it resets
+/// (`resets_in`, `resets_in_s`), worked out here, never booked.
+fn windows(s: &Status, now: u64) -> Vec<Value> {
     s.windows
         .iter()
         .map(|w| {
+            let resets_in = crate::time::until(w.resets_at, now);
             json!({
                 "name": w.name,
                 "group": w.group,
                 "models": w.models,
                 "used_percent": w.used_percent,
                 "resets_at": w.resets_at.map(utc),
+                "resets_in": resets_in.map(span),
+                "resets_in_s": resets_in,
                 "source": w.source,
                 "at": utc(w.at),
                 "stale": w.stale,
@@ -370,4 +377,44 @@ pub fn pick_now(store: &Store, accounts: &[Account], ask: Ask, now: u64) -> Resu
         ask.stop_percent,
         now,
     )?)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::books::Window;
+
+    #[test]
+    fn each_window_says_how_long_until_it_resets_at_the_time_asked() {
+        const NOW: u64 = 1_800_000_000;
+        let window = |name: &str, resets_at| Window {
+            name: name.into(),
+            group: None,
+            models: Vec::new(),
+            used_percent: 30.0,
+            resets_at,
+            minutes: None,
+            read_by: None,
+        };
+        let read = Entry {
+            at: NOW - 60,
+            what: What::Read(vec![
+                window("seven_day", Some(NOW + 6 * 86_400 + 6 * 3_600 + 59)),
+                window("five_hour", Some(NOW + 4 * 3_600 + 12 * 60)),
+                window("no_reset", None),
+            ]),
+        };
+        let shown = windows(&books::status(&[read], NOW), NOW);
+        let said: Vec<_> = (shown.iter())
+            .map(|w| (w["resets_in"].clone(), w["resets_in_s"].clone()))
+            .collect();
+        assert_eq!(
+            said,
+            [
+                (json!("6d 6h"), json!(6 * 86_400 + 6 * 3_600 + 59)),
+                (json!("4h 12m"), json!(4 * 3_600 + 12 * 60)),
+                (Value::Null, Value::Null),
+            ]
+        );
+    }
 }
