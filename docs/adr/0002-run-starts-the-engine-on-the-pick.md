@@ -1,6 +1,6 @@
 # 0002. `stablehand run` starts the engine on the pick, and counts its sessions
 
-Status: accepted, 2026-11-24 (stablehand#25; Felix, control session)
+Status: accepted, 2026-11-24 (Felix, control session; in 0a90b5b)
 
 ## Context
 
