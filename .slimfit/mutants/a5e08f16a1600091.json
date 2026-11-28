@@ -1,0 +1,28 @@
+{
+  "tree": "09cab77ca9629262e0578b4254bf9510115d57ed+d1fba762150c532c",
+  "picker": "codex:01a2205f-3b36-7d13-aadc-52197408ed61:default",
+  "author": "claude-code:307f11c1-b895-5888-99e1-d10f282f626d:opus",
+  "picks": {
+    "rust": [
+      {
+        "name": "src/usage.rs:44:38: replace match guard !now_anyway with true in read",
+        "why": "The merged test checks that a normal read waits after refusal, which can still pass if a forced read also waits.",
+        "outcome": "killed",
+        "first_outcome": "killed"
+      },
+      {
+        "name": "src/books.rs:498:30: replace > with >= in read_after",
+        "why": "The same-hour assertion can pass even if retries stay blocked at the exact retry deadline.",
+        "outcome": "killed",
+        "first_outcome": "killed"
+      }
+    ]
+  },
+  "removed_tests": {
+    "rust": [
+      "tests/usage.rs:940: a_chatgpt_account_is_read_through_codex_s_app_server_and_pi_s_login",
+      "tests/usage.rs:992: a_chatgpt_read_refused_leaves_the_last_windows_stale_and_is_not_retried_in_the_hour"
+    ]
+  },
+  "added_lines": 0
+}

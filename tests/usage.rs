@@ -937,7 +937,7 @@ impl Books {
 }
 
 #[test]
-fn a_chatgpt_account_is_read_through_codex_s_app_server_and_pi_s_login() {
+fn a_chatgpt_account_is_read_through_codex_and_pi_and_a_refused_read_leaves_its_windows_stale() {
     let b = Books::new("chatgpt");
     for (name, engine, used, asked) in [
         ("chatgpt", "codex", 42.0, "codex app-server CODEX_HOME="),
@@ -986,16 +986,8 @@ fn a_chatgpt_account_is_read_through_codex_s_app_server_and_pi_s_login() {
             && config.contains(&format!("header = \"ChatGPT-Account-Id: {PI_ACCOUNT_ID}\"")),
         "{config}"
     );
-}
 
-#[test]
-fn a_chatgpt_read_refused_leaves_the_last_windows_stale_and_is_not_retried_in_the_hour() {
-    let b = Books::new("chatgpt-refused");
-    b.chatgpt_answers(42.0, 9.0);
-    b.chatgpt("chatgpt", "codex");
-    b.chatgpt("chatgpt-pi", "pi");
-    b.read(&["chatgpt"]);
-    b.read(&["chatgpt-pi"]);
+    // A refused read leaves the last windows stale and is not retried in the hour.
     for (name, fault, value, said) in [
         (
             "chatgpt",
