@@ -37,6 +37,17 @@
       "reason": "main.rs is the manual's home and the effect edge, not a shallow module: of its 482 prod lines ~290 are the clap tree's doc comments (the help, written with agent-help where each command's fact lives) and ~160 its argument definitions; the rest is one dispatch in which each command calls one module that decides it (usage, scan, login, command, order, run, statusline), with only the refusals and the store, clock and env reads of the register commands left here, as the agent-cli effect layer keeps them. Its churn is each new or changed command's help and flags; the deciding code has already moved out (command::parse, order::parse gather their own faults). Splitting the tree into another file would move that churn, not deepen anything; moving off, on, add and edit into account.rs would put effects into a pure module."
     }
   ],
+  "kept_spans": [
+    {
+      "suite": "rust",
+      "file": "src/login.rs",
+      "start": 23,
+      "end": 28,
+      "function": "this_machine (closure)",
+      "hash": "c3aabcd4c30fd23a",
+      "reason": "The hostname -s fallback of this_machine, the default machine name whenever $STABLEHAND_MACHINE is unset: what it decides is the real host program's answer, so only a test spawning the real hostname could assert it; tests set STABLEHAND_MACHINE to be host-independent."
+    }
+  ],
   "measured": {
     "rust": {
       "uncovered_lines": 103,
