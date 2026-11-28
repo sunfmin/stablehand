@@ -212,3 +212,21 @@ impl Register {
         command
     }
 }
+
+/// A status line with each window's ` resets in …` left out: how long that
+/// is depends on the clock the test runs at (`statusline.rs`'s unit tests
+/// hold its form at a fixed now).
+pub fn unclocked(line: &str) -> String {
+    let parts = line.trim_end_matches('\n').split(" · ").map(|part| {
+        let Some((before, after)) = part.split_once(" resets in ") else {
+            return part.to_string();
+        };
+        let age = after.find(" (").map_or("", |i| &after[i..]);
+        format!("{before}{age}")
+    });
+    let mut out = parts.collect::<Vec<_>>().join(" · ");
+    if line.ends_with('\n') {
+        out.push('\n');
+    }
+    out
+}

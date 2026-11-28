@@ -287,7 +287,8 @@ fn an_engine_with_no_windows_rests_after_a_limit_until_the_reset_it_names() {
     let s = status(&entries, NOW);
     assert!(s.windows.is_empty());
     assert_eq!(s.pace, Pace::UsedUp);
-    assert_eq!(status(&entries, NOW + 31 * MINUTE).pace, Pace::Steady);
+    // Lifted, it is not used up, and with no reading its pace is not known.
+    assert_eq!(status(&entries, NOW + 31 * MINUTE).pace, Pace::Unknown);
 }
 
 #[test]
@@ -700,4 +701,40 @@ fn windows_of_one_name_in_two_groups_each_have_their_own_rate() {
         .map(|w| (w.group.clone(), w.rate))
         .collect();
     assert_eq!(rates, [(None, Some(1.0)), (Some("Api".into()), Some(0.0))]);
+}
+
+#[test]
+fn a_reading_days_old_with_nothing_since_is_old_and_its_pace_unknown() {
+    let reading = || {
+        read(
+            NOW - 3 * 24 * HOUR,
+            vec![window("seven_day", 40.0, Some(NOW + 2 * 24 * HOUR))],
+        )
+    };
+    let s = status(&[reading()], NOW);
+    assert_eq!(
+        (s.reading, s.pace, named(&s, "seven_day").pace),
+        (Reading::Old, Pace::Unknown, Pace::Unknown)
+    );
+    // A day old is not yet old; a second past it is.
+    let day = |age| {
+        status(
+            &[read(NOW - age, vec![window("seven_day", 40.0, None)])],
+            NOW,
+        )
+    };
+    assert_eq!(day(OLD_AFTER).reading, Reading::Fresh);
+    assert_eq!(day(OLD_AFTER + 1).reading, Reading::Old);
+    // Never read: nothing known.
+    let none = status(&[], NOW);
+    assert_eq!((none.reading, none.pace), (Reading::None, Pace::Unknown));
+    // A limit since is news: it holds, used up.
+    let limit = Entry {
+        at: NOW - HOUR,
+        what: What::Limit {
+            window: None,
+            resets_at: Some(NOW + HOUR),
+        },
+    };
+    assert_eq!(status(&[reading(), limit], NOW).pace, Pace::UsedUp);
 }

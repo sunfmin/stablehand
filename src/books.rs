@@ -128,8 +128,24 @@ pub enum Pace {
     /// It resets within a quarter of its length with [`SPARE_PERCENT`] or
     /// more of it left at its rate: unused, it is lost.
     Spare,
-    /// Neither, or it cannot be told.
+    /// Neither, or it cannot be told from a reading in hand.
     Steady,
+    /// No reading tells it: the account's newest is over [`OLD_AFTER`]
+    /// old, or it has none.
+    Unknown,
+}
+
+/// How old an account's newest reading is: what its windows' use and pace
+/// can be taken on.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Reading {
+    /// [`OLD_AFTER`] old or fresher.
+    Fresh,
+    /// Over [`OLD_AFTER`] old: nothing has been read of it since.
+    Old,
+    /// It has never been read.
+    None,
 }
 
 /// One window of an account, now.
@@ -184,6 +200,8 @@ pub struct Status {
     pub limit: Option<Held>,
     /// When it was last read, and last tried, whatever came of it.
     pub read_at: Option<u64>,
+    /// How old its newest reading is.
+    pub reading: Reading,
     /// How its latest reading of windows was asked, where its reader says.
     pub read_by: Option<ReadBy>,
     pub tried_at: Option<u64>,
@@ -207,6 +225,9 @@ pub const TIGHT_FROM_PERCENT: f64 = 50.0;
 /// How long a reading stands before the account is read again, and how
 /// long one try waits before the next, in seconds: an hour.
 pub const READ_AGAIN: u64 = 3600;
+/// How old an account's newest reading may be before it is old, its pace
+/// unknown, in seconds: a day.
+pub const OLD_AFTER: u64 = 24 * 3600;
 /// The least span a window's recent rate is taken over, as a part of the
 /// window: a twentieth, fifteen minutes of five hours.
 pub const RATE_SPAN_PARTS: u64 = 20;
@@ -267,6 +288,18 @@ pub fn status(entries: &[Entry], now: u64) -> Status {
         })
         .unwrap_or_default();
     let limit = limit.map(|(_, l)| l);
+    let read_at = reading.map(|(_, at, _)| at).max(wallets.map(|(at, _)| at));
+    let age = read_at.map(|at| now.saturating_sub(at));
+    let old = match age {
+        None => Reading::None,
+        Some(age) if age > OLD_AFTER => Reading::Old,
+        Some(_) => Reading::Fresh,
+    };
+    if old != Reading::Fresh {
+        for w in windows.iter_mut().filter(|w| w.source == Source::Read) {
+            w.pace = Pace::Unknown;
+        }
+    }
     if let Some(l) = &limit
         && let Some(name) = &l.window
         && !windows.iter().any(|w| &w.name == name)
@@ -287,6 +320,8 @@ pub fn status(entries: &[Entry], now: u64) -> Status {
     }
     let pace = if limit.is_some() {
         Pace::UsedUp
+    } else if old != Reading::Fresh {
+        Pace::Unknown
     } else {
         windows.iter().map(|w| w.pace).min().unwrap_or(Pace::Steady)
     };
@@ -295,7 +330,8 @@ pub fn status(entries: &[Entry], now: u64) -> Status {
         balances,
         pace,
         limit,
-        read_at: reading.map(|(_, at, _)| at).max(wallets.map(|(at, _)| at)),
+        read_at,
+        reading: old,
         read_by: reading.and_then(|(_, _, read)| read.iter().find_map(|w| w.read_by)),
         tried_at: tried.map(|e| e.at),
         failed,

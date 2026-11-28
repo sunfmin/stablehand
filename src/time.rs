@@ -34,6 +34,22 @@ pub fn utc(secs: u64) -> String {
     )
 }
 
+/// `secs` as a person reads a span, in its two largest units, a zero
+/// second one left out, and seconds only under a minute: `6d 6h`,
+/// `4h 12m`, `12m`, `45s`.
+pub fn span(secs: u64) -> String {
+    let units = [(86_400, "d"), (3_600, "h"), (60, "m"), (1, "s")];
+    let i = units.iter().position(|(u, _)| secs >= *u).unwrap_or(3);
+    let (big, b) = units[i];
+    let mut said = format!("{}{b}", secs / big);
+    if let Some(&(small, s)) = units.get(i + 1).filter(|(u, _)| *u >= 60)
+        && secs % big / small > 0
+    {
+        said.push_str(&format!(" {}{s}", secs % big / small));
+    }
+    said
+}
+
 /// An RFC 3339 time (`2026-11-24T10:30:00Z`, `2026-11-24T10:30:00.029137+00:00`)
 /// as seconds since the Unix epoch, a fraction dropped; none where it is no
 /// such time or is before 1970.
@@ -103,6 +119,17 @@ mod tests {
         assert_eq!(utc(951_825_599), "2000-02-29T11:59:59Z");
         assert_eq!(utc(1_795_516_200), "2026-11-24T10:30:00Z");
         assert_eq!(utc(4_107_542_399), "2100-02-28T23:59:59Z");
+    }
+
+    #[test]
+    fn span_says_its_two_largest_units() {
+        assert_eq!(span(6 * 86_400 + 6 * 3_600 + 59), "6d 6h");
+        assert_eq!(span(4 * 3_600 + 12 * 60 + 5), "4h 12m");
+        assert_eq!(span(12 * 60 + 30), "12m");
+        assert_eq!(span(2 * 86_400), "2d");
+        assert_eq!(span(3_600 + 30), "1h");
+        assert_eq!(span(45), "45s");
+        assert_eq!(span(0), "0s");
     }
 
     #[test]

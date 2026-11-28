@@ -91,28 +91,37 @@ fn session_s() -> Option<String> {
 }
 
 /// One window as the bar shows it: its name, its use (none once it has
-/// reset since it was read), and its reading's age in seconds, where booked.
-type Shown = (String, Option<f64>, Option<u64>);
+/// reset since it was read), its reading's age in seconds, where booked,
+/// and how long until it resets, in seconds, where it says.
+type Shown = (String, Option<f64>, Option<u64>, Option<u64>);
+
+/// How long from `now` until `resets_at`: none where it is not said, or past.
+fn resets_in(resets_at: Option<u64>, now: u64) -> Option<u64> {
+    resets_at.filter(|r| *r > now).map(|r| r - now)
+}
 
 /// Books `windows` of `name`, and answers what the bar shows: `windows`,
 /// or with none given, the books' latest as `stablehand status` has them,
 /// a read of the account started where they are past [`FRESH_SECS`].
 fn shown(name: &str, windows: &[Window]) -> Result<Vec<Shown>, String> {
     let (store, a) = book(name, windows)?;
+    let now = crate::now()?;
     if !windows.is_empty() {
-        let given = windows
-            .iter()
-            .map(|w| (w.name.clone(), Some(w.used_percent), None));
+        let given = windows.iter().map(|w| {
+            let left = resets_in(w.resets_at, now);
+            (w.name.clone(), Some(w.used_percent), None, left)
+        });
         return Ok(given.collect());
     }
-    let now = crate::now()?;
     let status = books::status(&crate::usage::book_of(&store, &a)?, now);
     if !status.refused && books::read_after(&status, FRESH_SECS, now).is_none() {
         // Not started is as good as not due: the next refresh tries again.
         start_read(&store, name);
     }
-    let booked = (status.windows.into_iter())
-        .map(|w| (w.name, w.used_percent, Some(now.saturating_sub(w.at))));
+    let booked = (status.windows.into_iter()).map(|w| {
+        let left = resets_in(w.resets_at, now);
+        (w.name, w.used_percent, Some(now.saturating_sub(w.at)), left)
+    });
     Ok(booked.collect())
 }
 
@@ -174,11 +183,12 @@ fn start_read(store: &Store, name: &str) -> Option<()> {
     read.spawn().ok().map(drop)
 }
 
-/// The bar's line: the account, and each window's use, rounded, with its
-/// age where it is past [`FRESH_SECS`].
+/// The bar's line: the account, and each window's use, rounded, with how
+/// long until it resets where it says, and its age where it is past
+/// [`FRESH_SECS`].
 fn line(account: &str, windows: &[Shown]) -> String {
     let mut parts = vec![account.to_string()];
-    for (name, used, age_secs) in windows {
+    for (name, used, age_secs, left) in windows {
         let name = match name.as_str() {
             "five_hour" => "5h",
             "seven_day" => "7d",
@@ -188,7 +198,10 @@ fn line(account: &str, windows: &[Shown]) -> String {
         let age = age_secs
             .filter(|&a| a > FRESH_SECS)
             .map_or(String::new(), |a| format!(" ({} ago)", age(a)));
-        parts.push(format!("{name} {used}{age}"));
+        let left = left.map_or(String::new(), |l| {
+            format!(" resets in {}", crate::time::span(l))
+        });
+        parts.push(format!("{name} {used}{left}{age}"));
     }
     parts.join(" · ")
 }
@@ -207,7 +220,7 @@ mod tests {
     use super::*;
 
     fn w(name: &str, used: Option<f64>, age: Option<u64>) -> Shown {
-        (name.into(), used, age)
+        (name.into(), used, age, None)
     }
 
     #[test]
@@ -222,6 +235,31 @@ mod tests {
             "a · 5h 24% · 7d 41% · seven_day_opus 9%"
         );
         assert_eq!(line("a", &[]), "a");
+    }
+
+    #[test]
+    fn a_window_shows_how_long_until_it_resets_where_it_says() {
+        let windows = [
+            (
+                "five_hour".into(),
+                Some(24.0),
+                None,
+                Some(4 * 3_600 + 12 * 60),
+            ),
+            (
+                "seven_day".into(),
+                Some(70.0),
+                Some(25 * 60),
+                Some(6 * 86_400 + 6 * 3_600),
+            ),
+        ];
+        assert_eq!(
+            line("a", &windows),
+            "a · 5h 24% resets in 4h 12m · 7d 70% resets in 6d 6h (25m ago)"
+        );
+        assert_eq!(resets_in(Some(100), 40), Some(60));
+        assert_eq!(resets_in(Some(40), 40), None);
+        assert_eq!(resets_in(None, 40), None);
     }
 
     #[test]
