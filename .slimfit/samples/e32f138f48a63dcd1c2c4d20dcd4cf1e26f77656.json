@@ -1,0 +1,41 @@
+{
+  "tip": "e32f138f48a63dcd1c2c4d20dcd4cf1e26f77656",
+  "from": "532a69cbdc30be52967c80d20542df7459244c1d",
+  "pool": 41,
+  "drawn": {
+    "rust": [
+      {
+        "name": "src/books.rs:58:9: replace ReadBy::said -> ReadBy with Default::default()",
+        "outcome": "unviable"
+      },
+      {
+        "name": "src/readers/chatgpt.rs:180:5: replace codex_windows -> Result<Vec<Window>, String> with Ok(vec![Default::default()])",
+        "outcome": "unviable"
+      },
+      {
+        "name": "src/readers/chatgpt.rs:36:5: replace codex -> Result<Vec<Window>, String> with Ok(vec![Default::default()])",
+        "outcome": "unviable"
+      },
+      {
+        "name": "src/scan.rs:320:5: replace optokens_list -> Result<Vec<Entry>, String> with Ok(vec![])",
+        "outcome": "killed"
+      },
+      {
+        "name": "src/scan.rs:299:9: replace Entry::token -> Option<(Engine, &'static str)> with None",
+        "outcome": "killed"
+      },
+      {
+        "name": "src/scan.rs:330:18: replace match guard !o.status.success() with true in optokens_list",
+        "outcome": "killed"
+      },
+      {
+        "name": "src/readers/claude_code.rs:119:5: replace question -> Result<Vec<Window>, String> with Ok(vec![])",
+        "outcome": "killed"
+      },
+      {
+        "name": "src/readers/claude_code.rs:84:15: replace == with != in usage",
+        "outcome": "killed"
+      }
+    ]
+  }
+}
