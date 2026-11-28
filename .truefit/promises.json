@@ -119,6 +119,12 @@
     "source": "src/main.rs:803",
     "why": "describes, advises or records history; the word is no guarantee a check could keep"
   },
+  "55fd2a3a9d4c": {
+    "mark": "not",
+    "sentence": "Only a token the endpoint refuses its scope (HTTP 403 `oauth_scope_insufficient`) is asked the question again, not its usage, once read so.",
+    "source": "docs/adr/0004-a-setup-token-is-read-by-one-question.md:23",
+    "why": "restates a promise a [[promise]] registers from its manual line (the read's hour, a refused credential, a model in no group, the refusal, the session's home, the kept command, run's stderr, --running)"
+  },
   "5a5529960473": {
     "mark": "not",
     "sentence": "Set it in `~/.claude/settings.json`: /// /// `\"statusLine\": {\"type\": \"command\", \"command\": \"stablehand statusline --then 'bash \\\"$HOME/.claude/statusline.sh\\\"'\"}` /// /// ## How it finds the account /// /// `--account`, else `${const:ACCOUNT_VAR}` (`stablehand run` sets it in the session it starts), else from the session's environment, never by running a token command: none with `ANTHROPIC_BASE_URL` set (not an Anthropic subscription) or `CLAUDE_CODE_OAUTH_TOKEN` set (a token tells no account by itself); otherwise the claude-code account bound to this machine whose `--home` is the session's config dir, `$CLAUDE_CONFIG_DIR`, else `~/.claude` (paths compared resolved, symlinks followed). None kept there, or it is off: no account.",
@@ -155,6 +161,11 @@
     "source": "src/main.rs:196",
     "why": "describes, advises or records history; the word is no guarantee a check could keep"
   },
+  "68db379e09f7": {
+    "mark": "promise",
+    "sentence": "The read fails only if both fail, its `error` naming both, each with its fix.",
+    "source": "src/main.rs:207"
+  },
   "817ed96a8bb8": {
     "mark": "not",
     "sentence": "/// /// Answers `{\"commands\": {\"<engine>\": \"<command>\"}}`, only the engines with one kept; `{\"commands\": {}}` on a fresh store.",
@@ -190,6 +201,12 @@
     "sentence": "/// /// A bound kimi login's token lasts 15 minutes, and only a kimi session refreshes it: read long after one, it is refused (HTTP 401), said with that fix.",
     "source": "src/main.rs:223",
     "why": "describes, advises or records history; the word is no guarantee a check could keep"
+  },
+  "a443a149ad07": {
+    "mark": "not",
+    "sentence": "Each window's `models` are its group's, by the ids `agy models` gives, run after it in the same home: a model the group's description names, with any variant after it (`Claude Opus 5.5` holds `claude-opus-5-5-high`). /// /// ## What trips you up /// /// A claude-code account whose login is a `claude setup-token` token spends one smallest-model turn of its quota a reading, and any claude-code account does on a read its usage fails (a 429 among them): at most once an hour, unless `--now`, and each such read says `spent_turn: true`. /// /// An agy account is read by running agy in its home, on its machine only: a portable one is refused (bind it), a home not signed in fails only after agy has waited 60s for a browser sign-in, and an API-key login (agy exits 2) has no account quota to read.",
+    "source": "src/main.rs:215",
+    "why": "restates a promise a [[promise]] registers from its manual line (the read's hour, a refused credential, a model in no group, the refusal, the session's home, the kept command, run's stderr, --running)"
   },
   "a6c06043c451": {
     "mark": "not",
@@ -262,5 +279,16 @@
     "sentence": "terms: Terms, }, /// Every account, by name.",
     "source": "src/main.rs:409",
     "why": "describes, advises or records history; the word is no guarantee a check could keep"
+  },
+  "efc4d32cc2e5": {
+    "mark": "not",
+    "sentence": "The read fails only if both fail, saying both.",
+    "source": "docs/adr/0004-a-setup-token-is-read-by-one-question.md:21",
+    "why": "restates a promise a [[promise]] registers from its manual line (the read's hour, a refused credential, a model in no group, the refusal, the session's home, the kept command, run's stderr, --running)"
+  },
+  "fd635d0bdde4": {
+    "mark": "promise",
+    "sentence": "Only a token usage refuses its scope (HTTP 403 `oauth_scope_insufficient`: a `claude setup-token` token) is asked the question again next time, not its usage; after any other failure, the next read asks usage first again.",
+    "source": "src/main.rs:207"
   }
 }
