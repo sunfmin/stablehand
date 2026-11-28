@@ -725,6 +725,8 @@ fn a_reading_days_old_with_nothing_since_is_old_and_its_pace_unknown() {
     };
     assert_eq!(day(OLD_AFTER).reading, Reading::Fresh);
     assert_eq!(day(OLD_AFTER + 1).reading, Reading::Old);
+    // A day is a day: a reading of the night before is still fresh.
+    assert_eq!(day(23 * HOUR).reading, Reading::Fresh);
     // Never read: nothing known.
     let none = status(&[], NOW);
     assert_eq!((none.reading, none.pace), (Reading::None, Pace::Unknown));
