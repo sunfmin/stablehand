@@ -7,3 +7,4 @@
 "docs/adr/0002-run-starts-the-engine-on-the-pick.md" = "adr"
 "docs/adr/0003-an-engine-s-command-is-stablehand-s.md" = "adr"
 "docs/adr/0004-a-setup-token-is-read-by-one-question.md" = "adr"
+"docs/adr/0005-a-pick-spends-first-the-quota-that-resets-soonest.md" = "adr"

@@ -7,11 +7,15 @@
 //! account any of whose windows is the stop percent used takes no new
 //! session until that window resets, those running go on; one whose
 //! window, at its present rate with
-//! the sessions running and one more, runs out before it resets takes none;
-//! of the rest, the one with the most left is picked. A session of a model
-//! is judged by the books its model spends ([`spent`]).
-use crate::books::{self, Status};
+//! the sessions running and one more, runs out before it resets takes none,
+//! its long window ([`long_window`]) left out of that rate. Of the rest, the
+//! one whose long window resets first is picked, quota that expires soonest
+//! spent first (docs/adr/0005); of equals, and of those whose reset is not
+//! known, after them, the one with the most left. A session of a model is
+//! judged by the books its model spends ([`spent`]).
+use crate::books::{self, Status, WindowStatus};
 use serde::Serialize;
+use std::cmp::Reverse;
 
 /// How much of any window an account may have used and still take a new
 /// session, in percent, unless `--stop-percent` says (Guild's
@@ -73,12 +77,13 @@ pub enum Pick {
 
 /// Which of `candidates` one more session may start on at `now`, an
 /// account whose window is `stop_percent` used taking none: of those that
-/// may, the one with the most left of its most used window; one with no
-/// reading in force (or only stale) after every one with one; of equals,
-/// the first given.
+/// may, the one whose long window resets first; of equals, and of those
+/// whose reset is not known (after every one known), the one with the most
+/// left of its most used window, one with no reading in force (or only
+/// stale) after every one with one; of equals, the first given.
 pub fn pick(candidates: &[Candidate], stop_percent: u8, now: u64) -> Pick {
-    // The most left so far; a later one replaces it only with more.
-    let mut best: Option<(&Candidate, Option<f64>)> = None;
+    // The first so far; a later one replaces it only by going before it.
+    let mut best: Option<(&Candidate, Rank)> = None;
     let mut why = Vec::new();
     for c in candidates {
         match passed(c, stop_percent, now) {
@@ -89,9 +94,12 @@ pub fn pick(candidates: &[Candidate], stop_percent: u8, now: u64) -> Pick {
                 until,
             }),
             None => {
-                let left = left_percent(&c.status);
-                if best.is_none_or(|(_, most)| left > most) {
-                    best = Some((c, left));
+                let rank: Rank = (
+                    long_window(&c.status).and_then(|w| w.resets_at.map(Reverse)),
+                    left_percent(&c.status),
+                );
+                if best.is_none_or(|(_, first)| rank > first) {
+                    best = Some((c, rank));
                 }
             }
         }
@@ -103,6 +111,22 @@ pub fn pick(candidates: &[Candidate], stop_percent: u8, now: u64) -> Pick {
             why,
         },
     }
+}
+
+/// Where an account stands in a step's ranking, the greater picked first:
+/// the earlier reset of its long window (the books drop one past), one
+/// known before none; then the most left of its most used window, some
+/// before none.
+type Rank = (Option<Reverse<u64>>, Option<f64>);
+
+/// The window that holds an account's quota longest: its longest by length
+/// (each reader gives the length its engine or the window's name says),
+/// where it has a shorter one too. An account whose windows are all of one
+/// length, or of none known, has none: a sole window may be the short one.
+fn long_window(s: &Status) -> Option<&WindowStatus> {
+    let longest = s.windows.iter().max_by_key(|w| w.minutes)?;
+    let shortest = s.windows.iter().filter_map(|w| w.minutes).min()?;
+    (longest.minutes > Some(shortest)).then_some(longest)
 }
 
 /// `s` as a session of `model` spends it: of an account whose windows are
@@ -187,9 +211,13 @@ fn passed(c: &Candidate, stop_percent: u8, now: u64) -> Option<(Reason, String, 
             w.resets_at,
         ));
     }
+    // Running the long window down just before its reset is the aim; the
+    // stop percent holds its margin.
+    let long = long_window(s);
     let (w, at_reset) = s
         .windows
         .iter()
+        .filter(|w| !long.is_some_and(|l| std::ptr::eq(*w, l)))
         .filter_map(|w| Some((w, books::runs_out(w, c.running, now)?)))
         .min_by_key(|(w, _)| w.resets_at)?;
     Some((

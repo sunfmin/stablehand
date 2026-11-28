@@ -1,0 +1,16 @@
+{
+  "tree": "6448960e85c305eb5c9202057e39c70b1f6c9d8c+d1fba762150c532c",
+  "picker": "codex:01a2216f-a993-7891-b5d5-8dc5e5a45d40:default",
+  "author": "claude-code:fbb736af-d30c-58eb-98fd-48bce05cea7d:opus",
+  "picks": {
+    "rust": [
+      {
+        "name": "src/pick.rs:129:22: replace > with >= in long_window",
+        "why": "Equal-length windows could gain reset priority and a pace exemption, a boundary the new five-hour and seven-day fixtures do not exercise.",
+        "outcome": "killed",
+        "first_outcome": "killed"
+      }
+    ]
+  },
+  "added_lines": 120
+}

@@ -279,11 +279,11 @@ enum Register {
     ///
     /// - a caller's limit holds on (`stablehand limit`), until it lifts;
     /// - any of whose windows is `--stop-percent` used, until that window resets: the rest is the margin of the sessions already running;
-    /// - one of whose windows, at its present rate shared by the sessions running and one more, runs out before it resets. A reading over two hours old, or a window under half used, runs on at no rate.
+    /// - one of whose windows, at its present rate shared by the sessions running and one more, runs out before it resets, its long window aside: running that down just before its reset is the aim, the stop its margin. A reading over two hours old, or a window under half used, runs on at no rate.
     ///
     /// How many sessions run on an account never passes it over by itself: they count only in that rate.
     ///
-    /// Of the rest, the one with the most left of its most used window; one with no reading in force, or only stale ones, after every one with one; of equals, the first by name.
+    /// Of the rest, the one whose long window resets first: quota that expires soonest is spent first (docs/adr/0005). An account's long window is its longest by length (`seven_day` beside `five_hour`), where it has a shorter one too: a sole window, or windows of one length, may be the short one. Of equal resets, and of those whose long window's reset is not known (after every one known), the one with the most left of its most used window; one with no reading in force, or only stale ones, after every one with one; of equals, the first by name. Only the accounts of one step are ranked so: the order across engines and models stays the order's.
     ///
     /// ## A session's model
     ///

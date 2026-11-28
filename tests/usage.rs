@@ -747,17 +747,20 @@ fn pick_takes_the_engine_s_usable_accounts_and_passes_over_each_by_guild_s_rules
     );
 
     // No count of sessions running passes an account over by itself: its
-    // windows and their pace decide (stablehand#26). claude-felix's pace,
-    // shared by three, runs out; claude-two, never read, runs on at no rate.
+    // windows and their pace decide (stablehand#26). claude-felix's week,
+    // shared by three, runs out before its reset: its long window, spent
+    // first as its reset is known; claude-two, never read, comes after it.
     let many = [
         "--machine",
         "studio",
         "--running",
         "claude-felix=2,claude-two=40",
     ];
+    assert_eq!(picked(&b, &many), Ok("claude-felix".into()));
+    // Its five_hour 60% used two hours in runs out: passed over by its pace.
+    b.answers(60.0, 52.0);
+    b.read(&["claude-felix", "--now"]);
     assert_eq!(picked(&b, &many), Ok("claude-two".into()));
-    let one_more = ["--machine", "studio", "--running", "claude-two=40"];
-    assert_eq!(picked(&b, &one_more), Ok("claude-felix".into()));
 
     // claude-two off, claude-felix at two running is passed over by its pace.
     b.ok(&["off", "claude-two", "--reason", "paused"]);
