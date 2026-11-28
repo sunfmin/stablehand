@@ -1,0 +1,10 @@
+{
+  "tree": "6448960e85c305eb5c9202057e39c70b1f6c9d8c+d1fba762150c532c",
+  "lines": 106,
+  "serves": "stablehand#73",
+  "considered": "the books' runs_out and left_percent, reused as they are; a Rank struct with its own comparison, replaced by a tuple key; the filter of a passed reset, dropped since the books drop one",
+  "reviewer": "codex:01a2216e-c23e-74b1-8887-0c2394b5fda6:default",
+  "author": "claude-code:fbb736af-d30c-58eb-98fd-48bce05cea7d:opus",
+  "cut": "In src/pick.rs, replace Rank and goes_before with a lexicographic (Option<Reverse<u64>>, Option<f64>) key and keep the strict > comparison so ties retain the first candidate. In long_window, drop the filter before max_by_key because Option orders None below Some and the shortest-known check already handles all-unknown lengths. In src/pick_tests.rs, put the six reset-ordering cases in a table and use one assertion loop.",
+  "answer": "Made all three: Rank is the tuple key compared with >, the filter is gone, and the six cases are one table and loop. What grows past the allowance is tests (the acceptance cases) and src/pick.rs +28 net."
+}
