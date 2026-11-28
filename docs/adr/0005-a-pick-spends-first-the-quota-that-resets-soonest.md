@@ -27,6 +27,12 @@ its reset. Seen on the claude-code / opus step: 15% left resetting in 1d 2h,
   account over for a short window (a session cut off mid-work), never for
   its long one: running the long window down just before its reset is the
   aim, and the stop percent still holds a margin.
+- A long window within 12 hours of its reset stops at 95% used, not at
+  the stop percent (a stop percent above 95 holds). Felix, 2026-11-28:
+  the stop percent's margin is for sessions already running; a few hours
+  before a long window resets there is little to protect, and up to 10%
+  of every week was lost at its reset. Every other window, and a long one
+  further from its reset, stops at the stop percent.
 - A copy is still passed over while its account is on here.
 
 ## Consequences

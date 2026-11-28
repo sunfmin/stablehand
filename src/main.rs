@@ -278,7 +278,7 @@ enum Register {
     /// Guild's ledger's, carried over. None is picked on an account
     ///
     /// - a caller's limit holds on (`stablehand limit`), until it lifts;
-    /// - any of whose windows is `--stop-percent` used, until that window resets: the rest is the margin of the sessions already running;
+    /// - any of whose windows is `--stop-percent` used, until that window resets: the rest is the margin of the sessions already running. A long window (below) within 12 hours of its reset stops at 95% instead, or at `--stop-percent` where that is higher: near its reset little is left to protect, and what is not spent is lost;
     /// - one of whose windows, at its present rate shared by the sessions running and one more, runs out before it resets, its long window aside: running that down just before its reset is the aim, the stop its margin. A reading over two hours old, or a window under half used, runs on at no rate.
     ///
     /// How many sessions run on an account never passes it over by itself: they count only in that rate.
@@ -312,7 +312,7 @@ enum Register {
         /// The machine the session starts on; without it, this one (`$STABLEHAND_MACHINE`, else `hostname -s`).
         #[arg(long, verbatim_doc_comment)]
         machine: Option<String>,
-        /// How much of any window, in percent, takes an account out of the pick until it resets.
+        /// How much of any window, in percent, takes an account out of the pick until it resets; a long window within 12 hours of its reset, at least 95.
         #[arg(long, default_value_t = pick::STOP_PERCENT, value_parser = clap::value_parser!(u8).range(1..=100), verbatim_doc_comment)]
         stop_percent: u8,
     },

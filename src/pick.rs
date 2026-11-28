@@ -5,7 +5,8 @@
 //! The rules are Guild's ledger's quota (`crates/ledger`: `quota`,
 //! `Funds::stopped`, `Funds::runs_out`), carried over: an
 //! account any of whose windows is the stop percent used takes no new
-//! session until that window resets, those running go on; one whose
+//! session until that window resets, those running go on (a long window
+//! near its reset stops later, [`NEAR_RESET_STOP_PERCENT`]); one whose
 //! window, at its present rate with
 //! the sessions running and one more, runs out before it resets takes none,
 //! its long window ([`long_window`]) left out of that rate. Of the rest, the
@@ -21,6 +22,16 @@ use std::cmp::Reverse;
 /// session, in percent, unless `--stop-percent` says (Guild's
 /// `STOP_PERCENT`, Felix 2026-11-16).
 pub const STOP_PERCENT: u8 = 90;
+
+/// How long before its reset a long window ([`long_window`]) stops at
+/// [`NEAR_RESET_STOP_PERCENT`] instead of the stop percent, in seconds:
+/// near its reset the margin has little to protect, and what is not spent
+/// is lost at the reset (docs/adr/0005, Felix 2026-11-28).
+pub const NEAR_RESET_SECS: u64 = 12 * 60 * 60;
+
+/// The stop of a long window within [`NEAR_RESET_SECS`] of its reset, in
+/// percent; a stop percent above it holds instead (docs/adr/0005).
+pub const NEAR_RESET_STOP_PERCENT: u8 = 95;
 
 /// One account that may be picked, as the register, its login and its books
 /// say of it now.
@@ -195,17 +206,29 @@ fn passed(c: &Candidate, stop_percent: u8, now: u64) -> Option<(Reason, String, 
             until,
         ));
     }
-    if let Some((w, used)) = s
+    let long = long_window(s);
+    let is_long = |w: &WindowStatus| long.is_some_and(|l| std::ptr::eq(w, l));
+    let stop_of = |w: &WindowStatus| {
+        let near_reset = w
+            .resets_at
+            .is_some_and(|at| at <= now.saturating_add(NEAR_RESET_SECS));
+        if is_long(w) && near_reset {
+            stop_percent.max(NEAR_RESET_STOP_PERCENT)
+        } else {
+            stop_percent
+        }
+    };
+    if let Some((w, used, stop)) = s
         .windows
         .iter()
-        .filter_map(|w| Some((w, w.used_percent?)))
-        .filter(|(_, used)| *used >= f64::from(stop_percent))
-        .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
+        .filter_map(|w| Some((w, w.used_percent?, stop_of(w))))
+        .filter(|(_, used, stop)| *used >= f64::from(*stop))
+        .max_by(|(_, a, _), (_, b, _)| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
     {
         return Some((
             Reason::Stopped,
             format!(
-                "its {} is {used}% used, at its stop of {stop_percent}%: no new session until it resets",
+                "its {} is {used}% used, at its stop of {stop}%: no new session until it resets",
                 w.name
             ),
             w.resets_at,
@@ -213,11 +236,10 @@ fn passed(c: &Candidate, stop_percent: u8, now: u64) -> Option<(Reason, String, 
     }
     // Running the long window down just before its reset is the aim; the
     // stop percent holds its margin.
-    let long = long_window(s);
     let (w, at_reset) = s
         .windows
         .iter()
-        .filter(|w| !long.is_some_and(|l| std::ptr::eq(*w, l)))
+        .filter(|w| !is_long(w))
         .filter_map(|w| Some((w, books::runs_out(w, c.running, now)?)))
         .min_by_key(|(w, _)| w.resets_at)?;
     Some((
