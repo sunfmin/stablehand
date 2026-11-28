@@ -278,28 +278,28 @@ pub fn status(entries: &[Entry], now: u64) -> Status {
                 .collect()
         })
         .unwrap_or_default();
+    let read_at = reading.map(|(_, at, _)| at).max(wallets.map(|(at, _)| at));
+    let old = match read_at.map(|at| now.saturating_sub(at)) {
+        None => Reading::None,
+        Some(age) if age > OLD_AFTER => Reading::Old,
+        Some(_) => Reading::Fresh,
+    };
     let limit = held(&book, now);
     let mut windows: Vec<WindowStatus> = reading
         .map(|(i, at, read)| {
             let limit = limit.as_ref().filter(|(l, _)| *l > i).map(|(_, l)| l);
             read.iter()
                 .map(|w| window_status(w, at, failed.is_some(), &book, limit, now))
+                .map(|mut w| {
+                    if old != Reading::Fresh && w.source == Source::Read {
+                        w.pace = Pace::Unknown;
+                    }
+                    w
+                })
                 .collect()
         })
         .unwrap_or_default();
     let limit = limit.map(|(_, l)| l);
-    let read_at = reading.map(|(_, at, _)| at).max(wallets.map(|(at, _)| at));
-    let age = read_at.map(|at| now.saturating_sub(at));
-    let old = match age {
-        None => Reading::None,
-        Some(age) if age > OLD_AFTER => Reading::Old,
-        Some(_) => Reading::Fresh,
-    };
-    if old != Reading::Fresh {
-        for w in windows.iter_mut().filter(|w| w.source == Source::Read) {
-            w.pace = Pace::Unknown;
-        }
-    }
     if let Some(l) = &limit
         && let Some(name) = &l.window
         && !windows.iter().any(|w| &w.name == name)
