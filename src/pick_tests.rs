@@ -307,17 +307,20 @@ fn of_those_that_may_take_one_the_most_left_is_picked_and_no_reading_last() {
         pick(&accounts, STOP_PERCENT, NOW),
         Pick::Account("most".into())
     );
-    // Its most used window decides how much is left.
-    let both = [said(
-        NOW - 180 * MINUTE,
-        &[
-            ("five_hour", 5.0, NOW + 280 * MINUTE),
-            ("seven_day", 70.0, NOW + 3 * 1440 * MINUTE),
-        ],
-    )];
+    // Its most used window decides how much is left (their weeks resetting
+    // together).
+    let both = |five, week| {
+        [said(
+            NOW - 180 * MINUTE,
+            &[
+                ("five_hour", five, NOW + 280 * MINUTE),
+                ("seven_day", week, NOW + 3 * 1440 * MINUTE),
+            ],
+        )]
+    };
     let accounts = [
-        acct("week-used", &both, NOW),
-        acct("half", &steady(45.0), NOW),
+        acct("week-used", &both(5.0, 70.0), NOW),
+        acct("half", &both(45.0, 20.0), NOW),
     ];
     assert_eq!(
         pick(&accounts, STOP_PERCENT, NOW),
@@ -566,4 +569,91 @@ fn a_model_s_windows_carry_a_limit_on_them_and_not_one_on_another_group() {
 fn ungrouped_windows_know_no_model_and_every_one_decides() {
     let s = status(&five_hour(95.0, 100), NOW);
     assert_eq!(spent(s.clone(), "claude-opus-5-5"), (s, false));
+}
+
+// Within a step, the quota that resets soonest is spent first: the earliest
+// reset of each account's long window, then the most left.
+
+const HOUR: u64 = 60 * MINUTE;
+
+/// A claude-code account read a minute ago: its five_hour 10% used, its
+/// seven_day `used` percent used, resetting in `hours` (none: not said).
+fn week_left(name: &'static str, used: f64, hours: Option<u64>) -> Candidate<'static> {
+    let mut week = window("seven_day", used, 0);
+    week.resets_at = hours.map(|h| NOW + h * HOUR);
+    let windows = vec![window("five_hour", 10.0, NOW + 4 * HOUR), week];
+    let entries = [Entry {
+        at: NOW - MINUTE,
+        what: What::Read(windows),
+    }];
+    acct(name, &entries, NOW)
+}
+
+#[test]
+fn the_account_whose_long_window_resets_first_is_picked_until_it_stops() {
+    // Felix's claude-code / opus step, 2026-11-28.
+    let today = |code_2: f64, nate: f64| {
+        [
+            week_left("claude-theplant-jp", 16.0, Some(6 * 24 + 6)),
+            week_left("claude-nate-ultra", nate, Some(2 * 24 + 12)),
+            week_left("claude-code-2", code_2, Some(24 + 2)),
+        ]
+    };
+    let picked = |accounts: &[Candidate]| match pick(accounts, STOP_PERCENT, NOW) {
+        Pick::Account(name) => name,
+        none => panic!("none: {none:?}"),
+    };
+    assert_eq!(picked(&today(85.0, 75.0)), "claude-code-2");
+    assert_eq!(picked(&today(90.0, 75.0)), "claude-nate-ultra");
+    assert_eq!(picked(&today(90.0, 90.0)), "claude-theplant-jp");
+}
+
+#[test]
+fn an_account_whose_long_window_s_reset_is_not_known_comes_after_one_known() {
+    let accounts = [
+        week_left("unknown", 10.0, None),
+        week_left("known", 70.0, Some(5 * 24)),
+    ];
+    assert_eq!(
+        pick(&accounts, STOP_PERCENT, NOW),
+        Pick::Account("known".into())
+    );
+    // Of equal resets, and of those not known, the most left.
+    let accounts = [
+        week_left("less", 70.0, Some(5 * 24)),
+        week_left("more", 40.0, Some(5 * 24)),
+    ];
+    assert_eq!(
+        pick(&accounts, STOP_PERCENT, NOW),
+        Pick::Account("more".into())
+    );
+    let accounts = [week_left("less", 70.0, None), week_left("more", 40.0, None)];
+    assert_eq!(
+        pick(&accounts, STOP_PERCENT, NOW),
+        Pick::Account("more".into())
+    );
+}
+
+#[test]
+fn a_long_window_that_runs_out_before_its_reset_passes_over_nothing() {
+    // 85% of the week used, 26 hours from its reset: 101% at its rate.
+    let a = week_left("claude-code-2", 85.0, Some(26));
+    let week = a.status.windows.iter().find(|w| w.name == "seven_day");
+    assert!(books::runs_out(week.unwrap(), 0, NOW).is_some());
+    assert_eq!(
+        pick(&[a], STOP_PERCENT, NOW),
+        Pick::Account("claude-code-2".into())
+    );
+    // Its five_hour still guards a session cut off mid-work.
+    let book = [said(
+        NOW - MINUTE,
+        &[
+            ("five_hour", 60.0, NOW + 3 * HOUR),
+            ("seven_day", 20.0, NOW + 100 * HOUR),
+        ],
+    )];
+    assert_eq!(
+        passed_over(&book, 0, NOW),
+        Some((Reason::RunsOut, Some(NOW + 3 * HOUR)))
+    );
 }

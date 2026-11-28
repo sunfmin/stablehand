@@ -45,6 +45,9 @@
   failed.
 - **Pace**: per window, whether at its recent rate it runs out before it
   resets (**tight**), resets with much left (**spare**), or is **used up**.
+- **Long window**: an account's longest window (`seven_day` beside
+  `five_hour`), where it has a shorter one; a pick spends first the account
+  whose long window resets soonest.
 - **Order**: the engines, and of each the models, the next session starts
   on, highest first (`claude-code@opus codex grok agy@gemini-4-neon-high,claude-opus-5-5-high`);
   one per machine, kept beside the accounts. A preference only: the
