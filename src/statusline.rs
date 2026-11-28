@@ -95,11 +95,6 @@ fn session_s() -> Option<String> {
 /// and how long until it resets, in seconds, where it says.
 type Shown = (String, Option<f64>, Option<u64>, Option<u64>);
 
-/// How long from `now` until `resets_at`: none where it is not said, or past.
-fn resets_in(resets_at: Option<u64>, now: u64) -> Option<u64> {
-    resets_at.filter(|r| *r > now).map(|r| r - now)
-}
-
 /// Books `windows` of `name`, and answers what the bar shows: `windows`,
 /// or with none given, the books' latest as `stablehand status` has them,
 /// a read of the account started where they are past [`FRESH_SECS`].
@@ -108,7 +103,7 @@ fn shown(name: &str, windows: &[Window]) -> Result<Vec<Shown>, String> {
     let now = crate::now()?;
     if !windows.is_empty() {
         let given = windows.iter().map(|w| {
-            let left = resets_in(w.resets_at, now);
+            let left = crate::time::until(w.resets_at, now);
             (w.name.clone(), Some(w.used_percent), None, left)
         });
         return Ok(given.collect());
@@ -119,7 +114,7 @@ fn shown(name: &str, windows: &[Window]) -> Result<Vec<Shown>, String> {
         start_read(&store, name);
     }
     let booked = (status.windows.into_iter()).map(|w| {
-        let left = resets_in(w.resets_at, now);
+        let left = crate::time::until(w.resets_at, now);
         (w.name, w.used_percent, Some(now.saturating_sub(w.at)), left)
     });
     Ok(booked.collect())
@@ -257,9 +252,6 @@ mod tests {
             line("a", &windows),
             "a · 5h 24% resets in 4h 12m · 7d 70% resets in 6d 6h (25m ago)"
         );
-        assert_eq!(resets_in(Some(100), 40), Some(60));
-        assert_eq!(resets_in(Some(40), 40), None);
-        assert_eq!(resets_in(None, 40), None);
     }
 
     #[test]

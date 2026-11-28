@@ -34,6 +34,11 @@ pub fn utc(secs: u64) -> String {
     )
 }
 
+/// Seconds from `now` until `at`: none where `at` is not said, or past.
+pub fn until(at: Option<u64>, now: u64) -> Option<u64> {
+    at.filter(|at| *at > now).map(|at| at - now)
+}
+
 /// `secs` as a person reads a span, in its two largest units, a zero
 /// second one left out, and seconds only under a minute: `6d 6h`,
 /// `4h 12m`, `12m`, `45s`.
@@ -130,6 +135,9 @@ mod tests {
         assert_eq!(span(3_600 + 30), "1h");
         assert_eq!(span(45), "45s");
         assert_eq!(span(0), "0s");
+        assert_eq!(until(Some(100), 40), Some(60));
+        assert_eq!(until(Some(40), 40), None);
+        assert_eq!(until(None, 40), None);
     }
 
     #[test]

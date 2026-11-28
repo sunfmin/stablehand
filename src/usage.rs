@@ -149,7 +149,7 @@ fn windows(s: &Status, now: u64) -> Vec<Value> {
     s.windows
         .iter()
         .map(|w| {
-            let resets_in = w.resets_at.filter(|r| *r > now).map(|r| r - now);
+            let resets_in = crate::time::until(w.resets_at, now);
             json!({
                 "name": w.name,
                 "group": w.group,
