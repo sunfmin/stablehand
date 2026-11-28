@@ -15,6 +15,7 @@
 //! judged by the books its model spends ([`spent`]).
 use crate::books::{self, Status, WindowStatus};
 use serde::Serialize;
+use std::cmp::Reverse;
 
 /// How much of any window an account may have used and still take a new
 /// session, in percent, unless `--stop-percent` says (Guild's
@@ -93,11 +94,11 @@ pub fn pick(candidates: &[Candidate], stop_percent: u8, now: u64) -> Pick {
                 until,
             }),
             None => {
-                let rank = Rank {
-                    resets_at: long_window(&c.status).and_then(|w| w.resets_at),
-                    left: left_percent(&c.status),
-                };
-                if best.is_none_or(|(_, first)| rank.goes_before(&first)) {
+                let rank: Rank = (
+                    long_window(&c.status).and_then(|w| w.resets_at.map(Reverse)),
+                    left_percent(&c.status),
+                );
+                if best.is_none_or(|(_, first)| rank > first) {
                     best = Some((c, rank));
                 }
             }
@@ -112,38 +113,18 @@ pub fn pick(candidates: &[Candidate], stop_percent: u8, now: u64) -> Pick {
     }
 }
 
-/// Where an account stands in a step's ranking.
-#[derive(Clone, Copy)]
-struct Rank {
-    /// When its long window resets, where known (the books drop one past).
-    resets_at: Option<u64>,
-    /// How much of its most used window is left ([`left_percent`]).
-    left: Option<f64>,
-}
-
-impl Rank {
-    /// Whether it is picked before `other`: the earlier reset, one known
-    /// before none; else the most left, some before none.
-    fn goes_before(&self, other: &Rank) -> bool {
-        match (self.resets_at, other.resets_at) {
-            (Some(a), Some(b)) if a != b => a < b,
-            (Some(_), None) => true,
-            (None, Some(_)) => false,
-            _ => self.left > other.left,
-        }
-    }
-}
+/// Where an account stands in a step's ranking, the greater picked first:
+/// the earlier reset of its long window (the books drop one past), one
+/// known before none; then the most left of its most used window, some
+/// before none.
+type Rank = (Option<Reverse<u64>>, Option<f64>);
 
 /// The window that holds an account's quota longest: its longest by length
 /// (each reader gives the length its engine or the window's name says),
 /// where it has a shorter one too. An account whose windows are all of one
 /// length, or of none known, has none: a sole window may be the short one.
 fn long_window(s: &Status) -> Option<&WindowStatus> {
-    let longest = s
-        .windows
-        .iter()
-        .filter(|w| w.minutes.is_some())
-        .max_by_key(|w| w.minutes)?;
+    let longest = s.windows.iter().max_by_key(|w| w.minutes)?;
     let shortest = s.windows.iter().filter_map(|w| w.minutes).min()?;
     (longest.minutes > Some(shortest)).then_some(longest)
 }

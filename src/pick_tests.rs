@@ -608,56 +608,50 @@ fn the_account_whose_long_window_resets_first_is_picked_until_it_stops() {
 
 #[test]
 fn an_account_whose_long_window_s_reset_is_not_known_comes_after_one_known() {
-    let accounts = [
-        week_left("unknown", 10.0, None),
-        week_left("known", 70.0, Some(5 * 24)),
+    // (name, used, hours to its week's reset) of two accounts, the one picked.
+    let five_days = Some(5 * 24);
+    type Case = [(&'static str, f64, Option<u64>); 2];
+    let cases: [(&str, Case, &str); 6] = [
+        (
+            "known after",
+            [("unknown", 10.0, None), ("known", 70.0, five_days)],
+            "known",
+        ),
+        (
+            "known first",
+            [("known", 70.0, five_days), ("unknown", 10.0, None)],
+            "known",
+        ),
+        // A reset come already tells nothing of the next one.
+        (
+            "reset come",
+            [("unknown", 10.0, None), ("reset", 10.0, Some(0))],
+            "unknown",
+        ),
+        (
+            "equals",
+            [("first", 40.0, five_days), ("second", 40.0, five_days)],
+            "first",
+        ),
+        (
+            "equal resets",
+            [("less", 70.0, five_days), ("more", 40.0, five_days)],
+            "more",
+        ),
+        (
+            "none known",
+            [("less", 70.0, None), ("more", 40.0, None)],
+            "more",
+        ),
     ];
-    assert_eq!(
-        pick(&accounts, STOP_PERCENT, NOW),
-        Pick::Account("known".into())
-    );
-    // Given the other way round, the known reset still goes first.
-    let accounts = [
-        week_left("known", 70.0, Some(5 * 24)),
-        week_left("unknown", 10.0, None),
-    ];
-    assert_eq!(
-        pick(&accounts, STOP_PERCENT, NOW),
-        Pick::Account("known".into())
-    );
-    // A reset come already tells nothing of the next one: of equals left,
-    // the first given.
-    let accounts = [
-        week_left("unknown", 10.0, None),
-        week_left("reset", 10.0, Some(0)),
-    ];
-    assert_eq!(
-        pick(&accounts, STOP_PERCENT, NOW),
-        Pick::Account("unknown".into())
-    );
-    // Of equals in both, the first given.
-    let accounts = [
-        week_left("first", 40.0, Some(5 * 24)),
-        week_left("second", 40.0, Some(5 * 24)),
-    ];
-    assert_eq!(
-        pick(&accounts, STOP_PERCENT, NOW),
-        Pick::Account("first".into())
-    );
-    // Of equal resets, and of those not known, the most left.
-    let accounts = [
-        week_left("less", 70.0, Some(5 * 24)),
-        week_left("more", 40.0, Some(5 * 24)),
-    ];
-    assert_eq!(
-        pick(&accounts, STOP_PERCENT, NOW),
-        Pick::Account("more".into())
-    );
-    let accounts = [week_left("less", 70.0, None), week_left("more", 40.0, None)];
-    assert_eq!(
-        pick(&accounts, STOP_PERCENT, NOW),
-        Pick::Account("more".into())
-    );
+    for (case, given, picked) in cases {
+        let accounts = given.map(|(name, used, hours)| week_left(name, used, hours));
+        assert_eq!(
+            pick(&accounts, STOP_PERCENT, NOW),
+            Pick::Account(picked.into()),
+            "{case}"
+        );
+    }
 }
 
 #[test]
