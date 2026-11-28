@@ -14,3 +14,7 @@ run with `truefit contract --real <engine>` and the date committed in
 
 Never print, log or commit a token, a refresh token or an account's email:
 tests use stand-ins, and a real run's evidence is the response's shape.
+
+The manual (`stablehand --help`) is assembled by agent-help from doc comments
+on what each fact belongs to; no help is written anywhere else, and the test
+`the_manual_is_whole` checks it.
