@@ -9,8 +9,7 @@
     "paragraph": 1081
   },
   "docs/adr/0002-run-starts-the-engine-on-the-pick.md": {
-    "bytes": 4510,
-    "local_refs": 1,
+    "bytes": 4507,
     "paragraph": 934,
     "pointers": [
       ".credentials.json"
