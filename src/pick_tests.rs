@@ -677,3 +677,48 @@ fn a_long_window_that_runs_out_before_its_reset_passes_over_nothing() {
         Some((Reason::RunsOut, Some(NOW + 3 * HOUR)))
     );
 }
+
+// A long window near its reset stops later: little is left to protect, and
+// what is not spent is lost at the reset.
+
+#[test]
+fn a_long_window_within_hours_of_its_reset_stops_at_its_near_reset_stop() {
+    // As `pick --help` states them.
+    assert_eq!((NEAR_RESET_SECS, NEAR_RESET_STOP_PERCENT), (12 * HOUR, 95));
+    // (case, its week's use, hours to its reset, the reason passed over).
+    let cases: [(&str, f64, u64, Option<Reason>); 4] = [
+        ("near its reset", 92.0, 11, None),
+        ("at the hours exactly", 92.0, 12, None),
+        ("further from it", 92.0, 13, Some(Reason::Stopped)),
+        ("past the near stop", 95.0, 11, Some(Reason::Stopped)),
+    ];
+    for (case, used, hours, reason) in cases {
+        let a = week_left("claude", used, Some(hours));
+        let got = match pick(&[a], STOP_PERCENT, NOW) {
+            Pick::Account(_) => None,
+            Pick::None { why, .. } => Some(why[0].reason),
+        };
+        assert_eq!(got, reason, "{case}");
+    }
+    let Pick::None { why, .. } = pick(&[week_left("claude", 96.0, Some(11))], STOP_PERCENT, NOW)
+    else {
+        panic!("picked a long window past its near stop");
+    };
+    assert!(
+        why[0]
+            .why
+            .contains("seven_day is 96% used, at its stop of 95%"),
+        "{}",
+        why[0].why
+    );
+    // A five-hour window near its reset keeps the stop percent.
+    assert_eq!(
+        passed_over(&five_hour(92.0, 60), 0, NOW).map(|p| p.0),
+        Some(Reason::Stopped)
+    );
+    // A stop percent above the near stop still holds near the reset.
+    assert_eq!(
+        pick(&[week_left("claude", 96.0, Some(11))], 97, NOW),
+        Pick::Account("claude".into())
+    );
+}

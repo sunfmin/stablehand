@@ -1,0 +1,7 @@
+{
+  "tree": "133848fbcc49a0d57287cd68b2d387a4a173f53f+d1fba762150c532c",
+  "picker": "codex:01a22173-a825-7a33-8b85-c226079f4f7f:default",
+  "author": "claude-code:11a5f696-b862-558f-aa96-7aa30e0a535b:opus",
+  "none": "The tests pin the 12-hour cutoff, the stop threshold and its long-window restriction, and the rate filter’s exclusion of long windows. Every buildable candidate would break an existing assertion.",
+  "added_lines": 57
+}
